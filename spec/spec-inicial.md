@@ -103,6 +103,11 @@ OFFER_EXPANSION ── "1,3" (lista de números) ─▶ criar entradas "nova" �
                 ── 0 ou "pular" ─────────────▶ IDLE
 ```
 
+Duas perguntas de 1/2 citadas nas regras abaixo também são estados (M2): `AWAIT_NEW_WORD` ("1 praticar X
+agora · 2 era minha frase") e `AWAIT_EXPANSION_PRACTICE` ("1 praticar agora · 2 depois"). No modo
+`producao_primeiro`, depois de explicar (ou escolher o sentido) o estado é `AWAIT_SENTENCE`, com o menu
+"1 me dá um exemplo · 2 só salvar". Número solto e inválido (`7`) nunca é tratado como palavra nova.
+
 Regras:
 
 - **Texto que não é número válido** num estado que espera número:
@@ -217,12 +222,15 @@ class Expansion(BaseModel):
 ### 7.1 Firestore
 ```
 profile/me                 { nivel, modo, criado_em }
-session/current            { estado, entry_id, sentido_id, pendente_nova_palavra?, atualizado_em }
+session/current            { estado, entry_id, sentido_id, pendente_nova_palavra?, sentidos_pendentes, expansoes_sugeridas,
+                             expansoes_criadas, atualizado_em }
+                           # as 3 listas guardam os menus numerados em andamento (M2: "1,3" precisa apontar para algo)
 entries/{slug}             { palavra, classe, cefr_estimado, sentido:{traducao,definicao}, outros_sentidos,
                              nota, tags, origem_texto, origem:"usuario"|"expansao", pai?, status:"nova"|"praticada",
                              exportado, criado_em, atualizado_em }
 entries/{slug}/sentences/{auto}  { texto, autor:"usuario"|"bot", veredito?, correcoes?, versao_natural?, explicacao?, criado_em }
 processed/{message_id}     { criado_em, expira_em }     # deduplicação; política de TTL de 7 dias
+lids/{lid}                 { numero }                   # cache LID -> número (seção 8.2), evita consultar o WAHA a cada mensagem
 ```
 - `slug`: minúsculas, `[^a-z0-9]+` → `-`. Se o mesmo slug surgir com outro sentido, use o sufixo `--s2`.
 - Defina a interface `Repository` (Protocol) com `FirestoreRepository` e `MemoryRepository`. A deduplicação usa `create()`, que falha se o ID já existe.

@@ -1,5 +1,5 @@
 """Testes de ponta a ponta do webhook `/waha/webhook` (seção 8.1), com payloads reais de
-`tests/fixtures/`. Usa FakeChannel e um deduplicador em memória — nunca toca a rede.
+`tests/fixtures/`. Usa FakeChannel e um MemoryRepository — nunca toca a rede.
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ from fastapi.testclient import TestClient
 
 from app.channel.fake import FakeChannel
 from app.config import Settings
-from app.main import app, get_channel, get_deduplicator, get_settings
-from app.repo.dedup import DeduplicadorEmMemoria
+from app.main import app, get_channel, get_repository, get_settings
+from app.repo.memory import MemoryRepository
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CHAT_ALLOWED = "5531999998888@c.us"
@@ -45,8 +45,8 @@ def cliente(fake_channel: FakeChannel) -> Iterator[TestClient]:
     )
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_channel] = lambda: fake_channel
-    dedup = DeduplicadorEmMemoria()
-    app.dependency_overrides[get_deduplicator] = lambda: dedup
+    repo = MemoryRepository()
+    app.dependency_overrides[get_repository] = lambda: repo
     try:
         yield TestClient(app)
     finally:
@@ -107,6 +107,21 @@ def test_lid_resolvido_para_numero_permitido_e_processado(
 
     assert resposta.status_code == 200
     assert fake_channel.vistos == [CHAT_ALLOWED]
+
+
+def test_lid_resolvido_fica_em_cache_e_nao_consulta_o_waha_de_novo(
+    cliente: TestClient, fake_channel: FakeChannel
+) -> None:
+    fake_channel.lids_conhecidos["257161284317237@lid"] = "5531999998888"
+    cliente.post("/waha/webhook", json=_fixture("lid"))
+    fake_channel.lids_conhecidos.clear()  # o WAHA "esqueceu" o mapeamento
+    outra = _fixture("lid")
+    outra["payload"]["id"] = "true_257161284317237@lid_LID00002"
+
+    resposta = cliente.post("/waha/webhook", json=outra)
+
+    assert resposta.status_code == 200
+    assert fake_channel.vistos == [CHAT_ALLOWED, CHAT_ALLOWED]
 
 
 def test_lid_resolvido_para_numero_nao_permitido_e_ignorado(

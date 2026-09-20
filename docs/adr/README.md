@@ -12,6 +12,8 @@ operacional: numeração, status e o índice.
 |---|---|---|---|
 | [0001](0001-stack-do-mvp.md) | Stack do MVP (WAHA + Gemini no Vertex AI + VM e2-micro) | Aceito | 2026-09-20 |
 | [0002](0002-gestao-de-mudancas-por-adr.md) | Gestão de mudanças por ADR | Aceito | 2026-09-20 |
+| [0003](0003-firestore-como-banco-atras-de-repository.md) | Firestore (modo nativo) como banco, atrás de uma interface Repository | Aceito | 2026-09-20 |
+| [0004](0004-maquina-de-estados-pura.md) | Máquina de estados como função pura que devolve uma ação | Aceito | 2026-09-20 |
 
 ## Quando escrever um
 

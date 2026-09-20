@@ -17,8 +17,8 @@ from fastapi.testclient import TestClient
 
 from app.channel.fake import FakeChannel
 from app.config import Settings
-from app.main import app, get_channel, get_deduplicator, get_settings
-from app.repo.dedup import DeduplicadorEmMemoria
+from app.main import app, get_channel, get_repository, get_settings
+from app.repo.memory import MemoryRepository
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CHAVE_HMAC = "chave-secreta-de-teste"
@@ -50,7 +50,7 @@ def cliente(fake_channel: FakeChannel) -> Iterator[TestClient]:
     )
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_channel] = lambda: fake_channel
-    app.dependency_overrides[get_deduplicator] = lambda: DeduplicadorEmMemoria()
+    app.dependency_overrides[get_repository] = lambda: MemoryRepository()
     try:
         yield TestClient(app)
     finally:
@@ -111,7 +111,7 @@ def test_sem_chave_configurada_nao_exige_assinatura(fake_channel: FakeChannel) -
     )
     app.dependency_overrides[get_settings] = lambda: settings_sem_hmac
     app.dependency_overrides[get_channel] = lambda: fake_channel
-    app.dependency_overrides[get_deduplicator] = lambda: DeduplicadorEmMemoria()
+    app.dependency_overrides[get_repository] = lambda: MemoryRepository()
     try:
         cliente = TestClient(app)
         resposta = cliente.post("/waha/webhook", json=json.loads(_fixture_bruta("texto")))

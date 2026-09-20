@@ -11,12 +11,14 @@ import hashlib
 import hmac as hmac_lib
 import json
 import logging
+import os
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from google.cloud import firestore
 from pydantic import SecretStr
 from starlette.concurrency import run_in_threadpool
 
@@ -34,11 +36,12 @@ from app.channel.parser import (
 )
 from app.channel.waha import WahaChannel
 from app.config import Settings
-from app.repo.dedup import DeduplicadorEmMemoria, Deduplicator
+from app.domain.models import agora_utc
+from app.repo.base import Repository
+from app.repo.firestore import FirestoreRepository
+from app.repo.memory import MemoryRepository
 
 logger = logging.getLogger(__name__)
-
-_deduplicador_padrao = DeduplicadorEmMemoria()
 
 
 @lru_cache
@@ -46,8 +49,12 @@ def get_settings() -> Settings:
     return Settings()  # campos obrigatórios vêm do .env/ambiente em runtime
 
 
-def get_deduplicator() -> Deduplicator:
-    return _deduplicador_padrao
+def _criar_repositorio(settings: Settings) -> Repository:
+    """Firestore em produção (ou contra o emulador); em memória no desenvolvimento local,
+    para nunca gravar por engano num Firestore real."""
+    if settings.app_env == "prod" or os.environ.get("FIRESTORE_EMULATOR_HOST"):
+        return FirestoreRepository(firestore.Client(project=settings.gcp_project_id))
+    return MemoryRepository()
 
 
 @asynccontextmanager
@@ -59,6 +66,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         session=settings.waha_session,
     )
     app.state.channel = canal
+    app.state.repo = _criar_repositorio(settings)
     try:
         yield
     finally:
@@ -73,6 +81,11 @@ def get_channel(request: Request) -> ChannelComLid:
     return channel
 
 
+def get_repository(request: Request) -> Repository:
+    repo: Repository = request.app.state.repo
+    return repo
+
+
 @app.get("/health")
 def health() -> dict[str, bool]:
     return {"ok": True}
@@ -83,7 +96,7 @@ async def waha_webhook(
     request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
     channel: Annotated[ChannelComLid, Depends(get_channel)],
-    dedup: Annotated[Deduplicator, Depends(get_deduplicator)],
+    repo: Annotated[Repository, Depends(get_repository)],
 ) -> dict[str, bool]:
     corpo_bruto = await request.body()
 
@@ -101,7 +114,7 @@ async def waha_webhook(
 
     if isinstance(evento, MessageEvent):
         try:
-            await _tratar_mensagem(evento.payload, settings, channel, dedup)
+            await _tratar_mensagem(evento.payload, settings, channel, repo)
         except Exception:
             logger.exception("falha ao processar mensagem")
             chat_destino = f"{settings.allowed_number}@c.us"
@@ -126,7 +139,7 @@ async def _tratar_mensagem(
     payload: MessagePayload,
     settings: Settings,
     channel: ChannelComLid,
-    dedup: Deduplicator,
+    repo: Repository,
 ) -> None:
     if payload.from_me:
         logger.debug("mensagem própria ignorada: %s", payload.id)
@@ -136,21 +149,16 @@ async def _tratar_mensagem(
         logger.info("mensagem de grupo/status/canal ignorada")
         return
 
-    numero_resolvido = (
-        await channel.resolve_lid(payload.from_)
-        if eh_lid(payload.from_)
-        else digitos_do_chat_id(payload.from_)
-    )
+    numero_resolvido = await _numero_do_remetente(payload.from_, channel, repo)
     if numero_resolvido is None or not numero_e_permitido(
         numero_resolvido, settings.allowed_number
     ):
         logger.warning("mensagem de número não autorizado ignorada")
         return
 
-    if dedup.ja_processada(payload.id):
+    if not await run_in_threadpool(repo.marcar_processada, payload.id, agora_utc()):
         logger.info("mensagem duplicada ignorada: %s", payload.id)
         return
-    dedup.marcar_processada(payload.id)
 
     chat_destino = f"{settings.allowed_number}@c.us"
     await channel.send_seen(chat_destino)
@@ -160,6 +168,20 @@ async def _tratar_mensagem(
         return
 
     await run_in_threadpool(_despachar_ao_roteador, payload)
+
+
+async def _numero_do_remetente(
+    chat_id: str, channel: ChannelComLid, repo: Repository
+) -> str | None:
+    if not eh_lid(chat_id):
+        return digitos_do_chat_id(chat_id)
+    em_cache = await run_in_threadpool(repo.obter_numero_do_lid, chat_id)
+    if em_cache is not None:
+        return em_cache
+    numero = await channel.resolve_lid(chat_id)
+    if numero is not None:
+        await run_in_threadpool(repo.salvar_numero_do_lid, chat_id, numero)
+    return numero
 
 
 def _despachar_ao_roteador(payload: MessagePayload) -> None:
