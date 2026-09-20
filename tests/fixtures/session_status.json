@@ -1,0 +1,8 @@
+{
+  "event": "session.status",
+  "session": "default",
+  "payload": {
+    "name": "default",
+    "status": "WORKING"
+  }
+}

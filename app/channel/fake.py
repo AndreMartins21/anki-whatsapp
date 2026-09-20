@@ -1,0 +1,25 @@
+"""FakeChannel (seção 8.4): dublê em memória, para testes — nunca faz chamada de rede."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class FakeChannel:
+    textos_enviados: list[tuple[str, str]] = field(default_factory=list)
+    vistos: list[str] = field(default_factory=list)
+    digitando: list[tuple[str, bool]] = field(default_factory=list)
+    lids_conhecidos: dict[str, str | None] = field(default_factory=dict)
+
+    async def send_text(self, chat_id: str, text: str) -> None:
+        self.textos_enviados.append((chat_id, text))
+
+    async def send_seen(self, chat_id: str) -> None:
+        self.vistos.append(chat_id)
+
+    async def typing(self, chat_id: str, on: bool) -> None:
+        self.digitando.append((chat_id, on))
+
+    async def resolve_lid(self, lid: str) -> str | None:
+        return self.lids_conhecidos.get(lid)

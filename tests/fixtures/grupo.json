@@ -1,0 +1,16 @@
+{
+  "event": "message",
+  "session": "default",
+  "payload": {
+    "id": "true_120363000000000000@g.us_GRUPO0001",
+    "timestamp": 1758331400,
+    "from": "120363000000000000@g.us",
+    "fromMe": false,
+    "to": "5531988887777@c.us",
+    "body": "mensagem de um grupo",
+    "hasMedia": false,
+    "ack": 1,
+    "vCards": [],
+    "_data": {}
+  }
+}

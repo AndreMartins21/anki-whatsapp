@@ -1,0 +1,16 @@
+{
+  "event": "message",
+  "session": "default",
+  "payload": {
+    "id": "true_5511888887777@c.us_NAOAUTH01",
+    "timestamp": 1758331600,
+    "from": "5511888887777@c.us",
+    "fromMe": false,
+    "to": "5531988887777@c.us",
+    "body": "mensagem de um número não autorizado",
+    "hasMedia": false,
+    "ack": 1,
+    "vCards": [],
+    "_data": {}
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "event": "message",
+  "session": "default",
+  "payload": {
+    "id": "true_5531999998888@c.us_FROMME001",
+    "timestamp": 1758331300,
+    "from": "5531999998888@c.us",
+    "fromMe": true,
+    "to": "5531999998888@c.us",
+    "body": "mensagem enviada pelo próprio bot",
+    "hasMedia": false,
+    "ack": 1,
+    "vCards": [],
+    "_data": {}
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "event": "message",
+  "session": "default",
+  "payload": {
+    "id": "true_5531999998888@c.us_TEXTO0001",
+    "timestamp": 1758331201,
+    "from": "5531999998888@c.us",
+    "fromMe": false,
+    "to": "5531988887777@c.us",
+    "body": "stall | the talks stalled",
+    "hasMedia": false,
+    "ack": 1,
+    "vCards": [],
+    "_data": {}
+  }
+}

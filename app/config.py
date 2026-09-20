@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     waha_url: str = "http://waha:3000"
     waha_session: str = "default"
     waha_api_key: SecretStr
+    # Assinatura HMAC dos webhooks (seção 8.1: "se o WAHA suportar, configure e valide" — a
+    # doc atual confirma suporte via WHATSAPP_HOOK_HMAC_KEY). Opcional: sem ela, confiamos na
+    # rede interna isolada do compose, como a spec permite como alternativa.
+    waha_hook_hmac_key: SecretStr | None = None
 
     # IA
     llm_provider: ProvedorLLM = "vertex_gemini"
