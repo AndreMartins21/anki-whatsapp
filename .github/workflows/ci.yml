@@ -18,7 +18,7 @@ jobs:
     name: Lint, formatação, tipagem e segredos
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # gitleaks precisa do histórico
 
@@ -37,7 +37,7 @@ jobs:
     name: Testes (pytest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Instalar uv
         uses: astral-sh/setup-uv@v5
@@ -55,6 +55,6 @@ jobs:
     runs-on: ubuntu-latest
     if: hashFiles('docker-compose.yml') != ''
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: docker compose config
         run: docker compose --env-file .env.example config --quiet
