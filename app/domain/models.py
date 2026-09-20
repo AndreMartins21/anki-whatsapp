@@ -1,6 +1,5 @@
-"""Modelos de domínio (seções 6 e 7.1 da spec). Os schemas de saída do LLM que não são
-persistidos (`Explanation`, `Evaluation`) chegam no M3; aqui ficam os que entram no banco
-ou na sessão."""
+"""Modelos de domínio (seções 6 e 7.1 da spec): o que entra no banco ou na sessão, e os
+schemas de saída do LLM (`Explanation`, `Evaluation`, `Exemplos`, `Expansoes`)."""
 
 from __future__ import annotations
 
@@ -10,7 +9,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 NivelUsuario = Literal["A2-B1", "B1-B2", "B2-C1"]
 ModoPratica = Literal["guiado", "producao_primeiro"]
@@ -51,6 +50,69 @@ class Expansion(BaseModel):
     expressao: str
     traducao: str
     tipo: TipoExpansao
+
+
+class Explanation(BaseModel):
+    """Saída de `explain` (seção 6). Com `ok=False` só `motivo_erro` importa, então os demais
+    campos têm padrão — o modelo não precisa inventar conteúdo para uma entrada inválida."""
+
+    ok: bool
+    motivo_erro: str | None = None
+    palavra: str = ""  # forma base, minúsculas
+    classe: str = ""  # PT-BR
+    cefr_estimado: Cefr = "B1"
+    sentidos: list[Sense] = Field(default_factory=list, max_length=4)  # só os comuns
+    sentido_do_contexto: str | None = None  # id do sentido, se o contexto (ou a unicidade) o define
+    frase_contexto: str | None = None  # frase do usuário corrigida, alvo entre [[ ]]
+    nota: str = ""
+    tags: list[Tag] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _explicacao_valida_tem_palavra_e_sentidos(self) -> Explanation:
+        if self.ok and not (self.palavra.strip() and self.sentidos):
+            raise ValueError("ok=true exige `palavra` e ao menos 1 sentido")
+        ids = {sentido.id for sentido in self.sentidos}
+        if self.sentido_do_contexto is not None and self.sentido_do_contexto not in ids:
+            raise ValueError("`sentido_do_contexto` deve ser o id de um dos `sentidos`")
+        return self
+
+
+MAX_LINHAS_EXPLICACAO = 4
+
+
+class Evaluation(BaseModel):
+    """Saída de `evaluate` (seção 6)."""
+
+    usa_palavra_alvo: bool  # considera flexões
+    sentido_correto: bool
+    veredito: Veredito
+    correcoes: list[str]  # "errado → certo"
+    versao_natural: str  # alvo entre [[ ]]
+    explicacao: str  # PT-BR, máx. 4 linhas
+
+    @model_validator(mode="after")
+    def _explicacao_curta(self) -> Evaluation:
+        if len(self.explicacao.strip().splitlines()) > MAX_LINHAS_EXPLICACAO:
+            raise ValueError(f"`explicacao` deve ter no máximo {MAX_LINHAS_EXPLICACAO} linhas")
+        return self
+
+
+class Exemplos(BaseModel):
+    """Saída de `examples`: frases com o alvo entre [[ ]]."""
+
+    frases: list[str]
+
+    @model_validator(mode="after")
+    def _alvo_marcado(self) -> Exemplos:
+        if not all("[[" in frase and "]]" in frase for frase in self.frases):
+            raise ValueError("toda frase deve marcar a palavra-alvo entre [[ ]]")
+        return self
+
+
+class Expansoes(BaseModel):
+    """Saída de `expansions`: de 3 a 5 expressões relacionadas."""
+
+    itens: list[Expansion] = Field(min_length=3, max_length=5)
 
 
 class SentidoSalvo(BaseModel):

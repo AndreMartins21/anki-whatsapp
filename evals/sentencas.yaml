@@ -1,0 +1,99 @@
+# Casos para medir a avaliação de frases contra a API real (`python -m evals.run`).
+# `esperado` é a lista de vereditos aceitáveis: quando o limite entre dois vereditos é subjetivo,
+# os dois valem. Frases escritas no nível B1-B2, com um erro (ou nenhum) por caso.
+
+- id: reluctant-correta
+  palavra: reluctant
+  sentido: {traducao: relutante, definicao: not willing to do something and therefore slow to do it}
+  frase: She was reluctant to share her opinion in the meeting.
+  esperado: [correta]
+
+- id: reluctant-gramatica
+  palavra: reluctant
+  sentido: {traducao: relutante, definicao: not willing to do something and therefore slow to do it}
+  frase: He is reluctant for going to the party.
+  esperado: [quase]
+
+- id: reluctant-sentido-errado
+  palavra: reluctant
+  sentido: {traducao: relutante, definicao: not willing to do something and therefore slow to do it}
+  frase: I am reluctant because I love this movie so much.
+  esperado: [incorreta]
+
+- id: deadline-correta
+  palavra: deadline
+  sentido: {traducao: prazo, definicao: the time or date by which something must be finished}
+  frase: We missed the deadline because the requirements kept changing.
+  esperado: [correta]
+
+- id: deadline-colocacao
+  palavra: deadline
+  sentido: {traducao: prazo, definicao: the time or date by which something must be finished}
+  frase: We lost the deadline because the client changed everything.
+  esperado: [quase, correta_pouco_natural]
+
+- id: deadline-sem-sentido
+  palavra: deadline
+  sentido: {traducao: prazo, definicao: the time or date by which something must be finished}
+  frase: My deadline is very tall and blue.
+  esperado: [incorreta]
+
+- id: overwhelmed-correta
+  palavra: overwhelmed
+  sentido: {traducao: sobrecarregado, definicao: having too much to deal with, so that you feel unable to cope}
+  frase: I felt overwhelmed by the number of emails after my vacation.
+  esperado: [correta]
+
+- id: overwhelmed-sentido-errado
+  palavra: overwhelmed
+  sentido: {traducao: sobrecarregado, definicao: having too much to deal with, so that you feel unable to cope}
+  frase: The food was overwhelmed and very tasty.
+  esperado: [incorreta]
+
+- id: overwhelmed-gramatica
+  palavra: overwhelmed
+  sentido: {traducao: sobrecarregado, definicao: having too much to deal with, so that you feel unable to cope}
+  frase: I am overwhelm with work this week.
+  esperado: [quase]
+
+- id: stall-correta
+  palavra: stall
+  sentido: {traducao: travar, definicao: to stop making progress}
+  frase: The negotiations stalled after the first meeting.
+  esperado: [correta]
+
+- id: stall-tempo-verbal
+  palavra: stall
+  sentido: {traducao: travar, definicao: to stop making progress}
+  frase: The negotiation stalls yesterday.
+  esperado: [quase]
+
+- id: stall-sentido-errado
+  palavra: stall
+  sentido: {traducao: travar, definicao: to stop making progress}
+  frase: I stalled the box in the garage.
+  esperado: [incorreta]
+
+- id: give-up-correta
+  palavra: give up
+  sentido: {traducao: desistir, definicao: to stop trying to do something}
+  frase: Don't give up now, you are almost there.
+  esperado: [correta]
+
+- id: give-up-gramatica
+  palavra: give up
+  sentido: {traducao: desistir, definicao: to stop trying to do something}
+  frase: He gave up to smoke last year.
+  esperado: [quase]
+
+- id: give-up-sentido-errado
+  palavra: give up
+  sentido: {traducao: desistir, definicao: to stop trying to do something}
+  frase: She gave up the door and went inside.
+  esperado: [incorreta]
+
+- id: convenient-pouco-natural
+  palavra: convenient
+  sentido: {traducao: conveniente, definicao: easy to use or suitable for your needs}
+  frase: The office is convenient for me because it is near to the station.
+  esperado: [correta_pouco_natural, correta]

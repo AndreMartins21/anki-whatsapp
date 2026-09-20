@@ -45,6 +45,8 @@ Estas skills carregam sozinhas quando o contexto pede; invoque explicitamente se
 make setup    # venv (Python 3.12) + dependências + hooks de pre-commit
 make check    # o que a CI roda: ruff + mypy + pytest
 make test     # pytest
+make test-emulador  # contrato do Repository também contra o emulador do Firestore (Docker)
+make evals    # taxa de acerto da avaliação de frases contra a API real (custa centavos)
 make fmt      # formata e corrige lint
 make run      # API local em :8000
 make sim      # simulador de terminal (sem WhatsApp)

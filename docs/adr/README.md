@@ -14,6 +14,7 @@ operacional: numeração, status e o índice.
 | [0002](0002-gestao-de-mudancas-por-adr.md) | Gestão de mudanças por ADR | Aceito | 2026-09-20 |
 | [0003](0003-firestore-como-banco-atras-de-repository.md) | Firestore (modo nativo) como banco, atrás de uma interface Repository | Aceito | 2026-09-20 |
 | [0004](0004-maquina-de-estados-pura.md) | Máquina de estados como função pura que devolve uma ação | Aceito | 2026-09-20 |
+| [0005](0005-llm-atras-de-provider-com-validacao-propria.md) | IA atrás de um provedor que devolve JSON, com validação e nova tentativa próprias | Aceito | 2026-09-20 |
 
 ## Quando escrever um
 

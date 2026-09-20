@@ -27,6 +27,7 @@ dev = [
     "mypy>=1.13",
     "pre-commit>=4.0",
     "types-pyyaml>=6.0",
+    "pyyaml>=6.0.3",
 ]
 # Extras usados só pelos evals contra a API real (fora do pytest).
 evals = [
@@ -107,7 +108,7 @@ pretty = true
 plugins = ["pydantic.mypy"]
 # Bibliotecas sem stubs completos:
 [[tool.mypy.overrides]]
-module = ["google.*", "waha.*"]
+module = ["google.*", "waha.*", "anthropic.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

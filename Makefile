@@ -1,6 +1,6 @@
 # Atalhos do projeto. Requer `uv` (https://docs.astral.sh/uv/).
 .DEFAULT_GOAL := help
-.PHONY: help setup fmt lint type test test-emulador cov check hooks run sim clean
+.PHONY: help setup fmt lint type test test-emulador evals cov check hooks run sim clean
 
 help: ## Mostra os alvos disponíveis
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -32,6 +32,9 @@ test-emulador: ## Roda o teste de contrato do Repository também contra o emulad
 	@until curl -s http://127.0.0.1:8686 >/dev/null; do sleep 1; done
 	FIRESTORE_EMULATOR_HOST=127.0.0.1:8686 uv run pytest tests/test_repository.py; \
 		status=$$?; docker stop vocabot-firestore-emu >/dev/null; exit $$status
+
+evals: ## Mede a avaliação de frases contra a API real (custa centavos). Ex.: make evals ARGS="--provider anthropic"
+	set -a; [ -f .env ] && . ./.env; set +a; uv run python -m evals.run $(ARGS)
 
 cov: ## Roda os testes com relatório de cobertura
 	uv run pytest --cov --cov-report=term-missing
