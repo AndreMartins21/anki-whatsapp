@@ -84,6 +84,8 @@ Notas de operação:
   créditos do trial acabarem**.
 - **Memória (1 GB):** swap de 2 GB criado no boot, `mem_limit` de 400 MB no WAHA (engine GOWS, sem
   Chromium) e 300 MB no bot (medido: ~80 MB em repouso).
+- **QR expira:** o QR vale por poucos minutos. Se a sessão aparecer como `FAILED`/`STOPPED` no painel
+  (ninguém escaneou a tempo), clique em *Restart* na sessão `default` para gerar um QR novo.
 - **Sessão do WhatsApp:** fica no volume `waha_sessions`; recriar o container não pede QR de novo.
   Só pode haver uma sessão ativa por número: não pareie o mesmo número em outro WAHA ao mesmo tempo.
 - **Logs:** JSON, uma linha por evento, sem segredo e sem número de telefone completo. Se o bot não
