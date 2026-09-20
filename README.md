@@ -59,7 +59,7 @@ cp infra/.env.infra.example infra/.env.infra   # preencha GCP_PROJECT_ID, ALLOWE
 DRY_RUN=1 bash infra/setup.sh   # revisar o que será criado (só as leituras rodam)
 bash infra/setup.sh             # APIs, Firestore + TTL, conta de serviço, bucket, segredos, firewall, VM
 bash infra/deploy.sh            # empacota, copia via IAP, renderiza o .env na VM e sobe o compose
-bash infra/pair.sh              # túnel para o painel do WAHA: escaneie o QR com o número do bot
+bash infra/pair.sh              # túnel (porta local 13000) p/ o painel do WAHA: escaneie o QR com o número do bot
 bash infra/smoke_test.sh        # bot em /health e sessão do WAHA em WORKING
 ```
 
