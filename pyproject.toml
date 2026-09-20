@@ -1,0 +1,128 @@
+[project]
+name = "vocabot"
+version = "0.1.0"
+description = "Bot de WhatsApp para praticar vocabulário de inglês, com export para o Anki"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Proprietary" }
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "httpx>=0.27",
+    "google-genai>=1.0",
+    "google-cloud-firestore>=2.19",
+    "google-cloud-storage>=2.18",
+    "google-auth>=2.35",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+    "types-pyyaml>=6.0",
+]
+# Extras usados só pelos evals contra a API real (fora do pytest).
+evals = [
+    "pyyaml>=6.0",
+    "anthropic>=0.40",
+]
+
+[tool.uv]
+# Aplicação, não biblioteca: não há wheel para construir.
+package = false
+
+# ---------------------------------------------------------------------------
+# Ruff: lint + formatação
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["referencia", "spec", "docs"]  # a spec é contrato, não código a formatar
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # isort (ordem de imports)
+    "UP",        # pyupgrade (idiomas modernos)
+    "B",         # flake8-bugbear (armadilhas comuns)
+    "C4",        # comprehensions
+    "SIM",       # simplificações
+    "ARG",       # argumentos não usados
+    "PTH",       # prefira pathlib a os.path
+    "RUF",       # regras do próprio ruff
+    "S",         # flake8-bandit (segurança)
+    "T20",       # sem print() em código de produção
+    "ASYNC",     # armadilhas de async
+    "LOG", "G",  # uso correto de logging
+]
+ignore = [
+    "E501",      # comprimento de linha é responsabilidade do formatter
+    "B008",      # Depends(...) em default de argumento é idiomático no FastAPI
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "ARG001", "ARG002"]  # assert e fixtures não usadas são normais em teste
+"sim/**" = ["T20"]                          # o simulador de terminal imprime de propósito
+"evals/**" = ["T20", "S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "sim", "evals"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+asyncio_mode = "auto"
+markers = [
+    "slow: testes lentos, pulados por padrão em loop rápido de TDD",
+]
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+files = ["."]
+exclude = ['^\.venv/', '^referencia/', '^build/', '^dist/']
+strict = true
+warn_unreachable = true
+pretty = true
+# Bibliotecas sem stubs completos:
+[[tool.mypy.overrides]]
+module = ["google.*", "waha.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+# ---------------------------------------------------------------------------
+# coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+branch = true
+source = ["app"]
+omit = ["*/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
