@@ -18,12 +18,12 @@ jobs:
     name: Lint, formatação, tipagem e segredos
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # gitleaks precisa do histórico
 
       - name: Instalar uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
 
@@ -37,10 +37,10 @@ jobs:
     name: Testes (pytest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Instalar uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
 
@@ -53,8 +53,14 @@ jobs:
   compose:
     name: Validar docker compose
     runs-on: ubuntu-latest
-    if: hashFiles('docker-compose.yml') != ''
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
+      # O compose só existe a partir do M7; até lá o job passa sem fazer nada.
       - name: docker compose config
-        run: docker compose --env-file .env.example config --quiet
+        run: |
+          if [ -f docker-compose.yml ]; then
+            docker compose --env-file .env.example config --quiet
+          else
+            echo "Sem docker-compose.yml ainda (chega no M7) - nada a validar."
+          fi
