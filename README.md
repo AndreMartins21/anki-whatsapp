@@ -76,8 +76,12 @@ Depois: mande `/ajuda` do seu WhatsApp pessoal para o número do bot.
 Notas de operação:
 
 - **Custo:** `e2-micro` + disco standard de 30 GB em `us-central1` são gratuitos; o IP externo
-  efêmero custa alguns dólares por mês e o Gemini é pago por uso (centavos neste volume). Crie um
-  alerta de orçamento em Billing → Budgets antes do primeiro deploy.
+  efêmero custa até ~US$ 3,60/mês (confira na fatura, SKU "External IP Charge on a Standard VM") e o
+  Gemini é pago por uso (centavos neste volume). Crie um alerta de orçamento em Billing → Budgets
+  antes do primeiro deploy. O IP existe só para a VM **sair** para a internet — nada entra nela.
+  Alternativas gratuitas (casa, Oracle) e o porquê de ficarmos na GCP estão no
+  [ADR-0008](docs/adr/0008-continuar-na-gcp-e-manter-a-saida-portavel.md); **revisitar antes de os
+  créditos do trial acabarem**.
 - **Memória (1 GB):** swap de 2 GB criado no boot, `mem_limit` de 400 MB no WAHA (engine GOWS, sem
   Chromium) e 300 MB no bot (medido: ~80 MB em repouso).
 - **Sessão do WhatsApp:** fica no volume `waha_sessions`; recriar o container não pede QR de novo.
