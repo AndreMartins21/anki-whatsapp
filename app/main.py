@@ -186,9 +186,10 @@ async def _tratar_mensagem(
         return
 
     numero_resolvido = await _numero_do_remetente(payload.from_, channel, repo)
-    if numero_resolvido is None or not numero_e_permitido(
-        numero_resolvido, settings.allowed_number
-    ):
+    if numero_resolvido is None:
+        logger.warning("LID não resolvido: o WAHA não achou o telefone do remetente; ignorada")
+        return
+    if not numero_e_permitido(numero_resolvido, settings.allowed_number):
         logger.warning("mensagem de número não autorizado ignorada")
         return
 

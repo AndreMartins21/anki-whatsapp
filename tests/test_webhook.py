@@ -155,11 +155,15 @@ def test_lid_resolvido_para_numero_nao_permitido_e_ignorado(
     assert fake_channel.vistos == []
 
 
-def test_lid_nao_encontrado_e_ignorado(cliente: TestClient, fake_channel: FakeChannel) -> None:
-    resposta = cliente.post("/waha/webhook", json=_fixture("lid"))
+def test_lid_nao_encontrado_e_ignorado_com_um_log_que_diz_o_motivo(
+    cliente: TestClient, fake_channel: FakeChannel, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        resposta = cliente.post("/waha/webhook", json=_fixture("lid"))
 
     assert resposta.status_code == 200
     assert fake_channel.vistos == []
+    assert any("LID não resolvido" in registro.message for registro in caplog.records)
 
 
 def test_mensagem_duplicada_e_processada_so_uma_vez(

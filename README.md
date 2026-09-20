@@ -82,7 +82,10 @@ Notas de operação:
   Chromium) e 300 MB no bot (medido: ~80 MB em repouso).
 - **Sessão do WhatsApp:** fica no volume `waha_sessions`; recriar o container não pede QR de novo.
   Só pode haver uma sessão ativa por número: não pareie o mesmo número em outro WAHA ao mesmo tempo.
-- **Logs:** JSON, uma linha por evento, sem segredo e sem número de telefone completo.
+- **Logs:** JSON, uma linha por evento, sem segredo e sem número de telefone completo. Se o bot não
+  responder depois do pareamento, procure nos logs do bot por `LID não resolvido` (o WhatsApp às vezes
+  identifica o remetente por um LID que o WAHA não consegue traduzir para o telefone) ou por
+  `número não autorizado` (confira `ALLOWED_NUMBER`).
 - **Imagem do WAHA:** tag fixada em `docker-compose.yml` (`gows-...`); para atualizar, troque a tag
   depois de ler as notas de versão em hub.docker.com/r/devlikeapro/waha.
 - **Testar localmente:** `make sim` (sem WhatsApp, IA fabricada) ou `make sim ARGS=--real-llm`
