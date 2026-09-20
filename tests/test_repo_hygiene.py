@@ -19,6 +19,7 @@ ARQUIVOS_OBRIGATORIOS = [
     "pyproject.toml",
     "README.md",
     "CLAUDE.md",
+    "Dockerfile",
 ]
 
 # Nomes que nunca podem estar versionados.

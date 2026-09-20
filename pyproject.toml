@@ -87,6 +87,9 @@ minversion = "8.0"
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config"
 asyncio_mode = "auto"
+# Projeto é aplicação, não pacote instalável (tool.uv.package = false acima):
+# sem isso, `app/` não entra no sys.path quando `uv run pytest` roda o script direto.
+pythonpath = ["."]
 markers = [
     "slow: testes lentos, pulados por padrão em loop rápido de TDD",
 ]
@@ -101,6 +104,7 @@ exclude = ['^\.venv/', '^referencia/', '^build/', '^dist/']
 strict = true
 warn_unreachable = true
 pretty = true
+plugins = ["pydantic.mypy"]
 # Bibliotecas sem stubs completos:
 [[tool.mypy.overrides]]
 module = ["google.*", "waha.*"]

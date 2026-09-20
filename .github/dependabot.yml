@@ -14,5 +14,7 @@ updates:
     schedule:
       interval: "monthly"
 
-  # O ecossistema "docker" volta quando existir um Dockerfile (M0/M7);
-  # sem ele o Dependabot falha a cada execução.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
