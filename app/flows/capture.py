@@ -112,10 +112,13 @@ def _gravar_entrada(
         if s.id != sentido.id
     ]
     if existente is not None:
+        # Uma expansão é uma expressão ("mitigate risk"): a IA a explica pela forma base ("mitigate"),
+        # mas o cartão continua sendo da expressão que o aluno escolheu, com a classe da sugestão.
+        da_expansao = existente.origem == "expansao"
         atualizada = existente.model_copy(
             update={
-                "palavra": explicacao.palavra,
-                "classe": explicacao.classe,
+                "palavra": existente.palavra if da_expansao else explicacao.palavra,
+                "classe": existente.classe if da_expansao else explicacao.classe,
                 "cefr_estimado": explicacao.cefr_estimado,
                 "sentido": escolhido,
                 "outros_sentidos": outros,

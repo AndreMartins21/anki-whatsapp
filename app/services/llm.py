@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import unicodedata
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Protocol
 
 from google import genai
@@ -97,6 +97,9 @@ class VertexGeminiProvider:
             temperature=temperatura,
             response_mime_type="application/json",
             response_schema=schema,
+            # Não usamos ferramentas; sem isto o SDK entra no caminho de "function calling
+            # automático" e avisa que ele não é recomendado em generate_content.
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
         resposta = self._client.models.generate_content(
             model=modelo, contents=usuario, config=config
@@ -295,3 +298,31 @@ def criar_tutor(settings: Settings) -> LLMTutor:
         modelo=settings.gemini_model,
         modelo_avaliacao=settings.gemini_model_eval or settings.gemini_model,
     )
+
+
+MODELO_ANTHROPIC_PADRAO = "claude-haiku-4-5-20251001"
+
+
+def tutor_do_ambiente(
+    provider: str, modelo: str | None, env: Mapping[str, str]
+) -> tuple[LLMTutor, str]:
+    """Monta um tutor a partir de variáveis de ambiente, sem passar pelo `Settings` (que exige
+    a configuração inteira do bot). Usado pelos evals e pelo simulador; devolve também o ID do
+    modelo escolhido. Levanta `LLMError` se faltar configuração."""
+    if provider == "anthropic":
+        chave = env.get("ANTHROPIC_API_KEY")
+        if not chave:
+            raise LLMError("defina ANTHROPIC_API_KEY no ambiente")
+        escolhido = modelo or env.get("ANTHROPIC_MODEL") or MODELO_ANTHROPIC_PADRAO
+        api: LLMProvider = criar_provider_anthropic(api_key=chave)
+    else:
+        projeto = env.get("GCP_PROJECT_ID")
+        if not projeto:
+            raise LLMError("defina GCP_PROJECT_ID no ambiente")
+        escolhido = modelo or env.get("GEMINI_MODEL_EVAL") or env.get("GEMINI_MODEL") or ""
+        if not escolhido:
+            raise LLMError("informe o modelo com --model ou GEMINI_MODEL no ambiente")
+        api = criar_provider_vertex(
+            projeto=projeto, localizacao=env.get("VERTEX_LOCATION", "global")
+        )
+    return LLMTutor(api, modelo=escolhido, modelo_avaliacao=escolhido), escolhido

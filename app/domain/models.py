@@ -109,10 +109,22 @@ class Exemplos(BaseModel):
         return self
 
 
+MAX_PALAVRAS_DA_EXPRESSAO = 6
+
+
 class Expansoes(BaseModel):
     """Saída de `expansions`: de 3 a 5 expressões relacionadas."""
 
     itens: list[Expansion] = Field(min_length=3, max_length=5)
+
+    @model_validator(mode="after")
+    def _expressoes_curtas_e_sem_marcas(self) -> Expansoes:
+        for item in self.itens:
+            if "[[" in item.expressao or len(item.expressao.split()) > MAX_PALAVRAS_DA_EXPRESSAO:
+                raise ValueError(
+                    f"`expressao` deve ser uma expressão curta, não uma frase: {item.expressao!r}"
+                )
+        return self
 
 
 class SentidoSalvo(BaseModel):

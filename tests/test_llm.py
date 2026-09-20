@@ -211,6 +211,33 @@ def test_expansions_rejeita_repeticao_dentro_da_propria_resposta() -> None:
     assert len(provider.chamadas) == 2
 
 
+def test_expansions_rejeita_frase_inteira_no_lugar_de_expressao() -> None:
+    frase = _expansoes("We need to [[mitigate]] the risks of this project.", "a b", "c d")
+    provider = FakeLLMProvider([frase, _expansoes("cover losses", "offset costs", "safe bet")])
+
+    resultado = _tutor(provider).expansions("hedge", SENTIDO, "B1-B2", [])
+
+    assert [e.expressao for e in resultado] == ["cover losses", "offset costs", "safe bet"]
+    assert len(provider.chamadas) == 2
+
+
+def test_prompt_de_expansoes_nao_pede_marcacao_de_frase() -> None:
+    provider = FakeLLMProvider([_expansoes("a b", "c d", "e f")])
+
+    _tutor(provider).expansions("hedge", SENTIDO, "B1-B2", [])
+
+    assert "[[ e ]]" not in provider.chamadas[0].sistema
+    assert "de 1 a 4 palavras" in provider.chamadas[0].sistema
+
+
+def test_prompt_de_exemplos_pede_marcacao_do_alvo() -> None:
+    provider = FakeLLMProvider([Exemplos(frases=["A [[b]].", "C [[d]].", "E [[f]]."])])
+
+    _tutor(provider).examples("stall", SENTIDO, "B1-B2")
+
+    assert "[[ e ]]" in provider.chamadas[0].sistema
+
+
 # ---- VertexGeminiProvider -----------------------------------------------------
 
 
@@ -246,6 +273,7 @@ def test_gemini_pede_json_com_o_schema_da_tarefa() -> None:
     assert config.temperature == 0.3
     assert config.response_mime_type == "application/json"
     assert config.response_schema is Exemplos
+    assert config.automatic_function_calling.disable is True
 
 
 def test_gemini_com_resposta_vazia_levanta_erro() -> None:

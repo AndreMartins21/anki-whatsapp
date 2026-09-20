@@ -176,9 +176,8 @@ async def test_expansoes_que_o_aluno_ja_tem_nao_duplicam() -> None:
 
 
 async def test_praticar_agora_a_expansao_explica_e_atualiza_a_mesma_entrada() -> None:
-    expl = explicacao_stall().model_copy(
-        update={"palavra": "stall for time", "classe": "expressão", "sentido_do_contexto": "s1"}
-    )
+    # A IA explica a expressão pela forma base ("stall"); o cartão segue sendo "stall for time".
+    expl = explicacao_stall().model_copy(update={"classe": "verbo", "sentido_do_contexto": "s1"})
     tutor = FakeTutor(explicacoes=[explicacao_stall(), expl], expansoes=[expansoes()])
     m = montar(tutor=tutor)
     await m.diz("stall")
@@ -187,12 +186,13 @@ async def test_praticar_agora_a_expansao_explica_e_atualiza_a_mesma_entrada() ->
 
     (resposta,) = await m.diz("1")  # praticar agora
 
-    assert resposta.startswith("*STALL FOR TIME* (expressão)")
+    assert resposta.startswith("*STALL FOR TIME* (colocação)")
     assert len(m.repo.listar_entradas()) == 2  # não criou uma terceira
     entrada = m.repo.obter_entrada("stall-for-time")
     assert entrada is not None
     assert entrada.sentido.definicao == "to stop making progress"
     assert entrada.origem == "expansao"
+    assert entrada.palavra == "stall for time"
     assert m.repo.obter_sessao().entry_id == "stall-for-time"
     assert m.repo.obter_sessao().estado == Estado.AWAIT_CHOICE
 

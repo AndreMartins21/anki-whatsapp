@@ -47,8 +47,8 @@ hooks: ## Roda todos os hooks de pre-commit no repositório inteiro
 run: ## Sobe a API local (recarrega ao salvar)
 	uv run uvicorn app.main:app --reload --port 8000
 
-sim: ## Simulador de terminal (sem WhatsApp)
-	uv run python -m sim
+sim: ## Simulador de terminal, sem WhatsApp. Com a IA de verdade: make sim ARGS=--real-llm
+	set -a; [ -f .env ] && . ./.env; set +a; uv run python -m sim $(ARGS)
 
 clean: ## Remove caches de ferramentas
 	rm -rf .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage

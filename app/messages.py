@@ -108,9 +108,18 @@ def menu_nova_palavra(texto: str) -> str:
     )
 
 
+_ROTULO_DO_TIPO = {
+    "colocacao": "colocação",
+    "familia": "família",
+    "phrasal_verb": "phrasal verb",
+    "sinonimo": "sinônimo",
+    "expressao": "expressão",
+}
+
+
 def menu_expansoes(expansoes: Sequence[Expansion]) -> str:
     linhas = "\n".join(
-        f"{i}. *{e.expressao}* — {e.traducao} _({e.tipo.replace('_', ' ')})_"
+        f"{i}. *{e.expressao}* — {e.traducao} _({_ROTULO_DO_TIPO[e.tipo]})_"
         for i, e in enumerate(expansoes, start=1)
     )
     return f"{linhas}\n_Responde com os números (ex.: 1,3) ou 0 para pular._"
@@ -249,8 +258,9 @@ def status(sessao_waha: str, total: int, pendentes_: int) -> str:
 
 
 def exportacao(link: str, quantidade: int, ignoradas: int = 0) -> str:
+    cartoes = "1 cartão" if quantidade == 1 else f"{quantidade} cartões"
     texto = (
-        f"📦 Pronto! {quantidade} cartões no arquivo do Anki (o link vale por 24 h):\n{link}\n\n"
+        f"📦 Pronto! {cartoes} no arquivo do Anki (o link vale por 24 h):\n{link}\n\n"
         "No Anki: *Arquivo → Importar* e escolha o arquivo baixado."
     )
     if ignoradas:

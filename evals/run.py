@@ -23,21 +23,12 @@ import yaml
 from pydantic import BaseModel, Field
 
 from app.domain.models import NivelUsuario, SentidoSalvo, Veredito
-from app.services.llm import (
-    LLMError,
-    LLMProvider,
-    LLMTutor,
-    Tutor,
-    criar_provider_anthropic,
-    criar_provider_vertex,
-)
+from app.services.llm import LLMError, Tutor, tutor_do_ambiente
 
 CAMINHO_PADRAO = Path(__file__).parent / "sentencas.yaml"
-MODELO_ANTHROPIC_PADRAO = "claude-haiku-4-5-20251001"
 
 
-class ErroDeConfiguracao(Exception):
-    """Falta algo no ambiente para rodar contra a API."""
+ErroDeConfiguracao = LLMError  # falta algo no ambiente para rodar contra a API
 
 
 class Caso(BaseModel):
@@ -96,24 +87,7 @@ def avaliar(tutor: Tutor, casos: Sequence[Caso], nivel: NivelUsuario) -> Relator
     return Relatorio(resultados)
 
 
-def montar_tutor(provider: str, modelo: str | None, env: Mapping[str, str]) -> tuple[Tutor, str]:
-    if provider == "anthropic":
-        chave = env.get("ANTHROPIC_API_KEY")
-        if not chave:
-            raise ErroDeConfiguracao("defina ANTHROPIC_API_KEY no ambiente")
-        escolhido = modelo or env.get("ANTHROPIC_MODEL") or MODELO_ANTHROPIC_PADRAO
-        api: LLMProvider = criar_provider_anthropic(api_key=chave)
-    else:
-        projeto = env.get("GCP_PROJECT_ID")
-        if not projeto:
-            raise ErroDeConfiguracao("defina GCP_PROJECT_ID no ambiente")
-        escolhido = modelo or env.get("GEMINI_MODEL_EVAL") or env.get("GEMINI_MODEL") or ""
-        if not escolhido:
-            raise ErroDeConfiguracao("informe o modelo com --model ou GEMINI_MODEL no ambiente")
-        api = criar_provider_vertex(
-            projeto=projeto, localizacao=env.get("VERTEX_LOCATION", "global")
-        )
-    return LLMTutor(api, modelo=escolhido, modelo_avaliacao=escolhido), escolhido
+montar_tutor = tutor_do_ambiente
 
 
 def imprimir(relatorio: Relatorio, modelo: str) -> None:
@@ -152,7 +126,7 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None
 
     try:
         tutor, modelo = montar_tutor(args.provider, args.model, os.environ if env is None else env)
-    except (ErroDeConfiguracao, LLMError) as erro:
+    except LLMError as erro:
         print(f"erro de configuração: {erro}", file=sys.stderr)
         return 2
 
