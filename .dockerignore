@@ -1,0 +1,33 @@
+# Contexto de build enxuto: só o que o container precisa.
+.git
+.gitignore
+.github/
+.claude/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage*
+htmlcov/
+
+# Segredos e configuração local
+.env
+.env.*
+infra/
+!infra/.env.infra.example
+
+# Não vão para a imagem de produção
+tests/
+evals/
+docs/
+spec/
+referencia/
+sim/
+Makefile
+.pre-commit-config.yaml
+.editorconfig
+README.md
+CLAUDE.md
