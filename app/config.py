@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 NivelUsuario = Literal["A2-B1", "B1-B2", "B2-C1"]
@@ -54,3 +54,17 @@ class Settings(BaseSettings):
 
     # Storage
     export_bucket: str
+
+    @field_validator(
+        "waha_hook_hmac_key",
+        "anthropic_api_key",
+        "gemini_model",
+        "gemini_model_eval",
+        mode="before",
+    )
+    @classmethod
+    def _vazio_e_nao_configurado(cls, valor: object) -> object:
+        """`CHAVE=` no .env chega como texto vazio; para opcionais isso significa "não definido"."""
+        if isinstance(valor, str) and not valor.strip():
+            return None
+        return valor

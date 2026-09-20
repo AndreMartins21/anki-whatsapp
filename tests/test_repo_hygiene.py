@@ -66,3 +66,11 @@ def test_env_example_nao_tem_valores_suspeitos() -> None:
         if re.search(r"(AIza[0-9A-Za-z_-]{20,}|sk-ant-[0-9A-Za-z_-]{20,}|-----BEGIN)", linha)
     ]
     assert suspeitos == [], f"possível segredo real no .env.example: {suspeitos}"
+
+
+def test_env_example_nao_tem_comentario_no_lugar_de_valor_vazio() -> None:
+    """`CHAVE=   # comentário` é lido como valor pelo docker compose (e talvez por outros
+    parsers de .env); comentário só em linha própria ou depois de um valor."""
+    linhas = (RAIZ / ".env.example").read_text(encoding="utf-8").splitlines()
+    ruins = [linha for linha in linhas if re.match(r"^[A-Z_]+=\s+#", linha)]
+    assert ruins == [], f"valor vazio seguido de comentário: {ruins}"

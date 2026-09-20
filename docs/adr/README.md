@@ -16,6 +16,7 @@ operacional: numeração, status e o índice.
 | [0004](0004-maquina-de-estados-pura.md) | Máquina de estados como função pura que devolve uma ação | Aceito | 2026-09-20 |
 | [0005](0005-llm-atras-de-provider-com-validacao-propria.md) | IA atrás de um provedor que devolve JSON, com validação e nova tentativa próprias | Aceito | 2026-09-20 |
 | [0006](0006-conversa-em-segundo-plano-e-serializada.md) | Conversa em segundo plano, serializada, com código bloqueante em threads | Aceito | 2026-09-20 |
+| [0007](0007-infra-menor-privilegio-e-acesso-por-iap.md) | Infra no menor privilégio, segredos gerados no Secret Manager e SSH só por IAP com OS Login | Aceito | 2026-09-20 |
 
 ## Quando escrever um
 

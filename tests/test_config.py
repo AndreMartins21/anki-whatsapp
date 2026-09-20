@@ -99,3 +99,16 @@ def test_segredos_nao_aparecem_em_texto_puro_na_representacao(
     representacao = repr(settings)
     assert "fake-local-key" not in representacao
     assert "sk-ant-super-secreta" not in representacao
+
+
+@pytest.mark.parametrize("campo", ["WAHA_HOOK_HMAC_KEY", "ANTHROPIC_API_KEY", "GEMINI_MODEL"])
+def test_opcional_vazio_no_env_conta_como_nao_definido(
+    monkeypatch: pytest.MonkeyPatch, campo: str
+) -> None:
+    _com_env(monkeypatch, **{campo: "  "})
+
+    settings = Settings(_env_file=None)
+
+    assert settings.waha_hook_hmac_key is None
+    assert settings.anthropic_api_key is None
+    assert settings.gemini_model is None

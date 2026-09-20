@@ -40,6 +40,7 @@ from app.config import Settings
 from app.domain.models import agora_utc
 from app.flows.conversa import Conversa
 from app.flows.router import Router
+from app.logging_config import configurar_logs, id_curto
 from app.repo.base import Repository
 from app.repo.firestore import FirestoreRepository
 from app.repo.memory import MemoryRepository
@@ -75,6 +76,7 @@ def _criar_armazenamento(settings: Settings) -> Armazenamento:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    configurar_logs(settings.log_level)
     canal = WahaChannel(
         base_url=settings.waha_url,
         api_key=settings.waha_api_key,
@@ -176,7 +178,7 @@ async def _tratar_mensagem(
     tarefas: BackgroundTasks,
 ) -> None:
     if payload.from_me:
-        logger.debug("mensagem própria ignorada: %s", payload.id)
+        logger.debug("mensagem própria ignorada: %s", id_curto(payload.id))
         return
 
     if deve_ignorar_chat(payload.from_):
@@ -191,7 +193,7 @@ async def _tratar_mensagem(
         return
 
     if not await run_in_threadpool(repo.marcar_processada, payload.id, agora_utc()):
-        logger.info("mensagem duplicada ignorada: %s", payload.id)
+        logger.info("mensagem duplicada ignorada: %s", id_curto(payload.id))
         return
 
     chat_destino = f"{settings.allowed_number}@c.us"

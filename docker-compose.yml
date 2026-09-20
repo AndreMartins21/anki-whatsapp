@@ -1,0 +1,67 @@
+# Vocabot na VM e2-micro (seção 10.7 da spec): 1 GB de RAM, por isso os limites de memória.
+#
+# Uso na VM (o infra/deploy.sh faz isto):
+#   cd /opt/vocabot/app && docker compose --env-file /opt/vocabot/.env up -d --build
+# Validação sem segredos (é o que a CI roda):
+#   docker compose --env-file .env.example config --quiet
+name: vocabot
+
+services:
+  waha:
+    # Tag fixada (nunca `latest`): engine GOWS, sem Chromium. Tags em hub.docker.com/r/devlikeapro/waha.
+    image: devlikeapro/waha:gows-2026.8.2
+    restart: unless-stopped
+    mem_limit: 400m
+    # Só no loopback da VM: o painel e o QR code são acessados por túnel IAP (infra/pair.sh).
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - waha_sessions:/app/.sessions
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: GOWS
+      # Sobe a sessão no boot e religa as que estavam paradas após um restart.
+      WHATSAPP_START_SESSION: ${WAHA_SESSION:-default}
+      WHATSAPP_RESTART_ALL_SESSIONS: "True"
+      WAHA_API_KEY: ${WAHA_API_KEY:?defina WAHA_API_KEY}
+      # Painel e Swagger só existem atrás do túnel; a mesma senha serve aos dois.
+      WAHA_DASHBOARD_USERNAME: admin
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:?defina WAHA_DASHBOARD_PASSWORD}
+      WHATSAPP_SWAGGER_USERNAME: admin
+      WHATSAPP_SWAGGER_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:?defina WAHA_DASHBOARD_PASSWORD}
+      # Webhook pela rede interna do compose, só com os dois eventos que o bot usa.
+      WHATSAPP_HOOK_URL: http://bot:8000/waha/webhook
+      WHATSAPP_HOOK_EVENTS: message,session.status
+      WHATSAPP_HOOK_HMAC_KEY: ${WAHA_HOOK_HMAC_KEY:-}
+      WAHA_LOG_FORMAT: JSON
+    depends_on:
+      bot:
+        condition: service_healthy
+
+  bot:
+    build: .
+    restart: unless-stopped
+    mem_limit: 300m
+    # O .env é renderizado na VM a partir do Secret Manager (infra/deploy.sh), com permissão 600.
+    # `required: false` deixa o `docker compose config` validar sem ele; sem o .env o bot
+    # recusa subir com uma mensagem clara de configuração faltando.
+    env_file:
+      - path: ${VOCABOT_ENV_FILE:-/opt/vocabot/.env}
+        required: false
+    environment:
+      APP_ENV: prod
+      WAHA_URL: http://waha:3000
+      WAHA_SESSION: ${WAHA_SESSION:-default}
+    # Sem porta publicada: só o WAHA fala com o bot, pela rede interna.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  waha_sessions:

@@ -64,6 +64,7 @@ A VM tem só 1 GB de RAM. Crie um **swap de 2 GB**, limite a memória dos contai
 | `ANTHROPIC_API_KEY` | Secret Manager (opcional) | Só se `LLM_PROVIDER=anthropic` |
 | `WAHA_API_KEY` | Secret Manager (gerado) | Chave que o bot usa para chamar o WAHA; o WAHA exige essa chave |
 | `WAHA_DASHBOARD_PASSWORD` | Secret Manager (gerado) | Senha do painel/Swagger do WAHA (usuário `admin`) |
+| `WAHA_HOOK_HMAC_KEY` | Secret Manager (gerado) | Chave da assinatura HMAC dos webhooks (seção 8.1); opcional para o bot |
 | `ALLOWED_NUMBER` | `.env.infra` | Número **pessoal** do usuário, só dígitos (ex.: `5531999998888`) |
 | `BOT_NUMBER` | `.env.infra` | Número Vivo do bot, só dígitos (informativo/logs) |
 | `WAHA_URL` | compose | `http://waha:3000` |
@@ -324,7 +325,7 @@ PRACTICE_MODE=guiado
 ### 10.2 `infra/setup.sh` (idempotente)
 1. Ativar as APIs `compute`, `firestore`, `secretmanager`, `storage`, `iap`, `iamcredentials`, `logging` e **`aiplatform`** (Vertex AI).
 2. Criar o Firestore nativo em `us-central1` e a política de TTL em `processed.expira_em`.
-3. Criar a conta de serviço `vocabot-vm` com os papéis `roles/datastore.user`, `roles/secretmanager.secretAccessor`, `roles/logging.logWriter` e **`roles/aiplatform.user`**. Adicionar `roles/iam.serviceAccountTokenCreator` **na própria SA** e `roles/storage.objectAdmin` **só no bucket**.
+3. Criar a conta de serviço `vocabot-vm` com os papéis `roles/datastore.user`, `roles/secretmanager.secretAccessor`, `roles/logging.logWriter` e **`roles/aiplatform.user`**. Adicionar `roles/iam.serviceAccountTokenCreator` **na própria SA** (ADR-0007: o `secretAccessor` é concedido em cada segredo, não no projeto) e `roles/storage.objectAdmin` **só no bucket**.
 4. Criar o bucket (`us-central1`, *uniform access*, prevenção de acesso público) com ciclo de vida de 7 dias.
 5. Criar os segredos. `WAHA_API_KEY` e `WAHA_DASHBOARD_PASSWORD` são gerados com `openssl rand -hex 24` e enviados por pipe, sem ecoar na tela. `ANTHROPIC_API_KEY` só é criado (sem versão) se `LLM_PROVIDER=anthropic`.
 6. Criar a regra de firewall `allow-iap-ssh` (tcp:22 a partir de `35.235.240.0/20`, só para a tag `vocabot`). **Não** abrir as portas 3000 ou 8000.
@@ -362,7 +363,7 @@ Mostre também como ver a senha do painel **localmente e só quando eu pedir** (
 
 ### 10.7 `docker-compose.yml`
 - `waha`:
-  - imagem Core com **tag fixada**, engine `GOWS`;
+  - imagem com **tag fixada**, engine `GOWS` (hoje `devlikeapro/waha:gows-2026.8.2`; desde a 2026.6.1 o WAHA não separa mais Core/Plus);
   - volume `waha_sessions` na pasta de sessões;
   - API key e credenciais do painel vindas do `.env`;
   - webhook para `http://bot:8000/waha/webhook` com os eventos `message` e `session.status`;
