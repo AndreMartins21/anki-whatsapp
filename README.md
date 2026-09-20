@@ -64,5 +64,6 @@ spec/       especificação      .claude/skills/  skills do projeto (sdd, gcp-be
 
 - Commits atômicos, mensagem no imperativo, um commit por marco.
 - Lógica de negócio nova entra por TDD (teste primeiro).
-- Decisão com consequência duradoura vira ADR em `docs/adr/`.
+- Decisão com consequência duradoura vira ADR em `docs/adr/` — ver o
+  [índice](docs/adr/README.md).
 - Mudou um contrato? A spec é atualizada no mesmo commit.

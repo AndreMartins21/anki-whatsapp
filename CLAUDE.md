@@ -21,6 +21,8 @@ Trabalhe **marco a marco** (seção 9 da spec): pare ao fim de cada um, relate e
 5. Confirme na documentação oficial atual (WAHA, Vertex AI, SDK `google-genai`) nomes de endpoints,
    variáveis e IDs de modelo antes de usá-los. Fixe versões de imagem Docker (nunca `latest`).
 6. Um commit ao fim de cada marco.
+7. Decisão de arquitetura, escolha entre alternativas reais ou mudança de uma decisão já
+   registrada: escreva um ADR em `docs/adr/` (ver a skill `adr`) no mesmo commit que a implementa.
 
 ## Skills
 
@@ -29,12 +31,13 @@ Estas skills carregam sozinhas quando o contexto pede; invoque explicitamente se
 | Skill | Quando |
 |---|---|
 | `sdd` | implementar qualquer parte do projeto, começar/fechar marco, divergência com a spec |
+| `adr` | decidir entre alternativas técnicas, mudar/substituir uma decisão, registrar o porquê |
 | `tdd` | nova lógica de negócio, correção de bug (teste que reproduz primeiro) |
 | `python-best-practices` | escrever/revisar código Python |
 | `gcp-best-practices` | scripts em `infra/`, comandos `gcloud`, IAM, custos, deploy |
 | `git-workflow` | commits, branches, PRs, limpeza de histórico |
 
-`sdd` e `gcp-best-practices` são do projeto (`.claude/skills/`); as demais são globais do usuário.
+`sdd`, `adr` e `gcp-best-practices` são do projeto (`.claude/skills/`); as demais são globais do usuário.
 
 ## Comandos
 
@@ -70,6 +73,7 @@ O layout esperado completo está na seção 11 da spec.
   Storage, LLM) tem um fake em memória por trás de uma interface (`Channel`, `Repository`,
   `LLMProvider`). A lógica de negócio não importa nada do WAHA diretamente.
 - Formatos fixos (cabeçalho do export do Anki) são testados **byte a byte** contra fixtures.
-- Decisões com consequência duradoura viram ADR em `docs/adr/` — ver `docs/adr/README.md`.
+- Decisões com consequência duradoura viram ADR em `docs/adr/` — numeração `NNNN-titulo-curto.md`,
+  índice e regras em `docs/adr/README.md`. `make test` reprova ADR malformado ou fora do índice.
 - Mudou um contrato? Atualize a spec **no mesmo commit** que muda o código.
 - Logs estruturados, sem segredo, sem número de telefone completo, sem corpo de resposta inteiro.

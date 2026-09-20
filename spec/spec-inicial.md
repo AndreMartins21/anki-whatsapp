@@ -385,5 +385,6 @@ vocabot/
   infra/      config.sh  setup.sh  secrets.sh  deploy.sh  pair.sh  logs.sh  ssh.sh  smoke_test.sh
               .env.infra.example  vm/startup.sh
   tests/      fixtures/*.json  test_*.py
+  docs/adr/   README.md  0000-template.md  NNNN-*.md
 ```
 Se existir `referencia/`, ela contém um MVP anterior, feito para a Cloud API oficial (webhook da Meta, export etc.). Use-a só como consulta: o canal agora é o WAHA.
