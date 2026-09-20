@@ -248,8 +248,14 @@ def status(sessao_waha: str, total: int, pendentes_: int) -> str:
     )
 
 
-def exportacao(link: str, quantidade: int) -> str:
-    return (
+def exportacao(link: str, quantidade: int, ignoradas: int = 0) -> str:
+    texto = (
         f"📦 Pronto! {quantidade} cartões no arquivo do Anki (o link vale por 24 h):\n{link}\n\n"
         "No Anki: *Arquivo → Importar* e escolha o arquivo baixado."
     )
+    if ignoradas:
+        texto += (
+            f"\n\n({ignoradas} palavra(s) ficaram de fora por não terem nenhuma frase — "
+            "pratique ou peça exemplos e exporte de novo.)"
+        )
+    return texto

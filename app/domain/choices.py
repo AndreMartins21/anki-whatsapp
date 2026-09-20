@@ -147,3 +147,28 @@ def contem_palavra_alvo(texto: str, palavra: str) -> bool:
             return False
         posicao = achado + 1
     return bool(normalizar(palavra))
+
+
+_PALAVRA = re.compile(r"[^\W_]+(?:'[^\W_]+)*")
+
+
+def marcar_alvo(frase: str, palavra: str) -> str | None:
+    """Coloca [[ ]] na palavra-alvo (com flexões regulares) de uma frase que veio sem marcação.
+    Para expressões, marca do primeiro ao último termo achado. `None` se não a encontra."""
+    tokens = list(_PALAVRA.finditer(frase))
+    posicao = 0
+    achados: list[re.Match[str]] = []
+    for parte in normalizar(palavra).split():
+        formas = _flexoes(parte)
+        indice = next(
+            (i for i in range(posicao, len(tokens)) if normalizar(tokens[i].group()) in formas),
+            None,
+        )
+        if indice is None:
+            return None
+        achados.append(tokens[indice])
+        posicao = indice + 1
+    if not achados:
+        return None
+    inicio, fim = achados[0].start(), achados[-1].end()
+    return f"{frase[:inicio]}[[{frase[inicio:fim]}]]{frase[fim:]}"

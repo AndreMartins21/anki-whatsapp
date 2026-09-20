@@ -73,6 +73,9 @@ ignore = [
 "tests/**" = ["S101", "ARG001", "ARG002"]  # assert e fixtures não usadas são normais em teste
 "sim/**" = ["T20"]                          # o simulador de terminal imprime de propósito
 "evals/**" = ["T20", "S101"]
+# O travessão de "Inglês – Vocabulário" (U+2013) é exigido pelo formato fixo do Anki (spec 7.3).
+"app/services/anki.py" = ["RUF001", "RUF002"]
+"tests/test_anki.py" = ["RUF001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "sim", "evals"]

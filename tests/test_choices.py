@@ -13,6 +13,7 @@ from app.domain.choices import (
     MENU_PROXIMO,
     contem_palavra_alvo,
     eh_pular,
+    marcar_alvo,
     parse_escolha,
     parse_lista_numeros,
     parse_numero,
@@ -134,3 +135,24 @@ def test_contem_palavra_alvo_reconhece_flexoes_regulares(texto: str, palavra: st
 )
 def test_contem_palavra_alvo_rejeita_o_que_nao_e_a_palavra(texto: str, palavra: str) -> None:
     assert contem_palavra_alvo(texto, palavra) is False
+
+
+@pytest.mark.parametrize(
+    ("frase", "palavra", "esperado"),
+    [
+        (
+            "The negotiations stalled after the meeting.",
+            "stall",
+            "The negotiations [[stalled]] after the meeting.",
+        ),
+        ("Stalling again.", "stall", "[[Stalling]] again."),
+        ("We had to give up early.", "give up", "We had to [[give up]] early."),
+        ("Don't give it up now.", "give up", "Don't [[give it up]] now."),
+        ("She is studying hard.", "study", "She is [[studying]] hard."),
+        ("I like coffee.", "stall", None),
+        ("The installation failed.", "stall", None),
+        ("", "stall", None),
+    ],
+)
+def test_marcar_alvo(frase: str, palavra: str, esperado: str | None) -> None:
+    assert marcar_alvo(frase, palavra) == esperado

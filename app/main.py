@@ -15,6 +15,7 @@ import os
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
@@ -42,7 +43,9 @@ from app.flows.router import Router
 from app.repo.base import Repository
 from app.repo.firestore import FirestoreRepository
 from app.repo.memory import MemoryRepository
+from app.services.anki import ExportadorAnki
 from app.services.llm import criar_tutor
+from app.services.storage import Armazenamento, ArmazenamentoLocal, criar_armazenamento_gcs
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +61,15 @@ def _criar_repositorio(settings: Settings) -> Repository:
     if settings.app_env == "prod" or os.environ.get("FIRESTORE_EMULATOR_HOST"):
         return FirestoreRepository(firestore.Client(project=settings.gcp_project_id))
     return MemoryRepository()
+
+
+def _criar_armazenamento(settings: Settings) -> Armazenamento:
+    """Cloud Storage em produção; em dev local, uma pasta `exports/` (que o git ignora)."""
+    if settings.app_env == "prod":
+        return criar_armazenamento_gcs(
+            projeto=settings.gcp_project_id, bucket=settings.export_bucket
+        )
+    return ArmazenamentoLocal(Path("exports"))
 
 
 @asynccontextmanager
@@ -78,6 +90,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         nivel_padrao=settings.user_level,
         modo=settings.practice_mode,
         status_da_sessao=canal.session_status,
+        exportador=ExportadorAnki(repo, _criar_armazenamento(settings)),
     )
     try:
         yield

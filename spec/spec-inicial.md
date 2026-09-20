@@ -124,6 +124,7 @@ Regras:
 `/ajuda`, `/lista`, `/pendentes`, `/praticar [palavra]`, `/exportar`, `/exportar tudo`, `/apagar palavra`, `/nivel B1-B2`, `/cancelar`, `/status`.
 
 - `/pendentes` lista as entradas com status `nova`.
+- `/exportar` exporta as entradas ainda não exportadas; `/exportar tudo`, todas. Entrada sem nenhuma frase utilizável fica de fora (o bot avisa quantas). O nome do arquivo usa a hora em UTC.
 - `/praticar` sem argumento pega a pendente mais antiga.
 - `/nivel` aceita A2-B1, B1-B2 e B2-C1.
 - `/status` mostra o status da sessão do WAHA, o total de palavras e as pendentes.

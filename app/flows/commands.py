@@ -12,6 +12,7 @@ from app.domain.models import Entry, NivelUsuario, Profile, Sessao, slugify
 from app.flows import capture
 from app.flows.base import Deps, bloq
 from app.repo.base import Repository
+from app.services.anki import ResultadoExportacao
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +20,10 @@ _NIVEIS: tuple[str, ...] = get_args(NivelUsuario)
 
 
 class Exportador(Protocol):
-    """Gera o arquivo do Anki e devolve (link, quantidade de cartões); `None` se não há nada
-    a exportar. Síncrono, como o resto do acesso a Firestore/Storage."""
+    """Gera o arquivo do Anki e devolve o resultado; `None` se não há nada a exportar.
+    Síncrono, como o resto do acesso a Firestore/Storage."""
 
-    def exportar(self, *, tudo: bool) -> tuple[str, int] | None: ...
+    def exportar(self, *, tudo: bool) -> ResultadoExportacao | None: ...
 
 
 StatusDaSessao = Callable[[], Awaitable[str]]
@@ -102,8 +103,9 @@ async def _exportar(d: Deps, argumento: str, exportador: Exportador | None) -> N
     if resultado is None:
         await d.conversa.enviar(messages.SEM_EXPORTAVEIS)
         return
-    link, quantidade = resultado
-    await d.conversa.enviar(messages.exportacao(link, quantidade))
+    await d.conversa.enviar(
+        messages.exportacao(resultado.link, resultado.quantidade, resultado.ignoradas)
+    )
 
 
 async def _apagar(d: Deps, sessao: Sessao, palavra: str) -> Sessao:

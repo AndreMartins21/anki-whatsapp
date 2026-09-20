@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.domain.models import Estado
+from app.services.anki import ResultadoExportacao
 from app.services.fake_llm import FakeTutor
 from tests.helpers import Montagem, avaliacao, expansoes, explicacao_stall, montar
 
@@ -239,16 +240,16 @@ async def test_status_funciona_mesmo_com_o_waha_fora() -> None:
 
 @dataclass
 class ExportadorFalso:
-    resultado: tuple[str, int] | None
+    resultado: ResultadoExportacao | None
     chamadas: list[bool] = field(default_factory=list)
 
-    def exportar(self, *, tudo: bool) -> tuple[str, int] | None:
+    def exportar(self, *, tudo: bool) -> ResultadoExportacao | None:
         self.chamadas.append(tudo)
         return self.resultado
 
 
 async def test_exportar_devolve_o_link() -> None:
-    exportador = ExportadorFalso(("https://exemplo.test/anki.txt", 4))
+    exportador = ExportadorFalso(ResultadoExportacao("https://exemplo.test/anki.txt", 4, 0))
     m = montar(exportador=exportador)
 
     (resposta,) = await m.diz("/exportar")
@@ -259,12 +260,13 @@ async def test_exportar_devolve_o_link() -> None:
 
 
 async def test_exportar_tudo_pede_tudo() -> None:
-    exportador = ExportadorFalso(("https://exemplo.test/anki.txt", 9))
+    exportador = ExportadorFalso(ResultadoExportacao("https://exemplo.test/anki.txt", 9, 2))
     m = montar(exportador=exportador)
 
-    await m.diz("/exportar tudo")
+    (resposta,) = await m.diz("/exportar tudo")
 
     assert exportador.chamadas == [True]
+    assert "2 palavra(s) ficaram de fora" in resposta
 
 
 async def test_exportar_sem_nada_novo() -> None:

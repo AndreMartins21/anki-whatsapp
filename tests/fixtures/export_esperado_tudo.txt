@@ -1,0 +1,10 @@
+#separator:tab
+#html:true
+#notetype:Inglês – Vocabulário
+#deck:Inglês::Vocabulário
+#columns:Palavra	Frase	FraseLacuna	Traducao	Definicao	Nota	Producao	Tags
+#tags column:8
+stall	The negotiations <b>stalled</b> after the first meeting.	The negotiations <span class="lacuna">_____</span> after the first meeting.	(verbo) travar, emperrar	to stop making progress	"the car stalled" = o carro morreu	y	whatsapp trabalho
+done	It is <b>done</b>.	It is <span class="lacuna">_____</span>.	(adjetivo) pronto	finished		y	whatsapp
+give up	He <b>gave up</b> smoking last year.	He <span class="lacuna">_____</span> smoking last year.	(phrasal verb) desistir	to stop trying		y	whatsapp phrasal_verb
+hedge	We should <b>hedge</b> our &lt;bets&gt;.	We should <span class="lacuna">_____</span> our &lt;bets&gt;.	(verbo) se proteger	to protect yourself &amp; reduce risk	Line1<br>Line2 x	y	whatsapp
