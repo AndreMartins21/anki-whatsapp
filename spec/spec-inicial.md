@@ -194,7 +194,7 @@ class Explanation(BaseModel):
     classe: str                     # PT-BR
     cefr_estimado: Literal["A2","B1","B2","C1","C2"]
     sentidos: list[Sense]           # 1 a 4, só os comuns
-    sentido_do_contexto: str | None
+    sentido_do_contexto: str | None # id do sentido quando o contexto (ou haver um único sentido comum) o define
     frase_contexto: str | None      # frase do usuário corrigida, alvo entre [[ ]]
     nota: str
     tags: list[Literal["trabalho","phrasal_verb","expressao"]]
@@ -222,9 +222,9 @@ class Expansion(BaseModel):
 ### 7.1 Firestore
 ```
 profile/me                 { nivel, modo, criado_em }
-session/current            { estado, entry_id, sentido_id, pendente_nova_palavra?, sentidos_pendentes, expansoes_sugeridas,
+session/current            { estado, entry_id, sentido_id, pendente_nova_palavra?, explicacao_pendente, expansoes_sugeridas,
                              expansoes_criadas, atualizado_em }
-                           # as 3 listas guardam os menus numerados em andamento (M2: "1,3" precisa apontar para algo)
+                           # os 3 campos guardam os menus numerados em andamento ("1,3" precisa apontar para algo)
 entries/{slug}             { palavra, classe, cefr_estimado, sentido:{traducao,definicao}, outros_sentidos,
                              nota, tags, origem_texto, origem:"usuario"|"expansao", pai?, status:"nova"|"praticada",
                              exportado, criado_em, atualizado_em }
@@ -268,7 +268,7 @@ O tipo de nota "Inglês – Vocabulário" já existe no Anki do usuário, com os
   2. Ignore grupos (`@g.us`), status/broadcast e canais.
   3. Aplique a allowlist (8.2).
   4. Deduplique pelo `id` da mensagem.
-  5. Faça `sendSeen` e despache ao roteador, com a lógica síncrona em threadpool.
+  5. Faça `sendSeen` e despache ao roteador, com a lógica síncrona em threadpool. A conversa (IA, atrasos "humanos") roda em segundo plano, depois do 200 (M4, ADR-0006).
   6. **Sempre** devolva 200. Registre as exceções e mande ao usuário uma mensagem curta de erro.
 - Mídia (`hasMedia`, áudio, figurinha etc.): responda que o MVP só entende texto.
 - `session.status`: registre no log. Se o status sair de `WORKING`, registre em nível WARNING.

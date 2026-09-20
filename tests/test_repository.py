@@ -17,6 +17,7 @@ from app.domain.models import (
     Entry,
     Estado,
     Expansion,
+    Explanation,
     Profile,
     Sense,
     Sentence,
@@ -89,7 +90,12 @@ def test_sessao_persiste_estado_e_listas_numeradas(repo: Repository) -> None:
         entry_id="stall",
         sentido_id="s1",
         pendente_nova_palavra="hedge",
-        sentidos_pendentes=[Sense(id="s1", traducao="travar", definicao="d", exemplo_curto="e")],
+        explicacao_pendente=Explanation(
+            ok=True,
+            palavra="stall",
+            classe="verbo",
+            sentidos=[Sense(id="s1", traducao="travar", definicao="d", exemplo_curto="e")],
+        ),
         expansoes_sugeridas=[
             Expansion(expressao="stall for time", traducao="enrolar", tipo="colocacao")
         ],

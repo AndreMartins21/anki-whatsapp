@@ -15,11 +15,19 @@ from fastapi.testclient import TestClient
 
 from app.channel.fake import FakeChannel
 from app.config import Settings
-from app.main import app, get_channel, get_repository, get_settings
+from app.flows.conversa import Conversa
+from app.flows.router import Router
+from app.main import app, get_channel, get_repository, get_router, get_settings
 from app.repo.memory import MemoryRepository
+from app.services.fake_llm import FakeTutor
+from tests.helpers import explicacao_stall
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CHAT_ALLOWED = "5531999998888@c.us"
+
+
+async def _sem_espera(_: float) -> None:
+    return None
 
 
 def _fixture(nome: str) -> dict[str, Any]:
@@ -46,7 +54,15 @@ def cliente(fake_channel: FakeChannel) -> Iterator[TestClient]:
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_channel] = lambda: fake_channel
     repo = MemoryRepository()
+    router = Router(
+        repo=repo,
+        tutor=FakeTutor(explicacoes=[explicacao_stall(), explicacao_stall()]),
+        conversa=Conversa(fake_channel, CHAT_ALLOWED, dormir=_sem_espera, atraso=lambda: 0.0),
+        nivel_padrao="B1-B2",
+        modo="guiado",
+    )
     app.dependency_overrides[get_repository] = lambda: repo
+    app.dependency_overrides[get_router] = lambda: router
     try:
         yield TestClient(app)
     finally:
@@ -60,6 +76,10 @@ def test_mensagem_de_texto_marca_como_lida_e_e_recebida(
 
     assert resposta.status_code == 200
     assert fake_channel.vistos == [CHAT_ALLOWED]
+    assert len(fake_channel.textos_enviados) == 1
+    chat_id, texto = fake_channel.textos_enviados[0]
+    assert chat_id == CHAT_ALLOWED
+    assert "STALL" in texto
 
 
 def test_from_me_e_ignorada(cliente: TestClient, fake_channel: FakeChannel) -> None:

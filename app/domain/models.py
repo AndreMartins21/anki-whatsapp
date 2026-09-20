@@ -165,10 +165,10 @@ class Profile(BaseModel):
 class Sessao(BaseModel):
     """Documento `session/current`.
 
-    Além dos campos da spec, guarda as listas numeradas que o usuário está escolhendo
-    (`sentidos_pendentes`, `expansoes_sugeridas`) e as entradas criadas a partir delas
-    (`expansoes_criadas`): sem isso, "1,3" numa mensagem não teria como apontar para nada
-    na mensagem seguinte.
+    Além dos campos da spec, guarda o que o usuário está escolhendo em menus numerados: a
+    explicação inteira enquanto ele escolhe o sentido (`explicacao_pendente`), as expansões
+    sugeridas (`expansoes_sugeridas`) e as entradas criadas a partir delas (`expansoes_criadas`).
+    Sem isso, "1,3" numa mensagem não teria como apontar para nada na mensagem seguinte.
     """
 
     model_config = ConfigDict(use_enum_values=True)
@@ -177,7 +177,7 @@ class Sessao(BaseModel):
     entry_id: str | None = None
     sentido_id: str | None = None
     pendente_nova_palavra: str | None = None
-    sentidos_pendentes: list[Sense] = Field(default_factory=list)
+    explicacao_pendente: Explanation | None = None
     expansoes_sugeridas: list[Expansion] = Field(default_factory=list)
     expansoes_criadas: list[str] = Field(default_factory=list)
     atualizado_em: datetime = Field(default_factory=agora_utc)

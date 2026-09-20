@@ -1,7 +1,7 @@
 """Ponto de entrada FastAPI: `/health` e o webhook do WAHA (seção 8.1 da spec).
 
-A máquina de estados (M2) e os fluxos completos (M4) ainda não existem — uma mensagem de
-texto válida só é registrada em log por enquanto (`_despachar_ao_roteador`).
+O webhook só filtra e responde 200 na hora; a conversa (IA, atrasos "humanos") roda em
+segundo plano no `Router`, para o WAHA não esperar nem reenviar o evento.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from google.cloud import firestore
 from pydantic import SecretStr
 from starlette.concurrency import run_in_threadpool
@@ -37,9 +37,12 @@ from app.channel.parser import (
 from app.channel.waha import WahaChannel
 from app.config import Settings
 from app.domain.models import agora_utc
+from app.flows.conversa import Conversa
+from app.flows.router import Router
 from app.repo.base import Repository
 from app.repo.firestore import FirestoreRepository
 from app.repo.memory import MemoryRepository
+from app.services.llm import criar_tutor
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +68,17 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         api_key=settings.waha_api_key,
         session=settings.waha_session,
     )
+    repo = _criar_repositorio(settings)
     app.state.channel = canal
-    app.state.repo = _criar_repositorio(settings)
+    app.state.repo = repo
+    app.state.router = Router(
+        repo=repo,
+        tutor=criar_tutor(settings),
+        conversa=Conversa(canal, f"{settings.allowed_number}@c.us"),
+        nivel_padrao=settings.user_level,
+        modo=settings.practice_mode,
+        status_da_sessao=canal.session_status,
+    )
     try:
         yield
     finally:
@@ -86,6 +98,11 @@ def get_repository(request: Request) -> Repository:
     return repo
 
 
+def get_router(request: Request) -> Router:
+    router: Router = request.app.state.router
+    return router
+
+
 @app.get("/health")
 def health() -> dict[str, bool]:
     return {"ok": True}
@@ -97,6 +114,8 @@ async def waha_webhook(
     settings: Annotated[Settings, Depends(get_settings)],
     channel: Annotated[ChannelComLid, Depends(get_channel)],
     repo: Annotated[Repository, Depends(get_repository)],
+    router: Annotated[Router, Depends(get_router)],
+    tarefas: BackgroundTasks,
 ) -> dict[str, bool]:
     corpo_bruto = await request.body()
 
@@ -114,7 +133,7 @@ async def waha_webhook(
 
     if isinstance(evento, MessageEvent):
         try:
-            await _tratar_mensagem(evento.payload, settings, channel, repo)
+            await _tratar_mensagem(evento.payload, settings, channel, repo, router, tarefas)
         except Exception:
             logger.exception("falha ao processar mensagem")
             chat_destino = f"{settings.allowed_number}@c.us"
@@ -140,6 +159,8 @@ async def _tratar_mensagem(
     settings: Settings,
     channel: ChannelComLid,
     repo: Repository,
+    router: Router,
+    tarefas: BackgroundTasks,
 ) -> None:
     if payload.from_me:
         logger.debug("mensagem própria ignorada: %s", payload.id)
@@ -163,11 +184,22 @@ async def _tratar_mensagem(
     chat_destino = f"{settings.allowed_number}@c.us"
     await channel.send_seen(chat_destino)
 
-    if payload.has_media:
-        await channel.send_text(chat_destino, messages.MIDIA_NAO_SUPORTADA)
-        return
+    tarefas.add_task(_responder, router, payload, channel, chat_destino)
 
-    await run_in_threadpool(_despachar_ao_roteador, payload)
+
+async def _responder(
+    router: Router, payload: MessagePayload, channel: ChannelComLid, chat_destino: str
+) -> None:
+    """Roda depois do 200. É a fronteira do sistema: nada que aconteça aqui pode escapar."""
+    try:
+        if payload.has_media:
+            await router.midia_nao_suportada()
+        else:
+            await router.processar(payload.body)
+    except Exception:
+        logger.exception("falha ao processar mensagem")
+        with contextlib.suppress(Exception):
+            await channel.send_text(chat_destino, messages.ERRO_INESPERADO)
 
 
 async def _numero_do_remetente(
@@ -182,11 +214,6 @@ async def _numero_do_remetente(
     if numero is not None:
         await run_in_threadpool(repo.salvar_numero_do_lid, chat_id, numero)
     return numero
-
-
-def _despachar_ao_roteador(payload: MessagePayload) -> None:
-    """Placeholder síncrono: a máquina de estados (M2) e os fluxos (M4) plugam aqui."""
-    logger.info("mensagem de texto recebida, aguardando roteador: %r", payload.body)
 
 
 def _tratar_status_sessao(evento: SessionStatusEvent) -> None:

@@ -17,11 +17,29 @@ from fastapi.testclient import TestClient
 
 from app.channel.fake import FakeChannel
 from app.config import Settings
-from app.main import app, get_channel, get_repository, get_settings
+from app.flows.conversa import Conversa
+from app.flows.router import Router
+from app.main import app, get_channel, get_repository, get_router, get_settings
 from app.repo.memory import MemoryRepository
+from app.services.fake_llm import FakeTutor
+from tests.helpers import explicacao_stall
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CHAVE_HMAC = "chave-secreta-de-teste"
+
+
+async def _sem_espera(_: float) -> None:
+    return None
+
+
+def _router(canal: FakeChannel) -> Router:
+    return Router(
+        repo=MemoryRepository(),
+        tutor=FakeTutor(explicacoes=[explicacao_stall()]),
+        conversa=Conversa(canal, "5531999998888@c.us", dormir=_sem_espera, atraso=lambda: 0.0),
+        nivel_padrao="B1-B2",
+        modo="guiado",
+    )
 
 
 def _fixture_bruta(nome: str) -> bytes:
@@ -51,6 +69,7 @@ def cliente(fake_channel: FakeChannel) -> Iterator[TestClient]:
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_channel] = lambda: fake_channel
     app.dependency_overrides[get_repository] = lambda: MemoryRepository()
+    app.dependency_overrides[get_router] = lambda: _router(fake_channel)
     try:
         yield TestClient(app)
     finally:
@@ -112,6 +131,7 @@ def test_sem_chave_configurada_nao_exige_assinatura(fake_channel: FakeChannel) -
     app.dependency_overrides[get_settings] = lambda: settings_sem_hmac
     app.dependency_overrides[get_channel] = lambda: fake_channel
     app.dependency_overrides[get_repository] = lambda: MemoryRepository()
+    app.dependency_overrides[get_router] = lambda: _router(fake_channel)
     try:
         cliente = TestClient(app)
         resposta = cliente.post("/waha/webhook", json=json.loads(_fixture_bruta("texto")))
