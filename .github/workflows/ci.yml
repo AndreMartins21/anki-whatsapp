@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint, formatação, tipagem e segredos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # gitleaks precisa do histórico
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sincronizar dependências
+        run: uv sync --group dev
+
+      - name: pre-commit (ruff, gitleaks, shellcheck, mypy)
+        run: uv run pre-commit run --all-files --show-diff-on-failure
+
+  test:
+    name: Testes (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sincronizar dependências
+        run: uv sync --group dev
+
+      - name: pytest
+        run: uv run pytest --cov --cov-report=term-missing
+
+  compose:
+    name: Validar docker compose
+    runs-on: ubuntu-latest
+    if: hashFiles('docker-compose.yml') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose config
+        run: docker compose --env-file .env.example config --quiet

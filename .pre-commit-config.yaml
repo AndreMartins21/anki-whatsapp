@@ -1,0 +1,56 @@
+# Instale com: uv run pre-commit install
+# Rode em tudo: uv run pre-commit run --all-files
+default_language_version:
+  python: python3.12
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.23.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        files: ^infra/.*\.sh$
+
+  - repo: local
+    hooks:
+      - id: no-secret-files
+        name: bloqueia arquivos de segredo no commit
+        entry: >-
+          bash -c 'echo "Arquivo de segredo nao pode ser versionado -> $*"; exit 1' --
+        language: system
+        files: '(^\.env$|^\.env\.(?!example).*|^infra/\.env\.infra$|\.pem$|-key\.json$|^service-account.*\.json$)'
+
+      - id: mypy
+        name: mypy (tipagem estática)
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true
