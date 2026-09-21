@@ -20,7 +20,7 @@ from typing import Annotated
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from google.cloud import firestore
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from app import messages
@@ -140,7 +140,18 @@ async def waha_webhook(
         logger.warning("webhook rejeitado: assinatura HMAC ausente ou inválida")
         raise HTTPException(status_code=401, detail="assinatura inválida")
 
-    evento = parse_evento(json.loads(corpo_bruto))
+    try:
+        evento = parse_evento(json.loads(corpo_bruto))
+    except ValueError as erro:
+        # JSON inválido ou payload fora do formato esperado: nunca vira 500 (o WAHA reenviaria o
+        # mesmo evento para sempre). Só os campos com problema vão ao log, nunca o conteúdo.
+        campos = (
+            sorted({".".join(map(str, e["loc"])) for e in erro.errors()})
+            if isinstance(erro, ValidationError)
+            else []
+        )
+        logger.warning("payload inválido no webhook (campos: %s)", campos or "json ilegível")
+        return {"ok": True}
 
     if isinstance(evento, SessionStatusEvent):
         _tratar_status_sessao(evento)
@@ -191,6 +202,11 @@ async def _tratar_mensagem(
         return
     if not numero_e_permitido(numero_resolvido, settings.allowed_number):
         logger.warning("mensagem de número não autorizado ignorada")
+        return
+
+    if not payload.has_media and not payload.body.strip():
+        # Sem texto nem mídia: o WAHA não conseguiu decifrar (ou é um tipo que não tratamos).
+        logger.info("mensagem sem texto ignorada: %s", id_curto(payload.id))
         return
 
     if not await run_in_threadpool(repo.marcar_processada, payload.id, agora_utc()):

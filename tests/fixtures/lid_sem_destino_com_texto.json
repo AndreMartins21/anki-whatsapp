@@ -1,0 +1,14 @@
+{
+  "event": "message",
+  "session": "default",
+  "payload": {
+    "id": "false_257161284317237@lid_SEMDEST01",
+    "timestamp": 1758331900,
+    "from": "257161284317237@lid",
+    "fromMe": false,
+    "to": null,
+    "body": "/ajuda",
+    "hasMedia": false,
+    "_data": {}
+  }
+}

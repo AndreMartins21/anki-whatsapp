@@ -166,6 +166,51 @@ def test_lid_nao_encontrado_e_ignorado_com_um_log_que_diz_o_motivo(
     assert any("LID não resolvido" in registro.message for registro in caplog.records)
 
 
+def test_mensagem_sem_destino_e_sem_texto_e_ignorada_com_200(
+    cliente: TestClient, fake_channel: FakeChannel
+) -> None:
+    """O WAHA manda `to` e `body` nulos quando não consegue decifrar a mensagem (log real do
+    WAHA: "Undecryptable message"). Antes isso virava HTTP 500 e o WAHA reenviava para sempre."""
+    fake_channel.lids_conhecidos["257161284317237@lid"] = "5531999998888"
+
+    resposta = cliente.post("/waha/webhook", json=_fixture("lid_sem_destino_sem_texto"))
+
+    assert resposta.status_code == 200
+    assert fake_channel.vistos == []
+    assert fake_channel.textos_enviados == []
+
+
+def test_mensagem_com_destino_nulo_mas_com_texto_e_processada(
+    cliente: TestClient, fake_channel: FakeChannel
+) -> None:
+    fake_channel.lids_conhecidos["257161284317237@lid"] = "5531999998888"
+
+    resposta = cliente.post("/waha/webhook", json=_fixture("lid_sem_destino_com_texto"))
+
+    assert resposta.status_code == 200
+    assert fake_channel.vistos == [CHAT_ALLOWED]
+    assert "Comandos" in fake_channel.textos_enviados[0][1]  # respondeu ao /ajuda
+
+
+def test_payload_malformado_devolve_200_e_registra_o_motivo(
+    cliente: TestClient, fake_channel: FakeChannel, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        resposta = cliente.post("/waha/webhook", json=_fixture("message_malformada"))
+
+    assert resposta.status_code == 200
+    assert fake_channel.textos_enviados == []
+    assert any("payload inválido" in registro.message for registro in caplog.records)
+
+
+def test_corpo_que_nao_e_json_devolve_200(cliente: TestClient) -> None:
+    resposta = cliente.post(
+        "/waha/webhook", content=b"isto nao e json", headers={"Content-Type": "application/json"}
+    )
+
+    assert resposta.status_code == 200
+
+
 def test_mensagem_duplicada_e_processada_so_uma_vez(
     cliente: TestClient, fake_channel: FakeChannel
 ) -> None:

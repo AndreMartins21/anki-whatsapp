@@ -1,0 +1,14 @@
+{
+  "event": "message",
+  "session": "default",
+  "payload": {
+    "id": "false_257161284317237@lid_UNDECRYPT1",
+    "timestamp": 1758331800,
+    "from": "257161284317237@lid",
+    "fromMe": false,
+    "to": null,
+    "body": null,
+    "hasMedia": false,
+    "_data": {}
+  }
+}

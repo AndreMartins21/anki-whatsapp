@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 _SUFIXOS_IGNORADOS = ("@g.us", "@newsletter")
 _CHAT_STATUS = "status@broadcast"
@@ -21,12 +21,18 @@ class MessagePayload(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: str
-    timestamp: int
+    timestamp: int = 0
     from_: str = Field(alias="from")
-    from_me: bool = Field(alias="fromMe")
-    to: str
+    from_me: bool = Field(default=False, alias="fromMe")
+    # O GOWS manda `to` e `body` nulos quando não consegue decifrar a mensagem.
+    to: str | None = None
     body: str = ""
     has_media: bool = Field(default=False, alias="hasMedia")
+
+    @field_validator("body", mode="before")
+    @classmethod
+    def _sem_texto_e_string_vazia(cls, valor: object) -> object:
+        return "" if valor is None else valor
 
 
 class MessageEvent(BaseModel):

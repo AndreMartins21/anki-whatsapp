@@ -1,0 +1,8 @@
+{
+  "event": "message",
+  "session": "default",
+  "payload": {
+    "id": 12345,
+    "from": ["nao", "e", "texto"]
+  }
+}
