@@ -278,7 +278,7 @@ O tipo de nota "Inglês – Vocabulário" já existe no Anki do usuário, com os
 
 ### 8.2 Allowlist e identificadores
 - Em conversas 1:1, o `from` costuma vir como `NUMERO@c.us`, mas o WhatsApp também usa **LIDs** (`...@lid`). Aceite a mensagem se o número extraído bater com `ALLOWED_NUMBER` (comparando as variantes com e sem o 9 depois do DDD). Se vier um LID, resolva o número usando o endpoint de LIDs do WAHA (confira na documentação) e guarde o mapeamento em cache no Firestore.
-- **Envie sempre para o chatId do `ALLOWED_NUMBER`** (`NUMERO@c.us`), nunca para outro chat.
+- **Envie sempre para o chatId do remetente autorizado**: o número que o WhatsApp informa (`NUMERO@c.us`, ou o `pn` resolvido do LID), nunca para outro chat. Ele bate com o `ALLOWED_NUMBER` a menos do nono dígito brasileiro: contas antigas são registradas **sem** o 9, e enviar para o número com o 9 falha no WAHA com "no LID found" (visto no deploy real).
 
 ### 8.3 Cliente (`app/channel/waha.py`)
 Implemente `send_text`, `send_seen`, `typing(on/off)` e `session_status`, com o header `X-Api-Key` (ou o nome atual segundo a documentação). Timeouts de 15 s, até 2 novas tentativas com backoff para 5xx, logs **sem** a API key.

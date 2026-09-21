@@ -417,3 +417,12 @@ async def test_o_nivel_do_perfil_vai_para_a_ia(nivel: str) -> None:
     await m.diz("stall")
 
     assert m.tutor.chamadas[0] == ("explain", ("stall", nivel))
+
+
+async def test_destino_pode_mudar_por_mensagem() -> None:
+    m = montar()
+
+    await m.router.processar("/ajuda", destino="553199998888@c.us")
+    await m.router.processar("/ajuda")  # sem destino: continua no último
+
+    assert [chat for chat, _ in m.channel.textos_enviados] == ["553199998888@c.us"] * 2

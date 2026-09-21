@@ -144,6 +144,22 @@ def test_lid_resolvido_fica_em_cache_e_nao_consulta_o_waha_de_novo(
     assert fake_channel.vistos == [CHAT_ALLOWED, CHAT_ALLOWED]
 
 
+def test_responde_ao_numero_real_do_whatsapp_quando_difere_do_allowed_no_nono_digito(
+    cliente: TestClient, fake_channel: FakeChannel
+) -> None:
+    """Bug real (deploy): o WhatsApp registrou a conta SEM o 9 depois do DDD, mas o ALLOWED_NUMBER
+    tem o 9. Enviar para o número do .env dava "no LID found ... from server" e o usuário ficava
+    sem resposta. O destino é o número que o WhatsApp informa (o pn resolvido do LID)."""
+    fake_channel.lids_conhecidos["257161284317237@lid"] = "553199998888"  # sem o 9
+
+    resposta = cliente.post("/waha/webhook", json=_fixture("lid_sem_destino_com_texto"))
+
+    assert resposta.status_code == 200
+    assert fake_channel.vistos == ["553199998888@c.us"]
+    destinos = {chat_id for chat_id, _ in fake_channel.textos_enviados}
+    assert destinos == {"553199998888@c.us"}
+
+
 def test_lid_resolvido_para_numero_nao_permitido_e_ignorado(
     cliente: TestClient, fake_channel: FakeChannel
 ) -> None:

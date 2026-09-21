@@ -1,6 +1,6 @@
 """Comportamento "humano" ao responder (seção 5.6 da spec): mostra "digitando…" enquanto a IA
 trabalha, espera de 1 a 2 s antes de cada envio e nunca manda mais de 3 mensagens seguidas
-sem uma resposta do usuário. Também fixa o destino: sempre o chat do número permitido.
+sem uma resposta do usuário. Também guarda o destino: sempre o chat do remetente autorizado.
 """
 
 from __future__ import annotations
@@ -38,6 +38,11 @@ class Conversa:
         self._atraso = atraso
         self._max_seguidas = max_seguidas
         self._seguidas = 0
+
+    def definir_destino(self, chat_id: str) -> None:
+        """O chat para onde as respostas vão. É o número REAL do remetente já autorizado (o que o
+        WhatsApp informa), que pode diferir do ALLOWED_NUMBER no nono dígito brasileiro."""
+        self._chat_id = chat_id
 
     def usuario_falou(self) -> None:
         self._seguidas = 0

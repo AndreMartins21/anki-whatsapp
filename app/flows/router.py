@@ -49,14 +49,18 @@ class Router:
         # Uma conversa só, mas o webhook pode chegar em duas mensagens seguidas: uma por vez.
         self._trava = asyncio.Lock()
 
-    async def midia_nao_suportada(self) -> None:
+    async def midia_nao_suportada(self, destino: str | None = None) -> None:
         async with self._trava:
+            if destino:
+                self._d.conversa.definir_destino(destino)
             self._d.conversa.usuario_falou()
             await self._d.conversa.enviar(messages.MIDIA_NAO_SUPORTADA)
 
-    async def processar(self, texto: str) -> None:
+    async def processar(self, texto: str, destino: str | None = None) -> None:
         async with self._trava:
             d = self._d
+            if destino:
+                d.conversa.definir_destino(destino)
             d.conversa.usuario_falou()
             perfil = await bloq(self._perfil)
             sessao = await bloq(d.repo.obter_sessao)

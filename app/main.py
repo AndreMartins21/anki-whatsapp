@@ -213,7 +213,10 @@ async def _tratar_mensagem(
         logger.info("mensagem duplicada ignorada: %s", id_curto(payload.id))
         return
 
-    chat_destino = f"{settings.allowed_number}@c.us"
+    # Responde ao número REAL do remetente (o que o WhatsApp informa). Ele passou pela allowlist,
+    # mas pode diferir do ALLOWED_NUMBER no nono dígito: a conta pode estar registrada sem o 9, e
+    # enviar para o número do .env dá "no LID found" no WAHA.
+    chat_destino = f"{numero_resolvido}@c.us"
     await channel.send_seen(chat_destino)
 
     tarefas.add_task(_responder, router, payload, channel, chat_destino)
@@ -225,9 +228,9 @@ async def _responder(
     """Roda depois do 200. É a fronteira do sistema: nada que aconteça aqui pode escapar."""
     try:
         if payload.has_media:
-            await router.midia_nao_suportada()
+            await router.midia_nao_suportada(destino=chat_destino)
         else:
-            await router.processar(payload.body)
+            await router.processar(payload.body, destino=chat_destino)
     except Exception:
         logger.exception("falha ao processar mensagem")
         with contextlib.suppress(Exception):
