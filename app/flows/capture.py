@@ -1,4 +1,8 @@
-"""Captura: o aluno manda uma palavra, o bot explica e, se preciso, pergunta o sentido."""
+"""Captura: o aluno manda uma palavra, o bot explica e já mostra o card com o menu único (M9).
+
+Desde o M9 a IA sempre escolhe um sentido (`sentido_do_contexto` nunca fica `null`), então não há
+mais uma pergunta separada de "qual sentido" — o card já sai pronto numa mensagem só.
+"""
 
 from __future__ import annotations
 
@@ -9,21 +13,12 @@ from app.domain.models import (
     Explanation,
     Profile,
     Sense,
+    Sentence,
     SentidoSalvo,
     Sessao,
 )
-from app.domain.state import estado_apos_explicar
 from app.flows.base import Deps, bloq
 from app.repo.base import EntradaJaExiste, resolver_slug
-
-
-def _sentido_definido(explicacao: Explanation) -> str | None:
-    """O contexto define o sentido, ou só existe um sentido comum: não há o que perguntar."""
-    if explicacao.sentido_do_contexto:
-        return explicacao.sentido_do_contexto
-    if len(explicacao.sentidos) == 1:
-        return explicacao.sentidos[0].id
-    return None
 
 
 async def explicar(
@@ -34,67 +29,44 @@ async def explicar(
 ) -> Sessao:
     """Explica `texto`. Com `entrada_existente` (expansões, /praticar), atualiza aquela entrada
     em vez de criar outra."""
+    palavras_do_aluno = [e.palavra for e in await bloq(d.repo.listar_entradas)]
     async with d.conversa.digitando():
-        explicacao = await bloq(d.tutor.explain, texto, perfil.nivel)
+        explicacao = await bloq(d.tutor.explain, texto, perfil.nivel, palavras_do_aluno)
 
     if not explicacao.ok:
         await d.conversa.enviar(messages.entrada_invalida(explicacao.motivo_erro))
         return d.sessao_vazia()
 
-    sentido_id = _sentido_definido(explicacao)
-    if sentido_id is None:
-        await d.conversa.enviar(
-            messages.escolha_de_sentido(
-                explicacao.palavra, explicacao.classe, explicacao.cefr_estimado, explicacao.sentidos
-            )
-        )
-        return d.sessao_vazia().model_copy(
-            update={
-                "estado": Estado.AWAIT_SENSE,
-                "entry_id": entrada_existente.slug if entrada_existente else None,
-                "explicacao_pendente": explicacao,
-            }
-        )
-
+    sentido_id = explicacao.sentido_do_contexto or explicacao.sentidos[0].id
     sentido = next(s for s in explicacao.sentidos if s.id == sentido_id)
-    return await _comecar_pratica(d, perfil, explicacao, sentido, entrada_existente)
-
-
-async def escolher_sentido(d: Deps, sessao: Sessao, perfil: Profile, numero: int) -> Sessao:
-    explicacao = sessao.explicacao_pendente
-    if explicacao is None:  # sessão inconsistente: melhor recomeçar do que travar
-        return d.sessao_vazia()
-    sentido = explicacao.sentidos[numero - 1]
-    existente = await bloq(d.repo.obter_entrada, sessao.entry_id) if sessao.entry_id else None
-    return await _comecar_pratica(d, perfil, explicacao, sentido, existente)
-
-
-async def perguntar_nova_palavra(d: Deps, sessao: Sessao, texto: str) -> Sessao:
-    await d.conversa.enviar(messages.pergunta_nova_palavra(texto))
-    return sessao.model_copy(update={"pendente_nova_palavra": texto})
+    return await _comecar_pratica(d, explicacao, sentido, entrada_existente)
 
 
 async def _comecar_pratica(
     d: Deps,
-    perfil: Profile,
     explicacao: Explanation,
     sentido: Sense,
     existente: Entry | None,
 ) -> Sessao:
     entrada = await bloq(_gravar_entrada, d, explicacao, sentido, existente)
+    await bloq(
+        d.repo.adicionar_frase,
+        entrada.slug,
+        Sentence(texto=sentido.exemplo, autor="bot", criado_em=d.agora()),
+    )
     await d.conversa.enviar(
         messages.explicacao(
             entrada.palavra,
             entrada.classe,
             entrada.cefr_estimado,
             sentido,
-            entrada.nota or sentido.exemplo_curto,
-            perfil.modo,
+            entrada.nota,
+            sentido.exemplo,
         )
     )
     return d.sessao_vazia().model_copy(
         update={
-            "estado": estado_apos_explicar(False, perfil.modo),
+            "estado": Estado.AWAIT_ACTION,
             "entry_id": entrada.slug,
             "sentido_id": sentido.id,
         }

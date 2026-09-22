@@ -16,10 +16,7 @@ import pytest
 from app.domain.models import (
     Entry,
     Estado,
-    Expansion,
-    Explanation,
     Profile,
-    Sense,
     Sentence,
     SentidoSalvo,
     Sessao,
@@ -37,7 +34,7 @@ def _entrada(
     return Entry(
         slug=palavra,
         palavra=palavra,
-        classe="verbo",
+        classe="verb",
         cefr_estimado="B2",
         sentido=SentidoSalvo(traducao=traducao, definicao="to stop making progress"),
         outros_sentidos=[SentidoSalvo(traducao="enrolar", definicao="to delay")],
@@ -72,9 +69,9 @@ def repo(request: pytest.FixtureRequest) -> Iterator[Repository]:
 def test_perfil_ausente_e_none_e_depois_persiste(repo: Repository) -> None:
     assert repo.obter_perfil() is None
 
-    repo.salvar_perfil(Profile(nivel="B1-B2", modo="guiado", criado_em=T0))
+    repo.salvar_perfil(Profile(nivel="B1-B2", criado_em=T0))
 
-    assert repo.obter_perfil() == Profile(nivel="B1-B2", modo="guiado", criado_em=T0)
+    assert repo.obter_perfil() == Profile(nivel="B1-B2", criado_em=T0)
 
 
 def test_sessao_ausente_comeca_em_idle(repo: Repository) -> None:
@@ -84,22 +81,12 @@ def test_sessao_ausente_comeca_em_idle(repo: Repository) -> None:
     assert sessao.entry_id is None
 
 
-def test_sessao_persiste_estado_e_listas_numeradas(repo: Repository) -> None:
+def test_sessao_persiste_estado_e_sinonimos_mostrados(repo: Repository) -> None:
     sessao = Sessao(
-        estado=Estado.OFFER_EXPANSION,
+        estado=Estado.AWAIT_ACTION,
         entry_id="stall",
         sentido_id="s1",
-        pendente_nova_palavra="hedge",
-        explicacao_pendente=Explanation(
-            ok=True,
-            palavra="stall",
-            classe="verbo",
-            sentidos=[Sense(id="s1", traducao="travar", definicao="d", exemplo_curto="e")],
-        ),
-        expansoes_sugeridas=[
-            Expansion(expressao="stall for time", traducao="enrolar", tipo="colocacao")
-        ],
-        expansoes_criadas=["stall-for-time"],
+        sinonimos_mostrados=["stumble", "grind to a halt"],
         atualizado_em=T0,
     )
 

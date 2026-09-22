@@ -6,20 +6,19 @@ Este arquivo é a especificação do projeto. Leia-o inteiro antes de escrever c
 
 ## 1. O que estamos construindo
 
-Um bot de WhatsApp, de uso pessoal e com um único usuário, para praticar vocabulário de inglês. O nível do usuário é **B1 indo para B2**, e ele é brasileiro (responda sempre em PT-BR).
+Um bot de WhatsApp, de uso pessoal e com um único usuário, para praticar vocabulário de inglês. O nível do usuário é **B1 indo para B2**, e ele é brasileiro. **M9:** a conversa do bot com o aluno é em inglês (imersão) — só a tradução literal do termo fica em PT-BR; esta especificação e o código continuam em PT-BR.
 
 **Canal:** o bot tem um número próprio (chip Vivo) com o app **WhatsApp Business** instalado num celular. O servidor se conecta a esse número como **aparelho conectado** (linked device) usando o **WAHA Core** (WhatsApp HTTP API, self-hosted e gratuito). O usuário conversa com o bot a partir do WhatsApp pessoal dele. **Não** usamos a Cloud API oficial da Meta.
 
 Ciclo principal:
 
 1. O usuário manda uma palavra ou expressão em inglês, opcionalmente com a frase onde a viu (ex.: `stall | the talks stalled`).
-2. O bot explica a palavra: tradução, definição curta e uma dica. Se ela tiver mais de um sentido comum e não houver contexto, o bot pergunta qual sentido o usuário quer.
-3. O bot oferece um **menu numerado**: 1 escrever uma frase, 2 ver exemplos, 3 só salvar.
-4. Se o usuário escrever uma frase, o bot avalia se ela usa a palavra corretamente, naquele sentido, e se é natural. Devolve um veredito, a correção e uma versão natural. O usuário pode tentar de novo.
-5. Se o usuário pedir exemplos, o bot gera 3 frases de nível B1-B2 em contextos diferentes e convida o usuário a escrever a dele.
-6. Ao concluir, tudo fica salvo no Firestore: a palavra, o sentido, as frases do usuário com as avaliações e os exemplos.
-7. Depois de salvar, o bot sugere de 3 a 5 **expressões relacionadas**. O usuário escolhe pelos números (ex.: `1,3`), e elas viram novas entradas para praticar agora ou depois.
-8. `/exportar` gera um `.txt` para o Anki e envia um **link temporário** para baixar (seção 7.5). O WAHA Core não envia arquivos.
+2. O bot explica a palavra numa única mensagem (o "card"): tradução, definição curta, uma dica e uma frase de exemplo — a IA já escolhe o sentido mais provável, sem perguntar.
+3. O card termina no **menu único**: 1 ver mais exemplos, 2 ver sinônimos, 3 só salvar — sempre com o convite a já escrever uma frase.
+4. Texto livre (frase, pedido de ajuda, palavra nova, ou fora do escopo) é roteado por uma única chamada de IA (seção 5.1) que classifica e já responde. Frase de prática: avalia se usa a palavra corretamente, naquele sentido, e se é natural; o usuário pode tentar de novo.
+5. Ao concluir, tudo fica salvo no Firestore: a palavra, o sentido, as frases do usuário com as avaliações e os exemplos.
+6. Ao salvar ("3" ou pedido livre), o bot sugere até 3 **expressões relacionadas** como texto — sem menu; o usuário só manda a que quiser como qualquer palavra nova.
+7. `/exportar` (ou `/export`) gera um `.txt` para o Anki e envia um **link temporário** para baixar (seção 7.5). O WAHA Core não envia arquivos.
 
 Fora de escopo no MVP: revisão espaçada no WhatsApp, áudio, lembretes agendados, multiusuário, painel web e conversa livre com IA.
 
@@ -49,7 +48,7 @@ A VM tem só 1 GB de RAM. Crie um **swap de 2 GB**, limite a memória dos contai
 2. Antes de rodar qualquer comando `gcloud` ou `ssh` que **crie, altere ou apague** algo, mostre o comando e espere eu aprovar. Comandos de leitura podem rodar direto.
 3. Scripts de `infra/` precisam ser **idempotentes**.
 4. Confira na documentação atual do WAHA (waha.devlike.pro) os nomes exatos de: variáveis de ambiente (API key, painel, webhook, engine, reinício automático de sessões), endpoints (`sendText`, `sendSeen`, `startTyping`/`stopTyping`, status da sessão, QR) e o formato do payload do evento `message`. Fixe a **versão da imagem** (tag) no compose, sem usar `latest`. Confira também, na documentação do Vertex AI e do SDK `google-genai`: o **ID do modelo Gemini Flash (ou Flash-Lite) atual e GA**, se ele exige `location=global`, qual método da SDK usar (`generate_content` ou a Interactions API, conforme o modelo) e como pedir saída estruturada (JSON com schema). **Não use a família Gemini 2.5**, que está com aposentadoria marcada para outubro/2026. Deixe o que puder configurável.
-5. Todo texto voltado ao usuário fica em `app/messages.py` (PT-BR, tom amigável e curto).
+5. Todo texto voltado ao usuário fica em `app/messages.py`, **em inglês**, tom amigável e curto — só a linha 🇧🇷 (tradução literal) fica em PT-BR (M9).
 6. Faça um commit ao fim de cada marco.
 7. Se algo nesta especificação estiver ambíguo ou parecer errado, pergunte antes de inventar.
 
@@ -72,7 +71,6 @@ A VM tem só 1 GB de RAM. Crie um **swap de 2 GB**, limite a memória dos contai
 | `EXPORT_BUCKET` | `.env.infra` | Nome do bucket de exportações |
 | `ANTHROPIC_MODEL` | `.env.infra` (opcional) | Padrão `claude-haiku-4-5-20251001` |
 | `USER_LEVEL` | `.env.infra` | Padrão `B1-B2` |
-| `PRACTICE_MODE` | `.env.infra` | `guiado` (padrão) ou `producao_primeiro` |
 | `APP_ENV` | compose | `local` ou `prod` |
 
 Para desenvolvimento local, use um `.env` (no `.gitignore`) com valores falsos. Os testes nunca dependem de credenciais reais. Para o simulador com IA real (`--real-llm`), use as credenciais locais do Google (`gcloud auth application-default login`), sem chave em arquivo.
@@ -81,91 +79,142 @@ Para desenvolvimento local, use um `.env` (no `.gitignore`) com valores falsos. 
 
 ### 5.1 Máquina de estados
 
-A sessão fica num único documento `session/current`. Todas as escolhas são por **número**; aceite também variações (`1`, `1.`, `um`, `escrever`).
+A sessão fica num único documento `session/current`. Desde o M9 há só **dois estados e um único
+menu de ações**: a IA assume o papel das heurísticas antigas (sentido ambíguo, "isso é uma frase
+ou uma palavra nova?", menu de expansões numerado). As escolhas do menu continuam por **número**;
+aceite também variações (`1`, `1.`, apelidos em inglês como `examples`, `save`).
 
 ```
-IDLE
-  └─ texto (não comando) ─────────▶ explicar ──┬─▶ AWAIT_SENSE   (vários sentidos e sem contexto)
-                                                └─▶ AWAIT_CHOICE  (sentido definido)
-AWAIT_SENSE   ── número válido ──▶ AWAIT_CHOICE
-AWAIT_CHOICE  ── 1 ──▶ AWAIT_SENTENCE
-              ── 2 ──▶ gerar exemplos ─▶ AWAIT_AFTER_EXAMPLES
-              ── 3 ──▶ salvar ─▶ OFFER_EXPANSION
-              ── frase com a palavra-alvo ─▶ avaliar direto (atalho) ─▶ AWAIT_NEXT
-AWAIT_SENTENCE ── texto ──▶ avaliar ─▶ AWAIT_NEXT
-AWAIT_NEXT    ── 1 outra frase ──▶ AWAIT_SENTENCE
-              ── 2 exemplos ─────▶ gerar exemplos ─▶ AWAIT_AFTER_EXAMPLES
-              ── 3 concluir ─────▶ salvar ─▶ OFFER_EXPANSION
-              ── frase com a palavra-alvo ─▶ avaliar direto
-AWAIT_AFTER_EXAMPLES ── 1 escrever ──▶ AWAIT_SENTENCE
-                     ── 2 concluir ──▶ salvar ─▶ OFFER_EXPANSION
-                     ── frase com a palavra-alvo ─▶ avaliar direto
-OFFER_EXPANSION ── "1,3" (lista de números) ─▶ criar entradas "nova" ─▶ perguntar "1 praticar agora · 2 depois"
-                ── 0 ou "pular" ─────────────▶ IDLE
+IDLE          ── texto (não comando) ──▶ explicar (a IA sempre escolhe um sentido) ──▶ AWAIT_ACTION
+AWAIT_ACTION  ── 1 "see more examples" ──▶ gerar exemplos   ──▶ AWAIT_ACTION
+              ── 2 "check synonyms"    ──▶ gerar sinônimos  ──▶ AWAIT_ACTION
+              ── 3 "just save"         ──▶ salvar e sugerir ──▶ IDLE
+              ── qualquer outro texto  ──▶ rotear pela IA (abaixo) ──▶ AWAIT_ACTION (ou IDLE)
 ```
 
-Duas perguntas de 1/2 citadas nas regras abaixo também são estados (M2): `AWAIT_NEW_WORD` ("1 praticar X
-agora · 2 era minha frase") e `AWAIT_EXPANSION_PRACTICE` ("1 praticar agora · 2 depois"). No modo
-`producao_primeiro`, depois de explicar (ou escolher o sentido) o estado é `AWAIT_SENTENCE`, com o menu
-"1 me dá um exemplo · 2 só salvar". Número solto e inválido (`7`) nunca é tratado como palavra nova.
+**Roteamento por IA (`Tutor.route`, ADR-0009):** todo texto livre em `AWAIT_ACTION` que não é uma
+opção do menu vira **uma única chamada de IA** que classifica a intenção e já devolve a resposta
+(nunca uma segunda chamada separada para avaliar/gerar):
+
+- `frase` — o aluno tentou usar a palavra-alvo numa frase (mesmo com erro ou flexão diferente):
+  avalia, com os mesmos campos de `evaluate`.
+- `exemplos` / `sinonimos` — pedido de mais exemplos/sinônimos, com quantidade opcional (1 a 10,
+  padrão 3; fora do intervalo é limitado pelo fluxo, nunca pela IA).
+- `salvar` — equivalente a digitar "3".
+- `nova_palavra` — o texto não é sobre a palavra-alvo atual e parece uma nova palavra/expressão em
+  inglês: salva a atual silenciosamente (como em "3") e explica a nova, numa segunda mensagem.
+- `pedido` — qualquer outro pedido sobre aprender inglês (pronúncia, outro sentido da palavra,
+  exemplos numa área específica, dúvida de gramática...): a IA já escreve a resposta, em inglês.
+- `fora_do_escopo` — nada relacionado a aprender inglês (small talk, outro assunto): a IA recusa
+  gentilmente, em inglês.
 
 Regras:
 
-- **Texto que não é número válido** num estado que espera número:
-  - se contiver a palavra-alvo (ou flexão), é uma frase: avalie;
-  - se tiver até 4 palavras e não contiver a palavra-alvo, provavelmente é palavra nova: pergunte "1 praticar *X* agora (salvo a anterior) · 2 era minha frase";
-  - nos outros casos, reenvie o menu com um lembrete curto.
-- Em AWAIT_SENTENCE, texto sem a palavra-alvo e com até 4 palavras também dispara a pergunta acima.
 - **Sessão parada há mais de 3 horas** volta para IDLE, salvando o que houver.
-- `/cancelar` volta a IDLE sem apagar o que já foi salvo.
-- **Sempre** reenvie o menu atual ao final de cada resposta do bot que espera escolha.
+- `/cancel` (ou `/cancelar`) volta a IDLE sem apagar o que já foi salvo.
+- **Sempre** reenvie o menu de ações ao final de cada resposta em `AWAIT_ACTION` — inclusive nas
+  respostas do roteamento livre (`pedido`, `fora_do_escopo`, avaliação de `frase`), exceto quando a
+  resposta já é o card de uma palavra nova (`nova_palavra`).
 
 ### 5.2 Comandos
 
-`/ajuda`, `/lista`, `/pendentes`, `/praticar [palavra]`, `/exportar`, `/exportar tudo`, `/apagar palavra`, `/nivel B1-B2`, `/cancelar`, `/status`.
+`/help`, `/list`, `/pending`, `/practice [palavra]`, `/export`, `/export all`, `/delete palavra`,
+`/level A2-B1|B1-B2|B2-C1`, `/cancel`, `/status`. Cada um aceita também o apelido em PT-BR que a
+spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/praticar`, `/exportar [tudo]`, `/apagar`,
+`/nivel`, `/cancelar`) — a mensagem de "salvo" (seção 5.5, Case D) cita os nomes em português.
 
-- `/pendentes` lista as entradas com status `nova`.
-- `/exportar` exporta as entradas ainda não exportadas; `/exportar tudo`, todas. Entrada sem nenhuma frase utilizável fica de fora (o bot avisa quantas). O nome do arquivo usa a hora em UTC.
-- `/praticar` sem argumento pega a pendente mais antiga.
-- `/nivel` aceita A2-B1, B1-B2 e B2-C1.
+- `/pending` lista as entradas com status `nova`.
+- `/export` exporta as entradas ainda não exportadas; `/export all`, todas. Entrada sem nenhuma frase utilizável fica de fora (o bot avisa quantas). O nome do arquivo usa a hora em UTC.
+- `/practice` sem argumento pega a pendente mais antiga.
+- `/level` aceita A2-B1, B1-B2 e B2-C1.
 - `/status` mostra o status da sessão do WAHA, o total de palavras e as pendentes.
 
 ### 5.3 Calibração pelo nível (B1-B2)
 
 - **Exemplos:** vocabulário de apoio no máximo B2 (a palavra-alvo pode ser de qualquer nível), 8 a 18 palavras por frase, contextos variados (empresa internacional, dia a dia, informal).
-- **Avaliação:** tolerante com frases simples e corretas. Prioridade: sentido, depois gramática e colocação, depois naturalidade. Explicação em PT-BR com no máximo 4 linhas.
+- **Avaliação:** tolerante com frases simples e corretas. Prioridade: sentido, depois gramática e colocação, depois naturalidade. Explicação em inglês, com no máximo 4 linhas (M9: só a linha 🇧🇷 do card fica em PT-BR).
 - **Expansões:** colocações e expressões frequentes de nível B1-B2, ligadas ao sentido escolhido. Evite idiomatismos raros (C2).
 - Cada entrada guarda `cefr_estimado`.
 
-### 5.4 Modos de prática
+### 5.4 Menu único de prática (M9)
 
-- `guiado` (padrão): menu 1 escrever · 2 exemplos · 3 só salvar.
-- `producao_primeiro`: pede a frase direto; o menu vira 1 me dá um exemplo · 2 só salvar.
+Não há mais modos (`guiado` / `producao_primeiro`): toda palavra cai no mesmo menu de ações
+(seção 5.1), sempre com o convite a escrever uma frase junto — `Profile` não guarda mais `modo`.
 
 ### 5.5 Formato das mensagens
 
-Use a formatação do WhatsApp (`*negrito*`, `_itálico_`) e emojis com moderação. Um único texto por resposta sempre que possível: explicação ou avaliação **mais** o menu, na mesma mensagem.
+Use a formatação do WhatsApp (`*negrito*`, `_itálico_`) e emojis com moderação. Um único texto por
+resposta sempre que possível. Desde o M9, **tudo em inglês** — só a linha 🇧🇷 (tradução literal)
+fica em PT-BR — e o menu de ações (seção 5.1) termina praticamente toda resposta.
 
+**Card inicial** (o aluno manda uma palavra; a IA já escolhe um sentido e gera uma frase de
+exemplo calibrada, reaproveitando palavras que o aluno já salvou quando der):
 ```
-*STALL* (verbo) · B2
+*stall* (verb) — B2
 🇧🇷 travar, emperrar; enrolar
 📖 to stop making progress
-💡 "the car stalled" = o carro morreu
+💡 Think of a car engine that dies in traffic.
+"The project [[stalled]] because the client didn't send the documents."
 
-O que você quer fazer?
-1️⃣ Escrever uma frase
-2️⃣ Ver exemplos
-3️⃣ Só salvar
-_(ou já mande sua frase com "stall")_
+Now, you can write one or more sentences using *stall*, or type:
+1️⃣ See more examples
+2️⃣ Check synonyms
+3️⃣ Just save
 ```
 
+**Case A — texto livre** (roteado pela IA, seção 5.1). Frase de prática avaliada:
 ```
-⚠️ *Quase lá!* O uso de *stalled* está perfeito.
+⚠️ *Almost there!* The meaning is right.
 ✏️ didn't sent → didn't send
 ✨ The project stalled because the client didn't send the documents.
-💬 Depois de "didn't", o verbo fica na forma base.
+💬 After "didn't", the verb stays in the base form.
 
-1️⃣ Outra frase  ·  2️⃣ Exemplos  ·  3️⃣ Concluir
+Want to try another sentence?
+Now, you can write one or more sentences using *stall*, or type:
+1️⃣ See more examples
+2️⃣ See more synonyms
+3️⃣ Just save
+```
+Pedido de ajuda ou palavra fora do escopo: a resposta da IA (ou, fora do escopo, uma recusa
+gentil) seguida do mesmo menu. Palavra nova: salva a atual silenciosamente e manda o card da nova,
+como se fosse `IDLE`.
+
+**Case B — "1" / "see more examples"** (padrão 3, máximo 10, sem repetir os já mostrados):
+```
+📝 *Examples with stall* (travar, emperrar)
+1. We had to stall before the deadline.
+2. She didn't want to stall in front of the client.
+3. It's easy to stall when nobody is watching.
+
+Want to try a sentence of your own?
+Now, you can write one or more sentences using *stall*, or type:
+1️⃣ See more examples
+2️⃣ Check synonyms
+3️⃣ Just save
+```
+
+**Case C — "2" / "check synonyms"** (padrão 3, máximo 10, sem repetir os já mostrados; a partir
+daqui a opção 2 do menu vira "See more synonyms"):
+```
+🔄 *Synonyms for stall* (travar, emperrar)
+*stumble* = to almost fail or lose momentum
+_Example: "The talks stumbled early on."_
+
+Want to try a sentence with *stall*?
+Now, you can write one or more sentences using *stall*, or type:
+1️⃣ See more examples
+2️⃣ See more synonyms
+3️⃣ Just save
+```
+
+**Case D — "3" / "just save"** (fecha a palavra; sugere até 3 expressões relacionadas só como
+texto, sem criar entradas nem menu — se o aluno quiser uma, é só mandá-la como qualquer palavra
+nova):
+```
+✅ Saved: *stall*.
+Practice it any time with /praticar stall, or see everything with /lista.
+You might like these too: *stall for time*, *grind to a halt*, *drag on*.
+Send me another word or expression whenever you want.
 ```
 
 ### 5.6 Comportamento "humano" (reduz o risco de bloqueio)
@@ -183,50 +232,68 @@ Implemente em `app/services/llm.py` uma interface `LLMProvider` com duas impleme
 - `VertexGeminiProvider` (padrão): `google-genai` com `vertexai=True`, `project=GCP_PROJECT_ID` e `location=VERTEX_LOCATION`. Peça **saída estruturada** com o schema derivado do modelo Pydantic (JSON mode com schema), conforme a documentação atual da SDK para o modelo escolhido.
 - `AnthropicProvider` (opcional): *tool use* com uma única ferramenta por tarefa (`input_schema` = schema Pydantic) e `tool_choice` forçando essa ferramenta.
 
-As funções de negócio (`explain`, `evaluate`, `examples`, `expansions`) não sabem qual provedor está em uso. Valide sempre com Pydantic, com 1 nova tentativa em caso de erro. Temperatura 0.2 a 0.3. Prompts em `app/services/prompts.py`, com o nível e o contexto do usuário ("brasileiro, trabalha numa empresa internacional, usa inglês técnico no dia a dia").
+As funções de negócio (`explain`, `evaluate`, `examples`, `expansions`, `synonyms`, `route`) não sabem qual provedor está em uso. Valide sempre com Pydantic, com 1 nova tentativa em caso de erro. Temperatura 0.2 a 0.3. Prompts em `app/services/prompts.py`, com o nível e o contexto do usuário ("brasileiro, trabalha numa empresa internacional, usa inglês técnico no dia a dia"). **M9:** toda saída voltada ao aluno é pedida em inglês — só `traducao` continua em português do Brasil.
 
 ```python
 class Sense(BaseModel):
-    id: str; traducao: str; definicao: str; exemplo_curto: str
+    id: str; traducao: str; definicao: str; exemplo: str  # exemplo: frase completa, alvo entre [[ ]]
 
 class Explanation(BaseModel):
     ok: bool
     motivo_erro: str | None
     palavra: str                    # forma base, minúsculas
-    classe: str                     # PT-BR
+    classe: str                     # em inglês (verb, noun, adjective...)
     cefr_estimado: Literal["A2","B1","B2","C1","C2"]
     sentidos: list[Sense]           # 1 a 4, só os comuns
-    sentido_do_contexto: str | None # id do sentido quando o contexto (ou haver um único sentido comum) o define
+    sentido_do_contexto: str | None # M9: a IA sempre escolhe um id (nunca null)
     frase_contexto: str | None      # frase do usuário corrigida, alvo entre [[ ]]
-    nota: str
+    nota: str                       # em inglês
     tags: list[Literal["trabalho","phrasal_verb","expressao"]]
 
 class Evaluation(BaseModel):
     usa_palavra_alvo: bool          # considera flexões
     sentido_correto: bool
     veredito: Literal["correta","correta_pouco_natural","quase","incorreta"]
-    correcoes: list[str]            # "errado → certo"
+    correcoes: list[str]            # "wrong → right"
     versao_natural: str             # alvo entre [[ ]]
-    explicacao: str                 # PT-BR, máx. 4 linhas
+    explicacao: str                 # em inglês, máx. 4 linhas
 
-# examples(palavra, sentido, nivel, n=3) -> list[str]   (alvo entre [[ ]], contextos distintos)
+# examples(palavra, sentido, nivel, n=3, ja_mostrados, palavras_do_aluno) -> list[str]  (alvo entre [[ ]])
 
 class Expansion(BaseModel):
     expressao: str; traducao: str
     tipo: Literal["colocacao","familia","phrasal_verb","sinonimo","expressao"]
 # expansions(palavra, sentido, nivel, ja_existentes) -> list[Expansion]  (3 a 5, sem repetir o que já existe)
+# Case D (seção 5.5) usa só as 3 primeiras, como sugestão em texto — não cria entradas.
+
+class Synonym(BaseModel):
+    expressao: str; significado: str; exemplo: str  # exemplo com o SINÔNIMO marcado entre [[ ]]
+# synonyms(palavra, sentido, nivel, n=3, ja_mostrados) -> list[Synonym]  (1 a 10, sem repetir)
+
+# Roteamento de texto livre (M9, ADR-0009): uma única chamada que classifica e já responde.
+# Achatado de propósito (sem objeto aninhado opcional) para caber bem no response_schema do Gemini.
+class Roteamento(BaseModel):
+    intencao: Literal["frase","exemplos","sinonimos","salvar","nova_palavra","pedido","fora_do_escopo"]
+    quantidade: int              # exemplos | sinonimos, padrão 3 (o fluxo limita a 1-10)
+    palavra: str                 # nova_palavra
+    resposta: str                # pedido | fora_do_escopo, em inglês
+    # frase: os campos abaixo formam a mesma Evaluation de cima
+    usa_palavra_alvo: bool; sentido_correto: bool; veredito: str
+    correcoes: list[str]; versao_natural: str; explicacao: str
+# route(palavra, sentido, texto, nivel) -> Roteamento
 ```
 
-**Qualidade:** crie `evals/sentencas.yaml` com uns 15 casos (frase + veredito esperado) e `python -m evals.run [--provider vertex_gemini|anthropic] [--model ID]`, que mede a taxa de acerto contra a API real. Assim comparo modelos antes de escolher. Fica fora do pytest.
+**Qualidade:** `evals/sentencas.yaml` (~15 casos de frase + veredito esperado) e `evals/roteamento.yaml`
+(um caso por intenção do `Roteamento`), medidos com `python -m evals.run [--tarefa avaliacao|roteamento] [--provider vertex_gemini|anthropic] [--model ID]` contra a API real. Assim comparo modelos antes de escolher. Fica fora do pytest.
 
 ## 7. Dados
 
 ### 7.1 Firestore
 ```
-profile/me                 { nivel, modo, criado_em }
-session/current            { estado, entry_id, sentido_id, pendente_nova_palavra?, explicacao_pendente, expansoes_sugeridas,
-                             expansoes_criadas, atualizado_em }
-                           # os 3 campos guardam os menus numerados em andamento ("1,3" precisa apontar para algo)
+profile/me                 { nivel, criado_em }
+session/current            { estado, entry_id, sentido_id, sinonimos_mostrados, atualizado_em }
+                           # M9: sinonimos_mostrados evita repetir e troca o rótulo do menu
+                           # ("Check synonyms" -> "See more synonyms") depois da 1ª vez
 entries/{slug}             { palavra, classe, cefr_estimado, sentido:{traducao,definicao}, outros_sentidos,
                              nota, tags, origem_texto, origem:"usuario"|"expansao", pai?, status:"nova"|"praticada",
                              exportado, criado_em, atualizado_em }
@@ -299,6 +366,7 @@ Crie a interface `Channel` (enviar texto, marcar como lido, digitando) com as im
 | M6 | **Simulador de terminal** `python -m sim` (`ConsoleChannel` + `MemoryRepository`; `--real-llm` opcional) | Consigo fazer o ciclo completo no terminal |
 | M7 | `docker-compose.yml` (waha + bot), `infra/` (seção 10), README com o runbook | `docker compose config` válido; scripts passam em `bash -n` e `shellcheck`; nenhum segredo versionado |
 | M8 | Provisionar e fazer o deploy na VM, comigo aprovando cada comando; parear o WhatsApp; smoke test | O WAHA está em `WORKING` e o bot responde `/ajuda` no WhatsApp |
+| M9 | Interface em inglês (só 🇧🇷 em PT-BR), máquina de estados reduzida a `IDLE`/`AWAIT_ACTION` com um único menu de ações, roteamento de texto livre por uma chamada de IA (`Tutor.route`, ADR-0009), sinônimos (`Tutor.synonyms`), expansões viram sugestão em texto (sem menu) | `make check` passa; ciclo completo no `sim` bate a seção 5.5; `python -m evals.run --tarefa roteamento` roda contra a API real |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 
@@ -319,7 +387,6 @@ GEMINI_MODEL=        # preencher com o ID confirmado na documentação
 GEMINI_MODEL_EVAL=
 VERTEX_LOCATION=global
 USER_LEVEL=B1-B2
-PRACTICE_MODE=guiado
 ```
 
 ### 10.2 `infra/setup.sh` (idempotente)
@@ -387,11 +454,11 @@ vocabot/
     main.py  config.py  messages.py
     channel/  base.py  waha.py  console.py  parser.py
     domain/   models.py  state.py  choices.py
-    flows/    router.py  capture.py  practice.py  expansion.py  commands.py
+    flows/    router.py  capture.py  practice.py  expansion.py  synonyms.py  freeform.py  commands.py
     services/ llm.py  prompts.py  anki.py  storage.py
     repo/     base.py  memory.py  firestore.py
-  sim/        __main__.py
-  evals/      sentencas.yaml  run.py
+  sim/        __main__.py  tutor.py
+  evals/      sentencas.yaml  roteamento.yaml  run.py
   infra/      config.sh  setup.sh  secrets.sh  deploy.sh  pair.sh  logs.sh  ssh.sh  smoke_test.sh
               .env.infra.example  vm/startup.sh
   tests/      fixtures/*.json  test_*.py

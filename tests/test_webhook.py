@@ -59,7 +59,6 @@ def cliente(fake_channel: FakeChannel) -> Iterator[TestClient]:
         tutor=FakeTutor(explicacoes=[explicacao_stall(), explicacao_stall()]),
         conversa=Conversa(fake_channel, CHAT_ALLOWED, dormir=_sem_espera, atraso=lambda: 0.0),
         nivel_padrao="B1-B2",
-        modo="guiado",
     )
     app.dependency_overrides[get_repository] = lambda: repo
     app.dependency_overrides[get_router] = lambda: router
@@ -79,7 +78,7 @@ def test_mensagem_de_texto_marca_como_lida_e_e_recebida(
     assert len(fake_channel.textos_enviados) == 1
     chat_id, texto = fake_channel.textos_enviados[0]
     assert chat_id == CHAT_ALLOWED
-    assert "STALL" in texto
+    assert "stall" in texto
 
 
 def test_from_me_e_ignorada(cliente: TestClient, fake_channel: FakeChannel) -> None:
@@ -107,7 +106,7 @@ def test_midia_responde_que_so_entende_texto(
     assert len(fake_channel.textos_enviados) == 1
     chat_id, texto = fake_channel.textos_enviados[0]
     assert chat_id == CHAT_ALLOWED
-    assert "texto" in texto.lower()
+    assert "text" in texto.lower()
 
 
 def test_numero_nao_autorizado_e_ignorado(cliente: TestClient, fake_channel: FakeChannel) -> None:
@@ -205,7 +204,7 @@ def test_mensagem_com_destino_nulo_mas_com_texto_e_processada(
 
     assert resposta.status_code == 200
     assert fake_channel.vistos == [CHAT_ALLOWED]
-    assert "Comandos" in fake_channel.textos_enviados[0][1]  # respondeu ao /ajuda
+    assert "Commands" in fake_channel.textos_enviados[0][1]  # respondeu ao /ajuda
 
 
 def test_payload_malformado_devolve_200_e_registra_o_motivo(

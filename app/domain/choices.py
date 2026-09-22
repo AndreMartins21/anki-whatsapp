@@ -1,8 +1,7 @@
 """Parser de escolhas numéricas (seção 5.1) e detecção heurística da palavra-alvo.
 
-Todas as escolhas são por número, mas aceitamos variações (`1`, `1.`, `um`, `escrever`). O mesmo
-texto pode significar opções diferentes conforme o menu (`escrever` é 1 no menu inicial e a
-opção 1 do menu seguinte é `outra frase`), por isso cada menu declara os seus apelidos.
+Todas as escolhas são por número, mas aceitamos variações (`1`, `1.`, apelidos em inglês). Desde o
+M9 há um único menu de ações (`MENU_ACOES`); os apelidos ficam em inglês porque a conversa toda é.
 """
 
 from __future__ import annotations
@@ -13,44 +12,28 @@ from collections.abc import Mapping
 
 Menu = Mapping[int, tuple[str, ...]]
 
-MENU_ESCOLHA_GUIADO: Menu = {
-    1: ("escrever", "escrever uma frase", "escrever frase", "frase"),
-    2: ("exemplo", "exemplos", "ver exemplos", "ver exemplo"),
-    3: ("salvar", "so salvar"),
-}
-MENU_ESCOLHA_PRODUCAO: Menu = {
-    1: ("exemplo", "exemplos", "me da um exemplo", "ver exemplos"),
-    2: ("salvar", "so salvar"),
-}
-MENU_PROXIMO: Menu = {
-    1: ("outra frase", "outra", "escrever"),
-    2: ("exemplo", "exemplos", "ver exemplos"),
-    3: ("concluir", "salvar"),
-}
-MENU_APOS_EXEMPLOS: Menu = {
-    1: ("escrever", "escrever uma frase", "frase"),
-    2: ("concluir", "salvar"),
-}
-MENU_NOVA_PALAVRA: Menu = {
-    1: ("praticar", "praticar agora", "agora", "sim"),
-    2: ("minha frase", "era minha frase", "frase"),
-}
-MENU_PRATICAR_EXPANSAO: Menu = {
-    1: ("praticar", "praticar agora", "agora"),
-    2: ("depois", "mais tarde"),
+MENU_ACOES: Menu = {
+    1: ("see more examples", "examples", "more examples", "more", "1"),
+    2: (
+        "check synonyms",
+        "synonyms",
+        "see more synonyms",
+        "more synonyms",
+        "check synonym",
+        "synonym",
+    ),
+    3: ("just save", "save", "done", "only save"),
 }
 
 _NUMEROS_POR_EXTENSO = {
     "zero": 0,
-    "um": 1,
-    "uma": 1,
-    "dois": 2,
-    "duas": 2,
-    "tres": 3,
-    "quatro": 4,
-    "cinco": 5,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
 }
-_PULAR = {"0", "zero", "pular", "nenhuma", "nenhum", "nada"}
+_SAIR = {"0", "zero", "skip", "leave", "quit", "exit", "stop"}
 
 
 def normalizar(texto: str) -> str:
@@ -80,35 +63,20 @@ def parse_escolha(texto: str, menu: Menu) -> int | None:
 
 
 def parse_numero(texto: str, maximo: int) -> int | None:
-    """Um número de 1 a `maximo` (menu de sentidos, de tamanho variável)."""
+    """Um número de 1 a `maximo`."""
     numero = _como_numero(normalizar(texto))
     return numero if numero is not None and 1 <= numero <= maximo else None
 
 
-def parse_lista_numeros(texto: str, maximo: int) -> list[int] | None:
-    """`1,3`, `1 3`, `1 e 3` -> `[1, 3]` (sem repetição, na ordem dada). Um item inválido anula tudo."""
-    tokens = [t for t in normalizar(texto).split() if t != "e"]
-    if not tokens:
-        return None
-    numeros: list[int] = []
-    for token in tokens:
-        numero = _como_numero(token)
-        if numero is None or not 1 <= numero <= maximo:
-            return None
-        if numero not in numeros:
-            numeros.append(numero)
-    return numeros
-
-
 def eh_pular(texto: str) -> bool:
-    return normalizar(texto) in _PULAR
+    return normalizar(texto) in _SAIR
 
 
 def so_numeros(texto: str) -> bool:
-    """Só números/`e`: nunca é uma palavra ou frase, mesmo quando não é uma opção válida."""
+    """Só números/`and`: nunca é uma palavra ou frase, mesmo quando não é uma opção válida."""
     tokens = normalizar(texto).split()
     return any(_como_numero(t) is not None for t in tokens) and all(
-        _como_numero(t) is not None or t == "e" for t in tokens
+        _como_numero(t) is not None or t == "and" for t in tokens
     )
 
 

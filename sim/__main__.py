@@ -1,6 +1,6 @@
 """Simulador de terminal: a conversa inteira, sem WhatsApp (seção 9, M6).
 
-    python -m sim [--real-llm] [--modo guiado|producao_primeiro] [--nivel B1-B2]
+    python -m sim [--real-llm] [--nivel B1-B2]
 
 Usa `ConsoleChannel` e `MemoryRepository` (nada é gravado; ao sair, tudo some), e o mesmo
 `Router` do bot. Sem `--real-llm`, as respostas de IA são fabricadas (`SimTutor`); com ele, usa o
@@ -70,7 +70,6 @@ def main(
         "--provider", choices=["vertex_gemini", "anthropic"], default="vertex_gemini"
     )
     parser.add_argument("--model", help="ID do modelo (com --real-llm)")
-    parser.add_argument("--modo", choices=["guiado", "producao_primeiro"], default="guiado")
     parser.add_argument("--nivel", choices=["A2-B1", "B1-B2", "B2-C1"], default="B1-B2")
     parser.add_argument(
         "--atraso", action="store_true", help="mantém a espera de 1-2 s antes de cada resposta"
@@ -99,7 +98,6 @@ def main(
         tutor=tutor,
         conversa=conversa,
         nivel_padrao=nivel,
-        modo=args.modo,
         status_da_sessao=_status_do_simulador,
         exportador=ExportadorAnki(repo, ArmazenamentoLocal(exports)),
     )

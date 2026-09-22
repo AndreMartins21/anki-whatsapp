@@ -38,7 +38,6 @@ def _router(canal: FakeChannel) -> Router:
         tutor=FakeTutor(explicacoes=[explicacao_stall()]),
         conversa=Conversa(canal, "5531999998888@c.us", dormir=_sem_espera, atraso=lambda: 0.0),
         nivel_padrao="B1-B2",
-        modo="guiado",
     )
 
 

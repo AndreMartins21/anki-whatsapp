@@ -1,6 +1,7 @@
-"""Mede a taxa de acerto da avaliação de frases contra a API real (fora do pytest, seção 6).
+"""Mede a taxa de acerto da avaliação de frases e do roteamento de texto livre (M9) contra a API
+real (fora do pytest, seção 6).
 
-    python -m evals.run [--provider vertex_gemini|anthropic] [--model ID]
+    python -m evals.run [--tarefa avaliacao|roteamento] [--provider vertex_gemini|anthropic] [--model ID]
 
 Lê a configuração do ambiente (`make evals` carrega o `.env` antes): no Vertex AI, `GCP_PROJECT_ID`
 (+ `VERTEX_LOCATION`, padrão `global`) e as credenciais locais (`gcloud auth application-default
@@ -22,10 +23,11 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-from app.domain.models import NivelUsuario, SentidoSalvo, Veredito
+from app.domain.models import Intencao, NivelUsuario, SentidoSalvo, Veredito
 from app.services.llm import LLMError, Tutor, tutor_do_ambiente
 
 CAMINHO_PADRAO = Path(__file__).parent / "sentencas.yaml"
+CAMINHO_ROTEAMENTO_PADRAO = Path(__file__).parent / "roteamento.yaml"
 
 
 ErroDeConfiguracao = LLMError  # falta algo no ambiente para rodar contra a API
@@ -90,6 +92,81 @@ def avaliar(tutor: Tutor, casos: Sequence[Caso], nivel: NivelUsuario) -> Relator
 montar_tutor = tutor_do_ambiente
 
 
+class CasoRoteamento(BaseModel):
+    """Um turno de texto livre no meio da prática de uma palavra (M9, ADR-0009)."""
+
+    id: str
+    palavra: str
+    sentido: SentidoSalvo
+    texto: str
+    esperado: Intencao
+
+
+@dataclass(frozen=True)
+class ResultadoRoteamento:
+    caso: CasoRoteamento
+    obtido: Intencao | None
+    erro: str | None
+    segundos: float
+
+    @property
+    def acertou(self) -> bool:
+        return self.obtido == self.caso.esperado
+
+
+@dataclass(frozen=True)
+class RelatorioRoteamento:
+    resultados: list[ResultadoRoteamento]
+
+    @property
+    def acertos(self) -> int:
+        return sum(r.acertou for r in self.resultados)
+
+    @property
+    def erros(self) -> int:
+        return sum(r.erro is not None for r in self.resultados)
+
+    @property
+    def taxa(self) -> float:
+        return self.acertos / len(self.resultados) if self.resultados else 0.0
+
+
+def carregar_casos_roteamento(caminho: Path) -> list[CasoRoteamento]:
+    bruto = yaml.safe_load(caminho.read_text(encoding="utf-8"))
+    return [CasoRoteamento.model_validate(item) for item in bruto]
+
+
+def avaliar_roteamento(
+    tutor: Tutor, casos: Sequence[CasoRoteamento], nivel: NivelUsuario
+) -> RelatorioRoteamento:
+    resultados: list[ResultadoRoteamento] = []
+    for caso in casos:
+        inicio = time.perf_counter()
+        obtido: Intencao | None = None
+        erro: str | None = None
+        try:
+            obtido = tutor.route(caso.palavra, caso.sentido, caso.texto, nivel).intencao
+        except LLMError as falha:
+            erro = str(falha)
+        resultados.append(ResultadoRoteamento(caso, obtido, erro, time.perf_counter() - inicio))
+    return RelatorioRoteamento(resultados)
+
+
+def imprimir_roteamento(relatorio: RelatorioRoteamento, modelo: str) -> None:
+    print(f"\nModelo: {modelo}\n")
+    for r in relatorio.resultados:
+        marca = "ok " if r.acertou else "ERR"
+        obtido = r.obtido or f"(falhou: {r.erro})"
+        print(f"  [{marca}] {r.caso.id:<28} esperado={r.caso.esperado:<16} obtido={obtido}")
+
+    total = len(relatorio.resultados)
+    media = sum(r.segundos for r in relatorio.resultados) / total if total else 0.0
+    print(
+        f"\nAcertos: {relatorio.acertos}/{total} ({relatorio.taxa:.0%})"
+        f" · falhas da IA: {relatorio.erros} · latência média: {media:.1f}s"
+    )
+
+
 def imprimir(relatorio: Relatorio, modelo: str) -> None:
     print(f"\nModelo: {modelo}\n")
     for r in relatorio.resultados:
@@ -116,12 +193,13 @@ def imprimir(relatorio: Relatorio, modelo: str) -> None:
 
 def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m evals.run", description=__doc__)
+    parser.add_argument("--tarefa", choices=["avaliacao", "roteamento"], default="avaliacao")
     parser.add_argument(
         "--provider", choices=["vertex_gemini", "anthropic"], default="vertex_gemini"
     )
     parser.add_argument("--model", help="ID do modelo (padrão: o do ambiente)")
     parser.add_argument("--nivel", choices=["A2-B1", "B1-B2", "B2-C1"], default="B1-B2")
-    parser.add_argument("--casos", type=Path, default=CAMINHO_PADRAO)
+    parser.add_argument("--casos", type=Path, default=None)
     args = parser.parse_args(argv)
 
     try:
@@ -130,7 +208,14 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None
         print(f"erro de configuração: {erro}", file=sys.stderr)
         return 2
 
-    imprimir(avaliar(tutor, carregar_casos(args.casos), args.nivel), modelo)
+    if args.tarefa == "roteamento":
+        casos = args.casos or CAMINHO_ROTEAMENTO_PADRAO
+        imprimir_roteamento(
+            avaliar_roteamento(tutor, carregar_casos_roteamento(casos), args.nivel), modelo
+        )
+    else:
+        casos = args.casos or CAMINHO_PADRAO
+        imprimir(avaliar(tutor, carregar_casos(casos), args.nivel), modelo)
     return 0
 
 

@@ -1,0 +1,93 @@
+# Casos para medir o roteamento de texto livre (`python -m evals.run --tarefa roteamento`, M9,
+# ADR-0009). Cada caso é uma mensagem que o aluno poderia mandar no meio da prática de "stall"
+# (sentido: travar/emperrar, "to stop making progress"). `esperado` é a intenção certa.
+
+- id: frase-simples
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "The negotiations stalled after the first meeting."
+  esperado: frase
+
+- id: frase-com-erro
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "The project stalled because the client didn't sent the documents."
+  esperado: frase
+
+- id: frase-com-flexao
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "Talks are stalling again this week."
+  esperado: frase
+
+- id: pedir-exemplos-simples
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "can you show me more examples?"
+  esperado: exemplos
+
+- id: pedir-exemplos-com-quantidade
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "give me 5 more example sentences"
+  esperado: exemplos
+
+- id: pedir-sinonimos
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "what are some synonyms for this?"
+  esperado: sinonimos
+
+- id: pedir-salvar
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "ok let's just save it and move on"
+  esperado: salvar
+
+- id: palavra-nova-curta
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "reluctant"
+  esperado: nova_palavra
+
+- id: palavra-nova-com-contexto
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "hedge | we need to hedge our bets"
+  esperado: nova_palavra
+
+- id: pedido-pronuncia
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "how do you pronounce this word?"
+  esperado: pedido
+
+- id: pedido-outro-sentido
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "does this word have another meaning?"
+  esperado: pedido
+
+- id: pedido-area-especifica
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "can you give me an example used in a business meeting?"
+  esperado: pedido
+
+- id: fora-do-escopo-outro-assunto
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "what's the capital of France?"
+  esperado: fora_do_escopo
+
+- id: fora-do-escopo-small-talk
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "how's the weather today?"
+  esperado: fora_do_escopo
+
+- id: fora-do-escopo-pedido-nao-relacionado
+  palavra: stall
+  sentido: {traducao: "travar, emperrar", definicao: "to stop making progress"}
+  texto: "write me a poem about the ocean"
+  esperado: fora_do_escopo

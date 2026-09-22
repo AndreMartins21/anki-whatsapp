@@ -1,4 +1,4 @@
-"""Testes do simulador de terminal (M6): o ciclo completo, sem WhatsApp nem IA."""
+"""Testes do simulador de terminal (M6/M9): o ciclo completo, sem WhatsApp nem IA de verdade."""
 
 from __future__ import annotations
 
@@ -20,13 +20,10 @@ def _executar(falas: list[str], tmp_path: Path, *argv: str) -> tuple[int, str]:
 def test_ciclo_completo_no_terminal(tmp_path: Path) -> None:
     codigo, tela = _executar(
         [
-            "stall",  # sem contexto e com dois sentidos: pergunta qual
-            "1",
-            "1",  # escrever uma frase
+            "stall | the talks stalled",
+            "1",  # see more examples
             "The negotiations stalled after the first meeting.",
-            "3",  # concluir -> oferece expansões
-            "1,2",
-            "2",  # praticar depois
+            "3",  # just save
             "/lista",
             "/exportar",
             "sair",
@@ -35,35 +32,23 @@ def test_ciclo_completo_no_terminal(tmp_path: Path) -> None:
     )
 
     assert codigo == 0
-    assert "Qual sentido de *stall*" in tela
-    assert "*STALL* (verbo) · B2" in tela
-    assert "Manda a sua frase com *stall*" in tela
-    assert "✅ *Perfeita!*" in tela
-    assert "💾 *stall* salvo!" in tela
-    assert "Criei 2 entradas novas" in tela
+    assert "*stall* (verb) — B2" in tela
+    assert "📝 *Examples with stall*" in tela
+    assert "✅ *Perfect!*" in tela
+    assert "✅ Saved: *stall*." in tela
     assert "✅ stall — travar, emperrar" in tela
-    assert "1 cartão no arquivo do Anki" in tela
-    assert "2 palavra(s) ficaram de fora" in tela  # as duas expansões ainda não têm frase
+    assert "1 card in the Anki file" in tela
     (arquivo,) = list(tmp_path.glob("anki_*.txt"))
     assert "The negotiations <b>stalled</b> after the first meeting." in arquivo.read_text(
         encoding="utf-8"
     )
 
 
-def test_palavra_com_frase_de_contexto_pula_a_pergunta_de_sentido(tmp_path: Path) -> None:
+def test_palavra_com_frase_de_contexto_mostra_o_card_direto(tmp_path: Path) -> None:
     _, tela = _executar(["stall | the talks stalled", "sair"], tmp_path)
 
-    assert "Qual sentido" not in tela
-    assert "O que você quer fazer?" in tela
-
-
-def test_modo_producao_primeiro(tmp_path: Path) -> None:
-    _, tela = _executar(
-        ["stall | the talks stalled", "sair"], tmp_path, "--modo", "producao_primeiro"
-    )
-
-    assert "Escreve uma frase com *stall*" in tela
-    assert "Me dá um exemplo" in tela
+    assert "*stall* (verb) — B2" in tela
+    assert "Just save" in tela
 
 
 def test_fim_da_entrada_encerra_sem_erro(tmp_path: Path) -> None:

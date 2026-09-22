@@ -12,8 +12,10 @@ from app.domain.models import (
     Expansion,
     Explanation,
     NivelUsuario,
+    Roteamento,
     Sense,
     SentidoSalvo,
+    Synonym,
 )
 
 
@@ -61,6 +63,8 @@ class FakeTutor:
     avaliacoes: list[Evaluation | Exception] = field(default_factory=list)
     exemplos: list[list[str] | Exception] = field(default_factory=list)
     expansoes: list[list[Expansion] | Exception] = field(default_factory=list)
+    sinonimos: list[list[Synonym] | Exception] = field(default_factory=list)
+    roteamentos: list[Roteamento | Exception] = field(default_factory=list)
     chamadas: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
 
     def _proxima[T](self, fila: list[T | Exception]) -> T:
@@ -69,7 +73,9 @@ class FakeTutor:
             raise resposta
         return resposta
 
-    def explain(self, texto: str, nivel: NivelUsuario) -> Explanation:
+    def explain(
+        self, texto: str, nivel: NivelUsuario, palavras_do_aluno: Sequence[str] = ()
+    ) -> Explanation:
         self.chamadas.append(("explain", (texto, nivel)))
         return self._proxima(self.explicacoes)
 
@@ -80,7 +86,13 @@ class FakeTutor:
         return self._proxima(self.avaliacoes)
 
     def examples(
-        self, palavra: str, sentido: SentidoSalvo | Sense, nivel: NivelUsuario, n: int = 3
+        self,
+        palavra: str,
+        sentido: SentidoSalvo | Sense,
+        nivel: NivelUsuario,
+        n: int = 3,
+        ja_mostrados: Sequence[str] = (),
+        palavras_do_aluno: Sequence[str] = (),
     ) -> list[str]:
         self.chamadas.append(("examples", (palavra, sentido.traducao, nivel, n)))
         return self._proxima(self.exemplos)
@@ -96,3 +108,20 @@ class FakeTutor:
             ("expansions", (palavra, sentido.traducao, nivel, tuple(ja_existentes)))
         )
         return self._proxima(self.expansoes)
+
+    def synonyms(
+        self,
+        palavra: str,
+        sentido: SentidoSalvo | Sense,
+        nivel: NivelUsuario,
+        n: int = 3,
+        ja_mostrados: Sequence[str] = (),
+    ) -> list[Synonym]:
+        self.chamadas.append(("synonyms", (palavra, sentido.traducao, nivel, n)))
+        return self._proxima(self.sinonimos)
+
+    def route(
+        self, palavra: str, sentido: SentidoSalvo | Sense, texto: str, nivel: NivelUsuario
+    ) -> Roteamento:
+        self.chamadas.append(("route", (palavra, sentido.traducao, texto, nivel)))
+        return self._proxima(self.roteamentos)

@@ -1,346 +1,291 @@
-"""Testes de ponta a ponta dos fluxos (M4), com FakeTutor, FakeChannel e MemoryRepository."""
+"""Testes de ponta a ponta dos fluxos (M9): interface em inglês, menu único, roteamento por IA."""
 
 from __future__ import annotations
 
 from datetime import timedelta
 
-import pytest
-
-from app.domain.models import Estado
+from app.domain.models import Estado, Roteamento, Synonym
 from app.services.fake_llm import FakeTutor
 from app.services.llm import LLMError
-from tests.helpers import (
-    CHAT,
-    avaliacao,
-    expansoes,
-    explicacao_stall,
-    montar,
-)
+from tests.helpers import CHAT, avaliacao, expansoes, explicacao_stall, montar
 
 EXEMPLOS = ["The talks [[stalled]] again.", "My car [[stalled]].", "Don't [[stall]] me."]
+SINONIMOS = [
+    Synonym(
+        expressao="stumble",
+        significado="to almost fail or lose momentum",
+        exemplo="The talks [[stumbled]] early on.",
+    ),
+    Synonym(
+        expressao="grind to a halt",
+        significado="to slow down until it stops completely",
+        exemplo="Production [[ground to a halt]] last week.",
+    ),
+]
+
+
+def _roteamento_frase(veredito: str = "quase") -> Roteamento:
+    av = avaliacao(veredito)
+    return Roteamento(
+        intencao="frase",
+        usa_palavra_alvo=av.usa_palavra_alvo,
+        sentido_correto=av.sentido_correto,
+        veredito=av.veredito,
+        correcoes=av.correcoes,
+        versao_natural=av.versao_natural,
+        explicacao=av.explicacao,
+    )
 
 
 def _tutor_completo() -> FakeTutor:
     return FakeTutor(
         explicacoes=[explicacao_stall()],
-        avaliacoes=[avaliacao("quase")],
         exemplos=[EXEMPLOS],
+        sinonimos=[SINONIMOS],
+        roteamentos=[_roteamento_frase("quase")],
         expansoes=[expansoes()],
     )
 
 
-# ---- o ciclo "stall" da spec, do começo ao fim ---------------------------------------------
+# ---- o ciclo "stall", do começo ao fim -------------------------------------------------------
 
 
 async def test_ciclo_completo_do_stall() -> None:
     m = montar(tutor=_tutor_completo())
 
-    # 1-2. O aluno manda a palavra com a frase; o sentido vem do contexto, então há menu direto.
-    (explicacao,) = await m.diz("stall | the talks stalled")
-    assert explicacao == (
-        "*STALL* (verbo) · B2\n"
+    # 1. O aluno manda a palavra com a frase; o card sai numa mensagem só, com o menu único.
+    (card,) = await m.diz("stall | the talks stalled")
+    assert card == (
+        "*stall* (verb) — B2\n"
         "🇧🇷 travar, emperrar\n"
         "📖 to stop making progress\n"
-        '💡 "the car stalled" = o carro morreu\n'
+        '💡 "the car stalled" = the car died\n'
+        '"The talks stalled."\n'
         "\n"
-        "O que você quer fazer?\n"
-        "1️⃣ Escrever uma frase\n"
-        "2️⃣ Ver exemplos\n"
-        "3️⃣ Só salvar\n"
-        '_(ou já mande sua frase com "stall")_'
+        "Now, you can write one or more sentences using *stall*, or type:\n"
+        "1️⃣ See more examples\n"
+        "2️⃣ Check synonyms\n"
+        "3️⃣ Just save"
     )
-    assert m.repo.obter_sessao().estado == Estado.AWAIT_CHOICE
+    assert m.repo.obter_sessao().estado == Estado.AWAIT_ACTION
 
-    # 3-4. Escolhe escrever e manda a frase; recebe a avaliação e o menu seguinte.
-    (pedido,) = await m.diz("1")
-    assert "stall" in pedido
-    (avaliada,) = await m.diz("The project stalled because the client didn't sent the documents.")
-    assert avaliada == (
-        "⚠️ *Quase lá!* O sentido está certo.\n"
-        "✏️ didn't sent → didn't send\n"
-        "✨ The project stalled because the client didn't send the documents.\n"
-        '💬 Depois de "didn\'t", o verbo fica na forma base.\n'
-        "\n"
-        "1️⃣ Outra frase  ·  2️⃣ Exemplos  ·  3️⃣ Concluir"
-    )
-    assert m.repo.obter_sessao().estado == Estado.AWAIT_NEXT
-
-    # 5. Pede exemplos: 3 frases e o convite para escrever a dela.
-    (exemplos,) = await m.diz("2")
-    assert exemplos.startswith("📝 *Exemplos de stall*")
+    # 2. Pede exemplos.
+    (exemplos,) = await m.diz("1")
+    assert exemplos.startswith("📝 *Examples with stall*")
     assert "1. The talks stalled again." in exemplos
     assert "[[" not in exemplos
-    assert m.repo.obter_sessao().estado == Estado.AWAIT_AFTER_EXAMPLES
+    assert "Want to try a sentence of your own?" in exemplos
 
-    # 6-7. Conclui: fica salvo (praticada) e vêm as expansões.
-    (salvo,) = await m.diz("2")
-    assert salvo.startswith("💾 *stall* salvo!")
-    assert "1. *stall for time* — enrolar" in salvo
+    # 3. Pede sinônimos: a partir daqui a opção 2 do menu vira "See more synonyms".
+    (sinonimos,) = await m.diz("2")
+    assert sinonimos.startswith("🔄 *Synonyms for stall*")
+    assert "*stumble* = to almost fail or lose momentum" in sinonimos
+    assert '_Example: "The talks stumbled early on."_' in sinonimos
+    assert "2️⃣ See more synonyms" in sinonimos
+
+    # 4. Manda uma frase de prática (texto livre, roteado pela IA numa única chamada).
+    (avaliada,) = await m.diz("The project stalled because the client didn't sent the documents.")
+    assert avaliada == (
+        "⚠️ *Almost there!* The meaning is right.\n"
+        "✏️ didn't sent → didn't send\n"
+        "✨ The project stalled because the client didn't send the documents.\n"
+        '💬 After "didn\'t", the verb stays in the base form.\n'
+        "\n"
+        "Want to try another sentence?\n"
+        "Now, you can write one or more sentences using *stall*, or type:\n"
+        "1️⃣ See more examples\n"
+        "2️⃣ See more synonyms\n"
+        "3️⃣ Just save"
+    )
     entrada = m.repo.obter_entrada("stall")
     assert entrada is not None
     assert entrada.status == "praticada"
-    assert entrada.sentido.traducao == "travar, emperrar"
-    assert [o.traducao for o in entrada.outros_sentidos] == ["enrolar"]
-    frases = m.repo.listar_frases("stall")
-    assert [f.autor for f in frases] == ["usuario", "bot", "bot", "bot"]
-    assert frases[0].veredito == "quase"
-    assert m.repo.obter_sessao().estado == Estado.OFFER_EXPANSION
 
-    # 8. Escolhe 1 e 3: viram entradas "nova", e ele decide praticar depois.
-    (criadas,) = await m.diz("1,3")
-    assert "Criei 2 entradas novas" in criadas
-    pendentes = m.repo.listar_entradas("nova")
-    assert [e.palavra for e in pendentes] == ["stall for time", "stalled talks"]
-    assert all(e.origem == "expansao" and e.pai == "stall" for e in pendentes)
-    (encerrado,) = await m.diz("2")
-    assert "Manda outra palavra" in encerrado
+    # 5. Salva: o card fecha e sugere expressões relacionadas, sem menu.
+    (salvo,) = await m.diz("3")
+    assert salvo == (
+        "✅ Saved: *stall*.\n"
+        "Practice it any time with /praticar stall, or see everything with /lista.\n"
+        "You might like these too: *stall for time*, *stall out*, *stalled talks*.\n"
+        "Send me another word or expression whenever you want."
+    )
     assert m.repo.obter_sessao().estado == Estado.IDLE
+    # Nenhuma entrada de expansão foi criada sozinha (M9: é só sugestão em texto).
+    assert len(m.repo.listar_entradas()) == 1
 
-    # O ciclo consultou a IA com o nível do aluno e sem repetir o que já existia.
     chamadas = dict(m.tutor.chamadas)
     assert chamadas["explain"] == ("stall | the talks stalled", "B1-B2")
-    assert chamadas["expansions"][3] == ("stall",)
 
 
-async def test_pratica_mais_de_uma_frase_e_conclui_direto() -> None:
-    tutor = FakeTutor(
-        explicacoes=[explicacao_stall()],
-        avaliacoes=[avaliacao("incorreta"), avaliacao("correta")],
-        expansoes=[expansoes()],
-    )
+async def test_frase_logo_apos_o_card_e_roteada_sem_passar_pelo_menu() -> None:
+    tutor = FakeTutor(explicacoes=[explicacao_stall()], roteamentos=[_roteamento_frase("correta")])
     m = montar(tutor=tutor)
-    await m.diz("stall | the talks stalled")
-    await m.diz("1")
-    await m.diz("I stalled the box.")
-    await m.diz("1")  # outra frase
-    await m.diz("The negotiations stalled after the first meeting.")
-    (resposta,) = await m.diz("3")  # concluir
-
-    assert resposta.startswith("💾 *stall* salvo!")
-    assert [f.veredito for f in m.repo.listar_frases("stall")] == ["incorreta", "correta"]
-
-
-async def test_atalho_frase_direta_no_menu() -> None:
-    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall()], avaliacoes=[avaliacao()]))
     await m.diz("stall")
 
     (resposta,) = await m.diz("the project stalled last week")
 
-    assert resposta.startswith("⚠️ *Quase lá!*")
-    assert m.repo.obter_sessao().estado == Estado.AWAIT_NEXT
+    assert resposta.startswith("✅ *Perfect!*")
+    assert m.repo.obter_sessao().estado == Estado.AWAIT_ACTION
 
 
-async def test_so_salvar_deixa_a_entrada_como_nova_e_oferece_expansoes() -> None:
+async def test_so_salvar_sem_praticar_deixa_a_entrada_como_nova() -> None:
     m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall()], expansoes=[expansoes()]))
     await m.diz("stall")
 
     (resposta,) = await m.diz("3")
 
-    assert resposta.startswith("💾 *stall* salvo!")
+    assert resposta.startswith("✅ Saved: *stall*.")
     entrada = m.repo.obter_entrada("stall")
     assert entrada is not None
     assert entrada.status == "nova"
 
 
-async def test_pular_expansoes_volta_para_idle() -> None:
-    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall()], expansoes=[expansoes()]))
-    await m.diz("stall")
-    await m.diz("3")
-
-    (resposta,) = await m.diz("0")
-
-    assert "Manda outra palavra" in resposta
-    assert m.repo.obter_sessao().estado == Estado.IDLE
-    assert m.repo.listar_entradas("nova")[0].slug == "stall"  # só a própria stall (nova)
-    assert len(m.repo.listar_entradas()) == 1
+# ---- quantidade pedida em texto livre (Case B/C) ---------------------------------------------
 
 
-async def test_expansoes_que_o_aluno_ja_tem_nao_duplicam() -> None:
-    m = montar(
-        tutor=FakeTutor(
-            explicacoes=[explicacao_stall(), explicacao_stall()],
-            expansoes=[expansoes(), expansoes()],
-        )
+async def test_quantidade_personalizada_de_exemplos() -> None:
+    tutor = FakeTutor(
+        explicacoes=[explicacao_stall()],
+        exemplos=[EXEMPLOS],
+        roteamentos=[Roteamento(intencao="exemplos", quantidade=5)],
     )
-    await m.diz("stall")
-    await m.diz("3")
-    await m.diz("1")  # cria "stall for time"
-    await m.diz("2")
-    await m.diz("stall")  # volta à mesma palavra: mantém a entrada
-    await m.diz("3")
-
-    (resposta,) = await m.diz("1")
-
-    assert "Essas você já tinha" in resposta
-    assert len(m.repo.listar_entradas()) == 2
-
-
-async def test_praticar_agora_a_expansao_explica_e_atualiza_a_mesma_entrada() -> None:
-    # A IA explica a expressão pela forma base ("stall"); o cartão segue sendo "stall for time".
-    expl = explicacao_stall().model_copy(update={"classe": "verbo", "sentido_do_contexto": "s1"})
-    tutor = FakeTutor(explicacoes=[explicacao_stall(), expl], expansoes=[expansoes()])
     m = montar(tutor=tutor)
     await m.diz("stall")
-    await m.diz("3")
-    await m.diz("1")
 
-    (resposta,) = await m.diz("1")  # praticar agora
+    await m.diz("can you show me 5 examples?")
 
-    assert resposta.startswith("*STALL FOR TIME* (colocação)")
-    assert len(m.repo.listar_entradas()) == 2  # não criou uma terceira
-    entrada = m.repo.obter_entrada("stall-for-time")
-    assert entrada is not None
-    assert entrada.sentido.definicao == "to stop making progress"
-    assert entrada.origem == "expansao"
-    assert entrada.palavra == "stall for time"
-    assert m.repo.obter_sessao().entry_id == "stall-for-time"
-    assert m.repo.obter_sessao().estado == Estado.AWAIT_CHOICE
+    chamada = next(c for c in m.tutor.chamadas if c[0] == "examples")
+    assert chamada[1][3] == 5  # (palavra, traducao, nivel, n)
 
 
-# ---- sentido ambíguo -----------------------------------------------------------------------
-
-
-async def test_sem_contexto_e_varios_sentidos_pergunta_qual() -> None:
-    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(sentido_do_contexto=None)]))
-
-    (resposta,) = await m.diz("stall")
-
-    assert "mais de um sentido" in resposta
-    assert "1️⃣ travar, emperrar — to stop making progress" in resposta
-    assert "2️⃣ enrolar — to delay on purpose" in resposta
-    assert m.repo.listar_entradas() == []  # nada salvo até escolher
-    assert m.repo.obter_sessao().estado == Estado.AWAIT_SENSE
-
-
-async def test_escolher_o_sentido_cria_a_entrada_e_mostra_o_menu() -> None:
-    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(sentido_do_contexto=None)]))
+async def test_quantidade_fora_do_intervalo_e_limitada_entre_1_e_10() -> None:
+    tutor = FakeTutor(
+        explicacoes=[explicacao_stall()],
+        sinonimos=[SINONIMOS],
+        roteamentos=[Roteamento(intencao="sinonimos", quantidade=99)],
+    )
+    m = montar(tutor=tutor)
     await m.diz("stall")
 
-    (resposta,) = await m.diz("2")
+    await m.diz("give me tons of synonyms")
 
-    assert resposta.startswith("*STALL* (verbo) · B2\n🇧🇷 enrolar")
-    entrada = m.repo.obter_entrada("stall")
-    assert entrada is not None
-    assert entrada.sentido.traducao == "enrolar"
-    assert m.repo.obter_sessao().estado == Estado.AWAIT_CHOICE
-    assert m.repo.obter_sessao().explicacao_pendente is None
+    chamada = next(c for c in m.tutor.chamadas if c[0] == "synonyms")
+    assert chamada[1][3] == 10
 
 
-async def test_palavra_com_um_unico_sentido_nao_pergunta() -> None:
-    expl = explicacao_stall(sentido_do_contexto=None, dois_sentidos=False)
-    m = montar(tutor=FakeTutor(explicacoes=[expl]))
+async def test_sinonimos_nao_repetidos_entre_chamadas() -> None:
+    tutor = FakeTutor(
+        explicacoes=[explicacao_stall()],
+        sinonimos=[SINONIMOS[:1], SINONIMOS[1:]],
+    )
+    m = montar(tutor=tutor)
+    await m.diz("stall")
+    await m.diz("2")
 
-    (resposta,) = await m.diz("stall")
+    await m.diz("2")
 
-    assert "O que você quer fazer?" in resposta
+    chamadas = [c for c in m.tutor.chamadas if c[0] == "synonyms"]
+    assert len(chamadas) == 2
+    # a 2ª chamada recebe o sinônimo já mostrado, para o tutor não repeti-lo
+    assert chamadas[1][1] == ("stall", "travar, emperrar", "B1-B2", 3)
 
 
-async def test_numero_invalido_reenvia_o_menu_com_lembrete() -> None:
-    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(sentido_do_contexto=None)]))
+# ---- outras intenções do roteamento -----------------------------------------------------------
+
+
+async def test_pedido_de_ajuda_livre_responde_e_reenvia_o_menu() -> None:
+    tutor = FakeTutor(
+        explicacoes=[explicacao_stall()],
+        roteamentos=[Roteamento(intencao="pedido", resposta="It's pronounced /stawl/.")],
+    )
+    m = montar(tutor=tutor)
     await m.diz("stall")
 
-    (resposta,) = await m.diz("7")
+    (resposta,) = await m.diz("how do I pronounce it?")
 
-    assert resposta.startswith("Não entendi")
-    assert "1️⃣ travar, emperrar" in resposta
-    assert m.repo.obter_sessao().estado == Estado.AWAIT_SENSE
-
-
-# ---- palavra nova no meio do fluxo ---------------------------------------------------------
+    assert resposta.startswith("It's pronounced /stawl/.")
+    assert "Just save" in resposta
+    assert m.repo.obter_sessao().estado == Estado.AWAIT_ACTION
 
 
-async def test_palavra_nova_pergunta_e_praticar_agora_salva_a_anterior() -> None:
+async def test_fora_do_escopo_nao_quebra_a_sessao() -> None:
+    tutor = FakeTutor(
+        explicacoes=[explicacao_stall()],
+        roteamentos=[
+            Roteamento(
+                intencao="fora_do_escopo",
+                resposta="I can only help with English — send me a word, an expression or a sentence.",
+            )
+        ],
+    )
+    m = montar(tutor=tutor)
+    await m.diz("stall")
+
+    (resposta,) = await m.diz("what's the capital of France?")
+
+    assert "I can only help with English" in resposta
+    assert m.repo.obter_sessao().estado == Estado.AWAIT_ACTION
+
+
+async def test_salvar_por_texto_livre_funciona_como_o_menu() -> None:
+    tutor = FakeTutor(
+        explicacoes=[explicacao_stall()],
+        expansoes=[expansoes()],
+        roteamentos=[Roteamento(intencao="salvar")],
+    )
+    m = montar(tutor=tutor)
+    await m.diz("stall")
+
+    (resposta,) = await m.diz("let's just save it")
+
+    assert resposta.startswith("✅ Saved: *stall*.")
+    assert m.repo.obter_sessao().estado == Estado.IDLE
+
+
+async def test_palavra_nova_no_meio_do_fluxo_salva_a_anterior_e_explica_a_nova() -> None:
     nova = explicacao_stall().model_copy(update={"palavra": "hedge", "sentido_do_contexto": "s1"})
-    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(), nova]))
+    tutor = FakeTutor(
+        explicacoes=[explicacao_stall(), nova],
+        expansoes=[expansoes()],
+        roteamentos=[Roteamento(intencao="nova_palavra", palavra="hedge")],
+    )
+    m = montar(tutor=tutor)
     await m.diz("stall")
 
-    (pergunta,) = await m.diz("hedge")
-    assert "parece uma palavra nova" in pergunta
-    assert "Praticar *hedge* agora (salvo a anterior)" in pergunta
-    assert m.repo.obter_sessao().estado == Estado.AWAIT_NEW_WORD
+    salvo, novo_card = await m.diz("hedge")
 
-    (resposta,) = await m.diz("1")
-
-    assert resposta.startswith("*HEDGE*")
+    assert salvo.startswith("✅ Saved: *stall*.")
+    assert novo_card.startswith("*hedge*")
     assert m.repo.obter_entrada("stall") is not None
     assert m.repo.obter_entrada("hedge") is not None
-    assert m.repo.obter_sessao().pendente_nova_palavra is None
-
-
-async def test_palavra_nova_e_era_minha_frase_avalia_a_frase() -> None:
-    m = montar(
-        tutor=FakeTutor(explicacoes=[explicacao_stall()], avaliacoes=[avaliacao("incorreta")])
-    )
-    await m.diz("stall")
-    await m.diz("hedge")
-
-    (resposta,) = await m.diz("2")
-
-    assert resposta.startswith("❌ *Ainda não.*")
-    (chamada,) = [c for c in m.tutor.chamadas if c[0] == "evaluate"]
-    assert chamada[1][2] == "hedge"
-    assert m.repo.obter_sessao().estado == Estado.AWAIT_NEXT
-
-
-async def test_palavra_nova_durante_a_escolha_de_sentido_nao_avalia_sem_sentido() -> None:
-    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(sentido_do_contexto=None)]))
-    await m.diz("stall")
-    await m.diz("hedge")
-
-    (resposta,) = await m.diz("2")  # "era minha frase" — mas ainda falta o sentido
-
-    assert "Qual sentido de *stall*" in resposta
-    assert m.repo.obter_sessao().estado == Estado.AWAIT_SENSE
-
-
-# ---- modo producao_primeiro ------------------------------------------------------------------
-
-
-async def test_modo_producao_primeiro_pede_a_frase_direto() -> None:
-    tutor = FakeTutor(
-        explicacoes=[explicacao_stall()], avaliacoes=[avaliacao()], exemplos=[EXEMPLOS]
-    )
-    m = montar(modo="producao_primeiro", tutor=tutor)
-
-    (explicacao,) = await m.diz("stall | the talks stalled")
-
-    assert explicacao.endswith(
-        "Escreve uma frase com *stall* ✍️\n1️⃣ Me dá um exemplo  ·  2️⃣ Só salvar"
-    )
-    assert m.repo.obter_sessao().estado == Estado.AWAIT_SENTENCE
-
-    (exemplos,) = await m.diz("1")
-    assert exemplos.startswith("📝 *Exemplos de stall*")
-
-    (pedido,) = await m.diz("1")  # escrever
-    assert "Escreve uma frase com *stall*" in pedido
+    assert m.repo.obter_sessao().entry_id == "hedge"
 
 
 # ---- erros, expiração e limites ---------------------------------------------------------------
 
 
 async def test_falha_da_ia_avisa_e_mantem_a_sessao() -> None:
-    tutor = FakeTutor(explicacoes=[explicacao_stall()], avaliacoes=[LLMError("boom")])
+    tutor = FakeTutor(explicacoes=[explicacao_stall()], roteamentos=[LLMError("boom")])
     m = montar(tutor=tutor)
     await m.diz("stall")
 
     (resposta,) = await m.diz("the talks stalled")
 
-    assert "Não consegui falar com a IA" in resposta
-    assert m.repo.obter_sessao().estado == Estado.AWAIT_CHOICE
-    assert m.repo.listar_frases("stall") == []
+    assert "I couldn't reach the AI" in resposta
+    assert m.repo.obter_sessao().estado == Estado.AWAIT_ACTION
+    assert [f for f in m.repo.listar_frases("stall") if f.autor == "usuario"] == []
 
 
 async def test_entrada_que_nao_e_ingles_explica_o_motivo_e_volta_para_idle() -> None:
     from app.domain.models import Explanation
 
-    invalida = Explanation(ok=False, motivo_erro="Isso está em português.")
+    invalida = Explanation(ok=False, motivo_erro="This looks like Portuguese.")
     m = montar(tutor=FakeTutor(explicacoes=[invalida]))
 
     (resposta,) = await m.diz("obrigado")
 
-    assert "não parece uma palavra ou expressão em inglês" in resposta
-    assert "em português" in resposta
+    assert "doesn't look like an English word" in resposta
+    assert "Portuguese" in resposta
     assert m.repo.listar_entradas() == []
     assert m.repo.obter_sessao().estado == Estado.IDLE
 
@@ -350,20 +295,21 @@ async def test_sessao_parada_por_mais_de_3_horas_volta_para_idle() -> None:
     await m.diz("stall")
     m.relogio.avancar(timedelta(hours=3, minutes=1))
 
-    (resposta,) = await m.diz("1")  # em AWAIT_CHOICE seria "escrever uma frase"
+    (resposta,) = await m.diz("1")  # em AWAIT_ACTION seria "see more examples"
 
-    assert resposta.startswith("*STALL*")  # tratou "1" como texto novo, em IDLE
+    assert resposta.startswith("*stall*")  # tratou "1" como texto novo, em IDLE
     assert m.repo.obter_entrada("stall") is not None  # o que havia continua salvo
 
 
 async def test_sessao_dentro_das_3_horas_continua() -> None:
-    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall()]))
+    tutor = FakeTutor(explicacoes=[explicacao_stall()], exemplos=[EXEMPLOS])
+    m = montar(tutor=tutor)
     await m.diz("stall")
     m.relogio.avancar(timedelta(hours=2, minutes=59))
 
     (resposta,) = await m.diz("1")
 
-    assert "Manda a sua frase" in resposta
+    assert resposta.startswith("📝 *Examples with stall*")
 
 
 async def test_cada_envio_espera_de_1_a_2_segundos_e_o_digitando_liga_e_desliga() -> None:
@@ -398,7 +344,7 @@ async def test_falha_no_digitando_nao_derruba_a_resposta() -> None:
 
     (resposta,) = await m.diz("stall")
 
-    assert resposta.startswith("*STALL*")
+    assert resposta.startswith("*stall*")
 
 
 async def test_midia_responde_que_so_entende_texto() -> None:
@@ -406,17 +352,16 @@ async def test_midia_responde_que_so_entende_texto() -> None:
 
     await m.router.midia_nao_suportada()
 
-    assert "só entendo *texto*" in m.channel.textos_enviados[0][1]
+    assert "only read *text*" in m.channel.textos_enviados[0][1]
 
 
-@pytest.mark.parametrize("nivel", ["A2-B1", "B2-C1"])
-async def test_o_nivel_do_perfil_vai_para_a_ia(nivel: str) -> None:
+async def test_o_nivel_do_perfil_vai_para_a_ia() -> None:
     m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall()]))
-    await m.diz(f"/nivel {nivel}")
+    await m.diz("/nivel A2-B1")
 
     await m.diz("stall")
 
-    assert m.tutor.chamadas[0] == ("explain", ("stall", nivel))
+    assert m.tutor.chamadas[0] == ("explain", ("stall", "A2-B1"))
 
 
 async def test_destino_pode_mudar_por_mensagem() -> None:

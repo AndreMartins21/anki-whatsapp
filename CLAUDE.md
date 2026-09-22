@@ -17,7 +17,8 @@ Trabalhe **marco a marco** (seção 9 da spec): pare ao fim de cada um, relate e
 2. Antes de qualquer comando `gcloud`/`ssh` que **crie, altere ou apague** algo: mostre o comando e
    espere aprovação. Leitura pode rodar direto.
 3. Se a spec estiver ambígua ou parecer errada, **pergunte** — não invente.
-4. Todo texto voltado ao usuário fica em `app/messages.py` (PT-BR, curto e amigável).
+4. Todo texto voltado ao usuário fica em `app/messages.py`, **em inglês** (curto e amigável) —
+   só a linha 🇧🇷, com a tradução literal, fica em PT-BR (M9).
 5. Confirme na documentação oficial atual (WAHA, Vertex AI, SDK `google-genai`) nomes de endpoints,
    variáveis e IDs de modelo antes de usá-los. Fixe versões de imagem Docker (nunca `latest`).
 6. Um commit ao fim de cada marco.

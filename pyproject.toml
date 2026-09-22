@@ -73,6 +73,7 @@ ignore = [
 "tests/**" = ["S101", "ARG001", "ARG002"]  # assert e fixtures não usadas são normais em teste
 "sim/**" = ["T20"]                          # o simulador de terminal imprime de propósito
 "sim/tutor.py" = ["ARG002"]                 # implementa o Protocol Tutor: nem todo argumento é usado
+"app/services/fake_llm.py" = ["ARG002"]     # idem: FakeTutor implementa o Protocol Tutor
 "evals/**" = ["T20", "S101"]
 # O travessão de "Inglês – Vocabulário" (U+2013) é exigido pelo formato fixo do Anki (spec 7.3).
 "app/services/anki.py" = ["RUF001", "RUF002"]

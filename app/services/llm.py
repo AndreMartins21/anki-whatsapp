@@ -1,6 +1,6 @@
-"""IA (seção 6 da spec): `LLMProvider` (Gemini no Vertex AI ou Anthropic) e `Tutor`, as quatro
-funções de negócio — `explain`, `evaluate`, `examples`, `expansions` — que não sabem qual
-provedor está por baixo (ADR-0005).
+"""IA (seção 6 da spec): `LLMProvider` (Gemini no Vertex AI ou Anthropic) e `Tutor`, as funções
+de negócio — `explain`, `evaluate`, `examples`, `expansions`, `synonyms`, `route` — que não sabem
+qual provedor está por baixo (ADR-0005).
 """
 
 from __future__ import annotations
@@ -23,8 +23,11 @@ from app.domain.models import (
     Expansoes,
     Explanation,
     NivelUsuario,
+    Roteamento,
     Sense,
     SentidoSalvo,
+    Sinonimos,
+    Synonym,
 )
 from app.services import prompts
 from app.services.prompts import Prompt
@@ -58,14 +61,22 @@ class LLMProvider(Protocol):
 
 
 class Tutor(Protocol):
-    def explain(self, texto: str, nivel: NivelUsuario) -> Explanation: ...
+    def explain(
+        self, texto: str, nivel: NivelUsuario, palavras_do_aluno: Sequence[str] = ()
+    ) -> Explanation: ...
 
     def evaluate(
         self, palavra: str, sentido: SentidoSalvo | Sense, frase: str, nivel: NivelUsuario
     ) -> Evaluation: ...
 
     def examples(
-        self, palavra: str, sentido: SentidoSalvo | Sense, nivel: NivelUsuario, n: int = 3
+        self,
+        palavra: str,
+        sentido: SentidoSalvo | Sense,
+        nivel: NivelUsuario,
+        n: int = 3,
+        ja_mostrados: Sequence[str] = (),
+        palavras_do_aluno: Sequence[str] = (),
     ) -> list[str]: ...
 
     def expansions(
@@ -75,6 +86,19 @@ class Tutor(Protocol):
         nivel: NivelUsuario,
         ja_existentes: Sequence[str],
     ) -> list[Expansion]: ...
+
+    def synonyms(
+        self,
+        palavra: str,
+        sentido: SentidoSalvo | Sense,
+        nivel: NivelUsuario,
+        n: int = 3,
+        ja_mostrados: Sequence[str] = (),
+    ) -> list[Synonym]: ...
+
+    def route(
+        self, palavra: str, sentido: SentidoSalvo | Sense, texto: str, nivel: NivelUsuario
+    ) -> Roteamento: ...
 
 
 class VertexGeminiProvider:
@@ -197,10 +221,12 @@ class LLMTutor:
         self._modelo = modelo
         self._modelo_avaliacao = modelo_avaliacao
 
-    def explain(self, texto: str, nivel: NivelUsuario) -> Explanation:
+    def explain(
+        self, texto: str, nivel: NivelUsuario, palavras_do_aluno: Sequence[str] = ()
+    ) -> Explanation:
         return _gerar_validado(
             self._provider,
-            prompts.prompt_explain(nivel, texto),
+            prompts.prompt_explain(nivel, texto, palavras_do_aluno),
             Explanation,
             modelo=self._modelo,
             temperatura=TEMPERATURA_PRECISA,
@@ -218,7 +244,13 @@ class LLMTutor:
         )
 
     def examples(
-        self, palavra: str, sentido: SentidoSalvo | Sense, nivel: NivelUsuario, n: int = 3
+        self,
+        palavra: str,
+        sentido: SentidoSalvo | Sense,
+        nivel: NivelUsuario,
+        n: int = 3,
+        ja_mostrados: Sequence[str] = (),
+        palavras_do_aluno: Sequence[str] = (),
     ) -> list[str]:
         def quantidade_certa(exemplos: Exemplos) -> None:
             if len(exemplos.frases) != n:
@@ -226,7 +258,7 @@ class LLMTutor:
 
         resultado = _gerar_validado(
             self._provider,
-            prompts.prompt_examples(nivel, palavra, sentido, n),
+            prompts.prompt_examples(nivel, palavra, sentido, n, ja_mostrados, palavras_do_aluno),
             Exemplos,
             modelo=self._modelo,
             temperatura=TEMPERATURA_CRIATIVA,
@@ -260,6 +292,45 @@ class LLMTutor:
             validar=sem_repeticao,
         )
         return resultado.itens
+
+    def synonyms(
+        self,
+        palavra: str,
+        sentido: SentidoSalvo | Sense,
+        nivel: NivelUsuario,
+        n: int = 3,
+        ja_mostrados: Sequence[str] = (),
+    ) -> list[Synonym]:
+        proibidos = {_chave(e) for e in ja_mostrados} | {_chave(palavra)}
+
+        def sem_repeticao(sinonimos: Sinonimos) -> None:
+            vistos: set[str] = set()
+            for item in sinonimos.itens:
+                chave = _chave(item.expressao)
+                if chave in proibidos or chave in vistos:
+                    raise ValueError(f"sinônimo repetido ou já mostrado: {item.expressao!r}")
+                vistos.add(chave)
+
+        resultado = _gerar_validado(
+            self._provider,
+            prompts.prompt_synonyms(nivel, palavra, sentido, n, ja_mostrados),
+            Sinonimos,
+            modelo=self._modelo,
+            temperatura=TEMPERATURA_CRIATIVA,
+            validar=sem_repeticao,
+        )
+        return resultado.itens
+
+    def route(
+        self, palavra: str, sentido: SentidoSalvo | Sense, texto: str, nivel: NivelUsuario
+    ) -> Roteamento:
+        return _gerar_validado(
+            self._provider,
+            prompts.prompt_route(nivel, palavra, sentido, texto),
+            Roteamento,
+            modelo=self._modelo_avaliacao,
+            temperatura=TEMPERATURA_PRECISA,
+        )
 
 
 def criar_provider_vertex(*, projeto: str, localizacao: str) -> VertexGeminiProvider:

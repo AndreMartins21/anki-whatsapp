@@ -14,7 +14,6 @@ from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 NivelUsuario = Literal["A2-B1", "B1-B2", "B2-C1"]
-ModoPratica = Literal["guiado", "producao_primeiro"]
 ProvedorLLM = Literal["vertex_gemini", "anthropic"]
 AmbienteApp = Literal["local", "prod"]
 
@@ -32,7 +31,6 @@ class Settings(BaseSettings):
     allowed_number: str
     bot_number: str
     user_level: NivelUsuario = "B1-B2"
-    practice_mode: ModoPratica = "guiado"
 
     # WAHA (gateway WhatsApp)
     waha_url: str = "http://waha:3000"

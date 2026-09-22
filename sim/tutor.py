@@ -1,7 +1,7 @@
 """SimTutor: respostas de IA fabricadas, para o simulador rodar o ciclo sem rede nem credencial.
 
-Não avalia inglês de verdade — só o bastante para percorrer todos os estados. Use `--real-llm`
-para conversar com o Gemini.
+Não avalia inglês de verdade — só o bastante para percorrer o fluxo (M9). Use `--real-llm` para
+conversar com o Gemini.
 """
 
 from __future__ import annotations
@@ -14,19 +14,23 @@ from app.domain.models import (
     Expansion,
     Explanation,
     NivelUsuario,
+    Roteamento,
     Sense,
     SentidoSalvo,
+    Synonym,
 )
 
-_NOTA_DO_SIMULADOR = "Resposta simulada — use --real-llm para uma avaliação de verdade."
+_NOTA_DO_SIMULADOR = "Simulated response — use --real-llm for real feedback."
 
 
 class SimTutor:
-    def explain(self, texto: str, nivel: NivelUsuario) -> Explanation:
+    def explain(
+        self, texto: str, nivel: NivelUsuario, palavras_do_aluno: Sequence[str] = ()
+    ) -> Explanation:
         palavra_bruta, _, frase = texto.partition("|")
         palavra = palavra_bruta.strip().lower()
         if not palavra:
-            return Explanation(ok=False, motivo_erro="Manda uma palavra em inglês.")
+            return Explanation(ok=False, motivo_erro="Send me a word in English.")
 
         frase = frase.strip()
         if palavra == "stall":
@@ -35,34 +39,31 @@ class SimTutor:
                     id="s1",
                     traducao="travar, emperrar",
                     definicao="to stop making progress",
-                    exemplo_curto="the talks stalled",
+                    exemplo="The [[talks]] stalled last week.",
                 ),
                 Sense(
                     id="s2",
                     traducao="enrolar",
                     definicao="to delay on purpose",
-                    exemplo_curto="stop stalling and answer me",
+                    exemplo="Stop [[stalling]] and answer me.",
                 ),
             ]
-            # Com frase de contexto o sentido já está definido; sem ela, o bot pergunta.
-            sentido_do_contexto = "s1" if frase else None
         else:
             sentidos = [
                 Sense(
                     id="s1",
                     traducao=f"significado de {palavra} (simulado)",
                     definicao=f"the meaning of {palavra}",
-                    exemplo_curto=f"an example with {palavra}",
+                    exemplo=f"This is an example with [[{palavra}]].",
                 )
             ]
-            sentido_do_contexto = None
         return Explanation(
             ok=True,
             palavra=palavra,
-            classe="verbo",
+            classe="verb",
             cefr_estimado="B2",
             sentidos=sentidos,
-            sentido_do_contexto=sentido_do_contexto,
+            sentido_do_contexto=sentidos[0].id,
             frase_contexto=(marcar_alvo(frase, palavra) or frase) if frase else None,
             nota=_NOTA_DO_SIMULADOR,
             tags=["trabalho"],
@@ -82,12 +83,25 @@ class SimTutor:
         )
 
     def examples(
-        self, palavra: str, sentido: SentidoSalvo | Sense, nivel: NivelUsuario, n: int = 3
+        self,
+        palavra: str,
+        sentido: SentidoSalvo | Sense,
+        nivel: NivelUsuario,
+        n: int = 3,
+        ja_mostrados: Sequence[str] = (),
+        palavras_do_aluno: Sequence[str] = (),
     ) -> list[str]:
         modelos = [
             "We had to [[{p}]] before the deadline.",
             "She didn't want to [[{p}]] in front of the client.",
             "It's easy to [[{p}]] when nobody is watching.",
+            "They tend to [[{p}]] every Monday.",
+            "I try not to [[{p}]] during meetings.",
+            "He might [[{p}]] if we push too hard.",
+            "We rarely [[{p}]] on short projects.",
+            "Could you [[{p}]] for a moment?",
+            "It's normal to [[{p}]] under pressure.",
+            "Let's not [[{p}]] this time.",
         ]
         return [modelo.format(p=palavra) for modelo in modelos[:n]]
 
@@ -106,3 +120,48 @@ class SimTutor:
         ]
         existentes = {e.lower() for e in ja_existentes}
         return [c for c in candidatas if c.expressao.lower() not in existentes]
+
+    def synonyms(
+        self,
+        palavra: str,
+        sentido: SentidoSalvo | Sense,
+        nivel: NivelUsuario,
+        n: int = 3,
+        ja_mostrados: Sequence[str] = (),
+    ) -> list[Synonym]:
+        candidatos = [
+            Synonym(
+                expressao=f"{palavra}-synonym-{i}",
+                significado=f"similar to {palavra}",
+                exemplo=f"This is like [[{palavra}-synonym-{i}]].",
+            )
+            for i in range(1, 6)
+        ]
+        vistos = {v.lower() for v in ja_mostrados}
+        disponiveis = [c for c in candidatos if c.expressao.lower() not in vistos]
+        return disponiveis[:n]
+
+    def route(
+        self, palavra: str, sentido: SentidoSalvo | Sense, texto: str, nivel: NivelUsuario
+    ) -> Roteamento:
+        normalizado = texto.strip().lower()
+        if normalizado in {"see more examples", "examples"}:
+            return Roteamento(intencao="exemplos")
+        if normalizado in {"check synonyms", "synonyms"}:
+            return Roteamento(intencao="sinonimos")
+        if normalizado in {"just save", "save"}:
+            return Roteamento(intencao="salvar")
+        if contem_palavra_alvo(texto, palavra):
+            usa = True
+            return Roteamento(
+                intencao="frase",
+                usa_palavra_alvo=usa,
+                sentido_correto=usa,
+                veredito="correta",
+                correcoes=[],
+                versao_natural=marcar_alvo(texto, palavra) or f"[[{palavra}]]",
+                explicacao=_NOTA_DO_SIMULADOR,
+            )
+        if len(normalizado.split()) <= 4:
+            return Roteamento(intencao="nova_palavra", palavra=texto.strip())
+        return Roteamento(intencao="pedido", resposta=_NOTA_DO_SIMULADOR)

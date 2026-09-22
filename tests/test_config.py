@@ -45,7 +45,6 @@ def test_valores_padrao_seguem_a_secao_4_da_spec(monkeypatch: pytest.MonkeyPatch
 
     assert settings.app_env == "local"
     assert settings.user_level == "B1-B2"
-    assert settings.practice_mode == "guiado"
     assert settings.llm_provider == "vertex_gemini"
     assert settings.vertex_location == "global"
     assert settings.waha_url == "http://waha:3000"

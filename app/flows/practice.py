@@ -1,35 +1,42 @@
-"""Prática: pedir frase, exemplos, avaliação e conclusão (que oferece as expansões)."""
+"""Prática (M9): exemplos, gravar uma frase já avaliada (o roteamento livre entrega a avaliação
+numa única chamada de IA) e concluir a palavra (Case D)."""
 
 from __future__ import annotations
 
 from datetime import timedelta
 
 from app import messages
-from app.domain.models import Entry, Profile, Sentence, Sessao
+from app.domain.models import Entry, Evaluation, Profile, Sentence, Sessao
 from app.flows import expansion
 from app.flows.base import Deps, bloq
 
 NUMERO_DE_EXEMPLOS = 3
 
 
-async def _entrada_atual(d: Deps, sessao: Sessao) -> Entry:
+async def entrada_atual(d: Deps, sessao: Sessao) -> Entry:
     entrada = await bloq(d.repo.obter_entrada, sessao.entry_id) if sessao.entry_id else None
     if entrada is None:
         raise RuntimeError("sessão sem entrada em andamento")
     return entrada
 
 
-async def pedir_frase(d: Deps, sessao: Sessao, perfil: Profile) -> Sessao:
-    entrada = await _entrada_atual(d, sessao)
-    await d.conversa.enviar(messages.pedido_de_frase(entrada.palavra, perfil.modo))
-    return sessao
-
-
-async def gerar_exemplos(d: Deps, sessao: Sessao, perfil: Profile) -> Sessao:
-    entrada = await _entrada_atual(d, sessao)
+async def gerar_exemplos(
+    d: Deps, sessao: Sessao, perfil: Profile, n: int = NUMERO_DE_EXEMPLOS
+) -> Sessao:
+    entrada = await entrada_atual(d, sessao)
+    ja_mostrados = [
+        f.texto for f in await bloq(d.repo.listar_frases, entrada.slug) if f.autor == "bot"
+    ]
+    palavras_do_aluno = [e.palavra for e in await bloq(d.repo.listar_entradas)]
     async with d.conversa.digitando():
         frases = await bloq(
-            d.tutor.examples, entrada.palavra, entrada.sentido, perfil.nivel, NUMERO_DE_EXEMPLOS
+            d.tutor.examples,
+            entrada.palavra,
+            entrada.sentido,
+            perfil.nivel,
+            n,
+            ja_mostrados,
+            palavras_do_aluno,
         )
 
     agora = d.agora()
@@ -41,17 +48,19 @@ async def gerar_exemplos(d: Deps, sessao: Sessao, perfil: Profile) -> Sessao:
             entrada.slug,
             Sentence(texto=frase, autor="bot", criado_em=criada_em),
         )
-    await d.conversa.enviar(messages.exemplos(entrada.palavra, entrada.sentido.traducao, frases))
+    await d.conversa.enviar(
+        messages.exemplos(
+            entrada.palavra,
+            entrada.sentido.traducao,
+            frases,
+            ja_viu_sinonimos=bool(sessao.sinonimos_mostrados),
+        )
+    )
     return sessao
 
 
-async def avaliar(d: Deps, sessao: Sessao, perfil: Profile, frase: str) -> Sessao:
-    entrada = await _entrada_atual(d, sessao)
-    async with d.conversa.digitando():
-        avaliacao = await bloq(
-            d.tutor.evaluate, entrada.palavra, entrada.sentido, frase, perfil.nivel
-        )
-
+async def avaliar_frase(d: Deps, sessao: Sessao, frase: str, avaliacao: Evaluation) -> Sessao:
+    entrada = await entrada_atual(d, sessao)
     agora = d.agora()
     await bloq(
         d.repo.adicionar_frase,
@@ -71,14 +80,21 @@ async def avaliar(d: Deps, sessao: Sessao, perfil: Profile, frase: str) -> Sessa
         d.repo.salvar_entrada,
         entrada.model_copy(update={"status": "praticada", "atualizado_em": agora}),
     )
-    await d.conversa.enviar(messages.avaliacao(avaliacao, entrada.sentido.traducao))
+    await d.conversa.enviar(
+        messages.avaliacao(
+            avaliacao,
+            entrada.sentido.traducao,
+            entrada.palavra,
+            ja_viu_sinonimos=bool(sessao.sinonimos_mostrados),
+        )
+    )
     return sessao
 
 
-async def concluir(d: Deps, sessao: Sessao, perfil: Profile, *, oferecer_expansoes: bool) -> Sessao:
-    """Fecha a palavra. Tudo já está no banco (a entrada e as frases são gravadas conforme o
-    aluno avança); aqui só se confere o status e, se pedido, oferecem-se as expansões."""
-    entrada = await _entrada_atual(d, sessao)
+async def concluir(d: Deps, sessao: Sessao, perfil: Profile) -> Sessao:
+    """Fecha a palavra (Case D): confere o status, sugere expressões relacionadas e volta a IDLE.
+    Tudo já está no banco (a entrada e as frases são gravadas conforme o aluno avança)."""
+    entrada = await entrada_atual(d, sessao)
     frases = await bloq(d.repo.listar_frases, entrada.slug)
     praticada = any(f.autor == "usuario" and f.veredito is not None for f in frases)
     status = "praticada" if praticada else "nova"
@@ -87,6 +103,6 @@ async def concluir(d: Deps, sessao: Sessao, perfil: Profile, *, oferecer_expanso
             d.repo.salvar_entrada,
             entrada.model_copy(update={"status": status, "atualizado_em": d.agora()}),
         )
-    if not oferecer_expansoes:
-        return d.sessao_vazia()
-    return await expansion.oferecer(d, sessao, perfil, entrada)
+    sugestoes = await expansion.sugestoes(d, entrada, perfil)
+    await d.conversa.enviar(messages.salvo(entrada.palavra, sugestoes))
+    return d.sessao_vazia()

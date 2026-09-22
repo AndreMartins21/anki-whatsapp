@@ -5,17 +5,12 @@ from __future__ import annotations
 import pytest
 
 from app.domain.choices import (
-    MENU_APOS_EXEMPLOS,
-    MENU_ESCOLHA_GUIADO,
-    MENU_ESCOLHA_PRODUCAO,
-    MENU_NOVA_PALAVRA,
-    MENU_PRATICAR_EXPANSAO,
-    MENU_PROXIMO,
+    MENU_ACOES,
     contem_palavra_alvo,
     eh_pular,
     marcar_alvo,
+    normalizar,
     parse_escolha,
-    parse_lista_numeros,
     parse_numero,
     so_numeros,
 )
@@ -28,64 +23,34 @@ from app.domain.choices import (
         ("1.", 1),
         ("1)", 1),
         (" 2 ", 2),
-        ("um", 1),
-        ("Um", 1),
-        ("três", 3),
         ("1️⃣", 1),
-        ("escrever", 1),
-        ("Escrever uma frase", 1),
-        ("ver exemplos", 2),
-        ("só salvar", 3),
-        ("so salvar", 3),
+        ("see more examples", 1),
+        ("See More Examples", 1),
+        ("examples", 1),
+        ("check synonyms", 2),
+        ("synonyms", 2),
+        ("see more synonyms", 2),
+        ("just save", 3),
+        ("save", 3),
+        ("done", 3),
         ("4", None),
         ("stall", None),
         ("", None),
     ],
 )
-def test_menu_guiado_aceita_numero_e_variacoes(texto: str, esperado: int | None) -> None:
-    assert parse_escolha(texto, MENU_ESCOLHA_GUIADO) == esperado
-
-
-def test_mesma_palavra_muda_de_sentido_conforme_o_menu() -> None:
-    assert parse_escolha("escrever", MENU_ESCOLHA_GUIADO) == 1
-    assert parse_escolha("outra frase", MENU_PROXIMO) == 1
-    assert parse_escolha("concluir", MENU_PROXIMO) == 3
-    assert parse_escolha("concluir", MENU_APOS_EXEMPLOS) == 2
-    assert parse_escolha("me dá um exemplo", MENU_ESCOLHA_PRODUCAO) == 1
-    assert parse_escolha("praticar agora", MENU_NOVA_PALAVRA) == 1
-    assert parse_escolha("era minha frase", MENU_NOVA_PALAVRA) == 2
-    assert parse_escolha("depois", MENU_PRATICAR_EXPANSAO) == 2
+def test_menu_acoes_aceita_numero_e_variacoes(texto: str, esperado: int | None) -> None:
+    assert parse_escolha(texto, MENU_ACOES) == esperado
 
 
 @pytest.mark.parametrize(
     ("texto", "maximo", "esperado"),
-    [("1", 3, 1), ("3", 3, 3), ("dois", 3, 2), ("4", 3, None), ("0", 3, None), ("x", 3, None)],
+    [("1", 3, 1), ("3", 3, 3), ("4", 3, None), ("0", 3, None), ("x", 3, None)],
 )
 def test_parse_numero_respeita_o_maximo(texto: str, maximo: int, esperado: int | None) -> None:
     assert parse_numero(texto, maximo) == esperado
 
 
-@pytest.mark.parametrize(
-    ("texto", "esperado"),
-    [
-        ("1,3", [1, 3]),
-        ("1, 3", [1, 3]),
-        ("1 3", [1, 3]),
-        ("1 e 3", [1, 3]),
-        ("3,1", [3, 1]),
-        ("2", [2]),
-        ("1,1,3", [1, 3]),
-        ("1,9", None),  # fora do intervalo
-        ("1,x", None),
-        ("", None),
-        ("0", None),
-    ],
-)
-def test_parse_lista_numeros(texto: str, esperado: list[int] | None) -> None:
-    assert parse_lista_numeros(texto, maximo=5) == esperado
-
-
-@pytest.mark.parametrize("texto", ["0", "pular", "Pular", "nenhuma", "nenhum"])
+@pytest.mark.parametrize("texto", ["0", "stop", "Stop", "quit", "exit", "leave"])
 def test_eh_pular(texto: str) -> None:
     assert eh_pular(texto) is True
 
@@ -97,9 +62,14 @@ def test_eh_pular_rejeita_o_resto() -> None:
 
 def test_so_numeros() -> None:
     assert so_numeros("7") is True
-    assert so_numeros("1, 3") is True
+    assert so_numeros("1 and 3") is True
     assert so_numeros("stall") is False
     assert so_numeros("") is False
+
+
+def test_normalizar_tira_acento_pontuacao_e_maiuscula() -> None:
+    assert normalizar("Ver Exemplos!") == "ver exemplos"
+    assert normalizar("  três   ") == "tres"
 
 
 @pytest.mark.parametrize(

@@ -1,5 +1,6 @@
 """Modelos de domínio (seções 6 e 7.1 da spec): o que entra no banco ou na sessão, e os
-schemas de saída do LLM (`Explanation`, `Evaluation`, `Exemplos`, `Expansoes`)."""
+schemas de saída do LLM (`Explanation`, `Evaluation`, `Exemplos`, `Expansoes`, `Sinonimos`,
+`Roteamento`)."""
 
 from __future__ import annotations
 
@@ -12,12 +13,14 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 NivelUsuario = Literal["A2-B1", "B1-B2", "B2-C1"]
-ModoPratica = Literal["guiado", "producao_primeiro"]
 Cefr = Literal["A2", "B1", "B2", "C1", "C2"]
 Tag = Literal["trabalho", "phrasal_verb", "expressao"]
 Veredito = Literal["correta", "correta_pouco_natural", "quase", "incorreta"]
 StatusEntrada = Literal["nova", "praticada"]
 TipoExpansao = Literal["colocacao", "familia", "phrasal_verb", "sinonimo", "expressao"]
+Intencao = Literal[
+    "frase", "exemplos", "sinonimos", "salvar", "nova_palavra", "pedido", "fora_do_escopo"
+]
 
 
 def agora_utc() -> datetime:
@@ -25,25 +28,29 @@ def agora_utc() -> datetime:
 
 
 class Estado(StrEnum):
-    """Estados da conversa (seção 5.1). `AWAIT_NEW_WORD` e `AWAIT_EXPANSION_PRACTICE` são as
-    duas perguntas de 1/2 que a spec descreve no texto mas não nomeia no diagrama."""
+    """Estados da conversa (seção 5.1, M9): só há uma palavra em foco por vez (`IDLE`) e um
+    único menu de ações enquanto ela está em foco (`AWAIT_ACTION`)."""
 
     IDLE = "IDLE"
-    AWAIT_SENSE = "AWAIT_SENSE"
-    AWAIT_CHOICE = "AWAIT_CHOICE"
-    AWAIT_SENTENCE = "AWAIT_SENTENCE"
-    AWAIT_NEXT = "AWAIT_NEXT"
-    AWAIT_AFTER_EXAMPLES = "AWAIT_AFTER_EXAMPLES"
-    AWAIT_NEW_WORD = "AWAIT_NEW_WORD"
-    OFFER_EXPANSION = "OFFER_EXPANSION"
-    AWAIT_EXPANSION_PRACTICE = "AWAIT_EXPANSION_PRACTICE"
+    AWAIT_ACTION = "AWAIT_ACTION"
+
+
+def _exige_marca(frase: str) -> str:
+    if "[[" not in frase or "]]" not in frase:
+        raise ValueError(f"a frase deve marcar a palavra-alvo entre [[ ]]: {frase!r}")
+    return frase
 
 
 class Sense(BaseModel):
     id: str
     traducao: str
     definicao: str
-    exemplo_curto: str
+    exemplo: str  # frase completa, com o alvo entre [[ ]]
+
+    @model_validator(mode="after")
+    def _exemplo_marcado(self) -> Sense:
+        _exige_marca(self.exemplo)
+        return self
 
 
 class Expansion(BaseModel):
@@ -59,10 +66,10 @@ class Explanation(BaseModel):
     ok: bool
     motivo_erro: str | None = None
     palavra: str = ""  # forma base, minúsculas
-    classe: str = ""  # PT-BR
+    classe: str = ""  # em inglês (verb, noun, adjective, phrasal verb...)
     cefr_estimado: Cefr = "B1"
     sentidos: list[Sense] = Field(default_factory=list, max_length=4)  # só os comuns
-    sentido_do_contexto: str | None = None  # id do sentido, se o contexto (ou a unicidade) o define
+    sentido_do_contexto: str | None = None  # id do sentido; a IA sempre escolhe um (M9)
     frase_contexto: str | None = None  # frase do usuário corrigida, alvo entre [[ ]]
     nota: str = ""
     tags: list[Tag] = Field(default_factory=list)
@@ -86,9 +93,9 @@ class Evaluation(BaseModel):
     usa_palavra_alvo: bool  # considera flexões
     sentido_correto: bool
     veredito: Veredito
-    correcoes: list[str]  # "errado → certo"
+    correcoes: list[str]  # "wrong → right"
     versao_natural: str  # alvo entre [[ ]]
-    explicacao: str  # PT-BR, máx. 4 linhas
+    explicacao: str  # em inglês, máx. 4 linhas
 
     @model_validator(mode="after")
     def _explicacao_curta(self) -> Evaluation:
@@ -125,6 +132,64 @@ class Expansoes(BaseModel):
                     f"`expressao` deve ser uma expressão curta, não uma frase: {item.expressao!r}"
                 )
         return self
+
+
+class Synonym(BaseModel):
+    expressao: str
+    significado: str  # em inglês
+    exemplo: str  # frase com o SINÔNIMO entre [[ ]]
+
+    @model_validator(mode="after")
+    def _exemplo_marcado(self) -> Synonym:
+        _exige_marca(self.exemplo)
+        return self
+
+
+class Sinonimos(BaseModel):
+    """Saída de `synonyms`: de 1 a 10 sinônimos (a quantidade é pedida pelo aluno)."""
+
+    itens: list[Synonym] = Field(min_length=1, max_length=10)
+
+
+class Roteamento(BaseModel):
+    """Saída de `route` (M9): classifica o texto livre do aluno e já devolve a resposta.
+
+    Achatado de propósito — só primitivos, enums e `list[str]` — para caber bem no
+    `response_schema` do Gemini (sem `anyOf`/objeto aninhado opcional). Os campos não usados
+    pela intenção escolhida ficam com o padrão, como em `Explanation` com `ok=False`.
+    """
+
+    intencao: Intencao
+    quantidade: int = 3  # exemplos | sinonimos (o fluxo prende entre 1 e 10)
+    palavra: str = ""  # nova_palavra
+    resposta: str = ""  # pedido | fora_do_escopo, em inglês
+    # frase: os campos abaixo formam a mesma avaliação de `evaluate`.
+    usa_palavra_alvo: bool = False
+    sentido_correto: bool = False
+    veredito: Veredito = "correta"
+    correcoes: list[str] = Field(default_factory=list)
+    versao_natural: str = ""
+    explicacao: str = ""
+
+    @model_validator(mode="after")
+    def _campo_da_intencao_preenchido(self) -> Roteamento:
+        if self.intencao == "frase" and not self.versao_natural.strip():
+            raise ValueError("intenção `frase` exige `versao_natural`")
+        if self.intencao == "nova_palavra" and not self.palavra.strip():
+            raise ValueError("intenção `nova_palavra` exige `palavra`")
+        if self.intencao in ("pedido", "fora_do_escopo") and not self.resposta.strip():
+            raise ValueError(f"intenção `{self.intencao}` exige `resposta`")
+        return self
+
+    def como_avaliacao(self) -> Evaluation:
+        return Evaluation(
+            usa_palavra_alvo=self.usa_palavra_alvo,
+            sentido_correto=self.sentido_correto,
+            veredito=self.veredito,
+            correcoes=self.correcoes,
+            versao_natural=self.versao_natural,
+            explicacao=self.explicacao,
+        )
 
 
 class SentidoSalvo(BaseModel):
@@ -170,17 +235,15 @@ class Profile(BaseModel):
     """Documento `profile/me`."""
 
     nivel: NivelUsuario
-    modo: ModoPratica
     criado_em: datetime = Field(default_factory=agora_utc)
 
 
 class Sessao(BaseModel):
     """Documento `session/current`.
 
-    Além dos campos da spec, guarda o que o usuário está escolhendo em menus numerados: a
-    explicação inteira enquanto ele escolhe o sentido (`explicacao_pendente`), as expansões
-    sugeridas (`expansoes_sugeridas`) e as entradas criadas a partir delas (`expansoes_criadas`).
-    Sem isso, "1,3" numa mensagem não teria como apontar para nada na mensagem seguinte.
+    Além dos campos da spec, guarda os sinônimos já mostrados nesta palavra
+    (`sinonimos_mostrados`), para "see more synonyms" não repetir e para o menu saber trocar o
+    rótulo da opção 2.
     """
 
     model_config = ConfigDict(use_enum_values=True)
@@ -188,10 +251,7 @@ class Sessao(BaseModel):
     estado: Estado = Estado.IDLE
     entry_id: str | None = None
     sentido_id: str | None = None
-    pendente_nova_palavra: str | None = None
-    explicacao_pendente: Explanation | None = None
-    expansoes_sugeridas: list[Expansion] = Field(default_factory=list)
-    expansoes_criadas: list[str] = Field(default_factory=list)
+    sinonimos_mostrados: list[str] = Field(default_factory=list)
     atualizado_em: datetime = Field(default_factory=agora_utc)
 
 

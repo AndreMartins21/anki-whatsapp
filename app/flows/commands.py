@@ -1,4 +1,8 @@
-"""Comandos (seção 5.2): /ajuda /lista /pendentes /praticar /exportar /apagar /nivel /cancelar /status."""
+"""Comandos (seção 5.2): /help /list /pending /practice /export /delete /level /cancel /status.
+
+Cada comando aceita o nome em inglês e o apelido em PT-BR que a spec sempre teve (`/praticar`,
+`/lista`...), já que o Case D de salvar ("Practice it any time with /praticar stall") cita os
+nomes em português."""
 
 from __future__ import annotations
 
@@ -17,6 +21,16 @@ from app.services.anki import ResultadoExportacao
 logger = logging.getLogger(__name__)
 
 _NIVEIS: tuple[str, ...] = get_args(NivelUsuario)
+
+_AJUDA = {"ajuda", "help"}
+_LISTA = {"lista", "list"}
+_PENDENTES = {"pendentes", "pending"}
+_PRATICAR = {"praticar", "practice"}
+_EXPORTAR = {"exportar", "export"}
+_APAGAR = {"apagar", "delete"}
+_NIVEL = {"nivel", "level"}
+_CANCELAR = {"cancelar", "cancel"}
+_STATUS = {"status"}
 
 
 class Exportador(Protocol):
@@ -43,28 +57,28 @@ async def executar(
     argumento = partes[1].strip() if len(partes) > 1 else ""
     conversa = d.conversa
 
-    if comando == "ajuda":
+    if comando in _AJUDA:
         await conversa.enviar(messages.AJUDA)
-    elif comando == "lista":
+    elif comando in _LISTA:
         entradas = await bloq(d.repo.listar_entradas)
         await conversa.enviar(messages.lista(entradas) if entradas else messages.SEM_ENTRADAS)
-    elif comando == "pendentes":
+    elif comando in _PENDENTES:
         pendentes = await bloq(d.repo.listar_entradas, "nova")
         await conversa.enviar(
             messages.pendentes(pendentes) if pendentes else messages.SEM_PENDENTES
         )
-    elif comando == "praticar":
+    elif comando in _PRATICAR:
         return await _praticar(d, sessao, perfil, argumento)
-    elif comando == "exportar":
+    elif comando in _EXPORTAR:
         await _exportar(d, argumento, exportador)
-    elif comando == "apagar":
+    elif comando in _APAGAR:
         return await _apagar(d, sessao, argumento)
-    elif comando == "nivel":
+    elif comando in _NIVEL:
         await _nivel(d, perfil, argumento)
-    elif comando == "cancelar":
+    elif comando in _CANCELAR:
         await conversa.enviar(messages.CANCELADO)
         return d.sessao_vazia()
-    elif comando == "status":
+    elif comando in _STATUS:
         await _status(d, status_da_sessao)
     else:
         await conversa.enviar(messages.COMANDO_DESCONHECIDO)
@@ -99,7 +113,7 @@ async def _exportar(d: Deps, argumento: str, exportador: Exportador | None) -> N
         await d.conversa.enviar(messages.EXPORTACAO_INDISPONIVEL)
         return
     async with d.conversa.digitando():
-        resultado = await bloq(exportador.exportar, tudo=normalizar(argumento) == "tudo")
+        resultado = await bloq(exportador.exportar, tudo=normalizar(argumento) in {"tudo", "all"})
     if resultado is None:
         await d.conversa.enviar(messages.SEM_EXPORTAVEIS)
         return
@@ -137,10 +151,10 @@ async def _nivel(d: Deps, perfil: Profile, argumento: str) -> None:
 
 async def _status(d: Deps, status_da_sessao: StatusDaSessao | None) -> None:
     try:
-        sessao_waha = await status_da_sessao() if status_da_sessao else "desconhecido"
+        sessao_waha = await status_da_sessao() if status_da_sessao else "unknown"
     except Exception:  # o /status existe justamente para funcionar quando algo está quebrado
         logger.warning("não consegui consultar a sessão do WAHA", exc_info=True)
-        sessao_waha = "indisponível"
+        sessao_waha = "unavailable"
     entradas = await bloq(d.repo.listar_entradas)
     pendentes = sum(1 for e in entradas if e.status == "nova")
     await d.conversa.enviar(messages.status(sessao_waha, len(entradas), pendentes))

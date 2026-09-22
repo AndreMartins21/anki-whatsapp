@@ -28,7 +28,6 @@ chmod 700 "$TMP"
   printf 'ALLOWED_NUMBER=%s\n' "$ALLOWED_NUMBER"
   printf 'BOT_NUMBER=%s\n' "$BOT_NUMBER"
   printf 'USER_LEVEL=%s\n' "${USER_LEVEL:-B1-B2}"
-  printf 'PRACTICE_MODE=%s\n' "${PRACTICE_MODE:-guiado}"
   printf 'WAHA_URL=http://waha:3000\n'
   printf 'WAHA_SESSION=default\n'
   printf 'LLM_PROVIDER=%s\n' "$LLM_PROVIDER"

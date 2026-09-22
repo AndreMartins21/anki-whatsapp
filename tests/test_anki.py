@@ -59,10 +59,10 @@ def _repositorio() -> MemoryRepository:
     repo.criar_entrada(
         _entrada(
             "stall",
-            classe="verbo",
+            classe="verb",
             traducao="travar, emperrar",
             definicao="to stop making progress",
-            nota='"the car stalled" = o carro morreu',
+            nota='"the car stalled" = the car died',
             tags=["trabalho"],
             minutos=0,
         )
@@ -90,7 +90,7 @@ def _repositorio() -> MemoryRepository:
     repo.criar_entrada(
         _entrada(
             "done",
-            classe="adjetivo",
+            classe="adjective",
             traducao="pronto",
             definicao="finished",
             minutos=5,
@@ -122,8 +122,8 @@ def _repositorio() -> MemoryRepository:
     repo.criar_entrada(
         _entrada(
             "hedge",
-            classe="verbo",
-            traducao="se proteger",
+            classe="verb",
+            traducao="protect yourself",
             definicao="to protect yourself & reduce risk",
             nota="Line1\nLine2\tx",
             minutos=20,
@@ -132,7 +132,7 @@ def _repositorio() -> MemoryRepository:
     repo.adicionar_frase("hedge", _frase("We should [[hedge]] our <bets>.", 21, bot=True))
 
     repo.criar_entrada(
-        _entrada("orphan", classe="verbo", traducao="órfã", definicao="sem frase", minutos=30)
+        _entrada("orphan", classe="verb", traducao="orphan", definicao="no sentence", minutos=30)
     )
     return repo
 
@@ -211,7 +211,7 @@ def test_arquivo_e_utf8_sem_bom_e_termina_em_quebra_de_linha() -> None:
 
 
 def test_frase_do_cartao_prefere_a_correta_do_usuario_e_marca_o_alvo() -> None:
-    entrada = _entrada("stall", classe="verbo", traducao="t", definicao="d", minutos=0)
+    entrada = _entrada("stall", classe="verb", traducao="t", definicao="d", minutos=0)
     frases = [
         _frase("bad one", 1, veredito="quase", versao_natural="A [[stall]]."),
         _frase("The deal stalled.", 2, veredito="correta", versao_natural="The deal [[stalled]]."),
@@ -221,7 +221,7 @@ def test_frase_do_cartao_prefere_a_correta_do_usuario_e_marca_o_alvo() -> None:
 
 
 def test_sem_correta_usa_a_versao_natural_mais_recente() -> None:
-    entrada = _entrada("stall", classe="verbo", traducao="t", definicao="d", minutos=0)
+    entrada = _entrada("stall", classe="verb", traducao="t", definicao="d", minutos=0)
     frases = [
         _frase("a", 1, veredito="quase", versao_natural="Old [[stall]]."),
         _frase("b", 2, veredito="incorreta", versao_natural="New [[stall]]."),
@@ -231,7 +231,7 @@ def test_sem_correta_usa_a_versao_natural_mais_recente() -> None:
 
 
 def test_sem_frase_do_usuario_usa_o_primeiro_exemplo_do_bot() -> None:
-    entrada = _entrada("stall", classe="verbo", traducao="t", definicao="d", minutos=0)
+    entrada = _entrada("stall", classe="verb", traducao="t", definicao="d", minutos=0)
     frases = [
         _frase("First [[stall]].", 1, bot=True),
         _frase("Second [[stall]].", 2, bot=True),
@@ -241,13 +241,13 @@ def test_sem_frase_do_usuario_usa_o_primeiro_exemplo_do_bot() -> None:
 
 
 def test_sem_nenhuma_frase_devolve_none() -> None:
-    entrada = _entrada("stall", classe="verbo", traducao="t", definicao="d", minutos=0)
+    entrada = _entrada("stall", classe="verb", traducao="t", definicao="d", minutos=0)
 
     assert escolher_frase(entrada, []) is None
 
 
 def test_frase_correta_sem_o_alvo_reconhecivel_cai_na_versao_natural() -> None:
-    entrada = _entrada("give", classe="verbo", traducao="t", definicao="d", minutos=0)
+    entrada = _entrada("give", classe="verb", traducao="t", definicao="d", minutos=0)
     frases = [_frase("He gave it.", 1, veredito="correta", versao_natural="He [[gave]] it.")]
 
     assert escolher_frase(entrada, frases) == "He [[gave]] it."

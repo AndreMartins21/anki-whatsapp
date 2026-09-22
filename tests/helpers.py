@@ -1,5 +1,5 @@
 """Montagem compartilhada dos testes de fluxo: roteador com fakes, relógio controlável e as
-respostas de IA do ciclo "stall" da spec."""
+respostas de IA do ciclo "stall" (M9: interface em inglês, menu único)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from app.domain.models import (
     Evaluation,
     Expansion,
     Explanation,
-    ModoPratica,
     Sense,
 )
 from app.flows.commands import Exportador, StatusDaSessao
@@ -27,28 +26,26 @@ S1 = Sense(
     id="s1",
     traducao="travar, emperrar",
     definicao="to stop making progress",
-    exemplo_curto="the talks stalled",
+    exemplo="The [[talks]] stalled.",
 )
 S2 = Sense(
     id="s2",
     traducao="enrolar",
     definicao="to delay on purpose",
-    exemplo_curto="stop stalling and answer me",
+    exemplo="Stop [[stalling]] and answer me.",
 )
 
 
-def explicacao_stall(
-    *, sentido_do_contexto: str | None = "s1", dois_sentidos: bool = True
-) -> Explanation:
+def explicacao_stall(*, sentido_do_contexto: str = "s1", dois_sentidos: bool = True) -> Explanation:
     return Explanation(
         ok=True,
         palavra="stall",
-        classe="verbo",
+        classe="verb",
         cefr_estimado="B2",
         sentidos=[S1, S2] if dois_sentidos else [S1],
         sentido_do_contexto=sentido_do_contexto,
         frase_contexto="The talks [[stalled]].",
-        nota='"the car stalled" = o carro morreu',
+        nota='"the car stalled" = the car died',
         tags=["trabalho"],
     )
 
@@ -60,7 +57,7 @@ def avaliacao(veredito: str = "quase") -> Evaluation:
         veredito=veredito,
         correcoes=["didn't sent → didn't send"],
         versao_natural="The project [[stalled]] because the client didn't send the documents.",
-        explicacao='Depois de "didn\'t", o verbo fica na forma base.',
+        explicacao='After "didn\'t", the verb stays in the base form.',
     )
 
 
@@ -103,7 +100,6 @@ class Montagem:
 
 def montar(
     *,
-    modo: ModoPratica = "guiado",
     tutor: FakeTutor | None = None,
     exportador: Exportador | None = None,
     status_da_sessao: StatusDaSessao | None = None,
@@ -123,7 +119,6 @@ def montar(
         tutor=tutor,
         conversa=conversa,
         nivel_padrao="B1-B2",
-        modo=modo,
         agora=relogio.agora,
         status_da_sessao=status_da_sessao,
         exportador=exportador,

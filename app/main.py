@@ -90,7 +90,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         tutor=criar_tutor(settings),
         conversa=Conversa(canal, f"{settings.allowed_number}@c.us"),
         nivel_padrao=settings.user_level,
-        modo=settings.practice_mode,
         status_da_sessao=canal.session_status,
         exportador=ExportadorAnki(repo, _criar_armazenamento(settings)),
     )
