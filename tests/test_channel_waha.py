@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 
 import httpx
@@ -140,6 +141,49 @@ async def test_erro_4xx_nao_tenta_de_novo() -> None:
     canal = _canal(httpx.MockTransport(handler))
     with pytest.raises(httpx.HTTPStatusError):
         await canal.send_text("5531999998888@c.us", "oi")
+    await canal.aclose()
+
+    assert chamadas == 1
+
+
+async def test_send_file_manda_o_arquivo_em_base64() -> None:
+    requisicoes: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requisicoes.append(request)
+        return httpx.Response(200, json={"id": "abc"})
+
+    canal = _canal(httpx.MockTransport(handler))
+    await canal.send_file(
+        "5531999998888@c.us", "vocabot.xlsx", b"conteudo", "application/x-teste", "legenda"
+    )
+    await canal.aclose()
+
+    (requisicao,) = requisicoes
+    assert requisicao.url.path == "/api/sendFile"
+    assert json.loads(requisicao.content) == {
+        "session": "default",
+        "chatId": "5531999998888@c.us",
+        "file": {
+            "mimetype": "application/x-teste",
+            "filename": "vocabot.xlsx",
+            "data": base64.b64encode(b"conteudo").decode(),
+        },
+        "caption": "legenda",
+    }
+
+
+async def test_send_file_nao_tenta_de_novo_para_nao_duplicar_o_arquivo() -> None:
+    chamadas = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chamadas
+        chamadas += 1
+        return httpx.Response(500)
+
+    canal = _canal(httpx.MockTransport(handler))
+    with pytest.raises(httpx.HTTPStatusError):
+        await canal.send_file("5531999998888@c.us", "a.xlsx", b"x", "application/x-teste")
     await canal.aclose()
 
     assert chamadas == 1

@@ -88,9 +88,9 @@ def main(
 
     repo = MemoryRepository()
     conversa = (
-        Conversa(ConsoleChannel(saida), CHAT_DO_SIMULADOR)
+        Conversa(ConsoleChannel(saida, exports), CHAT_DO_SIMULADOR)
         if args.atraso
-        else Conversa(ConsoleChannel(saida), CHAT_DO_SIMULADOR, dormir=_sem_espera)
+        else Conversa(ConsoleChannel(saida, exports), CHAT_DO_SIMULADOR, dormir=_sem_espera)
     )
     nivel: NivelUsuario = args.nivel
     router = Router(

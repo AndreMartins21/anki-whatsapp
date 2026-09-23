@@ -18,7 +18,7 @@ from app.domain.srs import vencida
 from app.flows import capture, review
 from app.flows.base import Deps, bloq
 from app.repo.base import Repository
-from app.services.planilha import ResultadoExportacao
+from app.services.planilha import TIPO_XLSX, ResultadoExportacao
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +194,19 @@ async def _exportar(d: Deps, exportador: Exportador | None) -> None:
     if resultado is None:
         await d.conversa.enviar(messages.SEM_EXPORTAVEIS)
         return
-    await d.conversa.enviar(messages.exportacao(resultado.link, resultado.quantidade))
+    try:
+        await d.conversa.enviar_arquivo(
+            resultado.nome,
+            resultado.conteudo,
+            TIPO_XLSX,
+            messages.exportacao(resultado.quantidade),
+        )
+    except Exception:  # plano B: o WhatsApp recusou/demorou — manda o link do bucket
+        logger.warning(
+            "não consegui enviar a planilha pelo WhatsApp; mandando o link", exc_info=True
+        )
+        link = await bloq(resultado.gerar_link)
+        await d.conversa.enviar(messages.exportacao_com_link(link, resultado.quantidade))
 
 
 async def _apagar(d: Deps, sessao: Sessao, palavra: str) -> Sessao:

@@ -115,7 +115,7 @@ def test_escolher_frase_cai_na_versao_natural_e_depois_no_exemplo_do_bot() -> No
     assert escolher_frase(_entrada(), []) is None
 
 
-def test_exportador_sobe_o_xlsx_e_devolve_o_link() -> None:
+def test_exportador_monta_a_planilha_sem_enviar_nada() -> None:
     repo = MemoryRepository()
     repo.criar_entrada(_entrada())
     repo.criar_entrada(_entrada(slug="hedge", palavra="hedge", criado_em=T0 + timedelta(minutes=1)))
@@ -126,12 +126,26 @@ def test_exportador_sobe_o_xlsx_e_devolve_o_link() -> None:
 
     assert resultado is not None
     assert resultado.quantidade == 2
-    assert resultado.link == "memoria://exports/vocabot_2026-09-20_1200.xlsx"
-    livro = _abrir(armazenamento.arquivos["exports/vocabot_2026-09-20_1200.xlsx"])
+    assert resultado.nome == "exports/vocabot_2026-09-20_1200.xlsx"
+    assert armazenamento.arquivos == {}  # o bucket só entra no plano B
+    livro = _abrir(resultado.conteudo)
     assert [r[1] for r in livro["Words"].iter_rows(min_row=2, values_only=True)] == [
         "stall",
         "hedge",
     ]
+
+
+def test_plano_b_sobe_o_mesmo_arquivo_e_devolve_o_link() -> None:
+    repo = MemoryRepository()
+    repo.criar_entrada(_entrada())
+    armazenamento = ArmazenamentoEmMemoria()
+    resultado = ExportadorExcel(repo, armazenamento, agora=lambda: T0).exportar()
+    assert resultado is not None
+
+    link = resultado.gerar_link()
+
+    assert link == "memoria://exports/vocabot_2026-09-20_1200.xlsx"
+    assert armazenamento.arquivos["exports/vocabot_2026-09-20_1200.xlsx"] == resultado.conteudo
 
 
 def test_exportador_sem_entradas_devolve_none() -> None:

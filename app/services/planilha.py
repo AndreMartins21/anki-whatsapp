@@ -2,6 +2,7 @@
 coletou — palavras, frases (do aluno e do bot, com as correções) e sinônimos.
 
 Substitui o arquivo de importação do Anki (M5 a M11). Três abas: `Words`, `Sentences`, `Synonyms`.
+O arquivo vai direto pelo WhatsApp (ADR-0015); o bucket só entra como plano B.
 """
 
 from __future__ import annotations
@@ -61,8 +62,13 @@ _COLUNAS_SINONIMOS = ("#", "Word", "Synonym", "Meaning", "Example")
 
 @dataclass(frozen=True)
 class ResultadoExportacao:
-    link: str
+    """A planilha pronta para enviar. `gerar_link` é o plano B: sobe o mesmo arquivo no bucket e
+    devolve a URL assinada — só é chamado se o envio direto pelo WhatsApp falhar."""
+
+    nome: str
+    conteudo: bytes
     quantidade: int
+    gerar_link: Callable[[], str]
 
 
 def _sem_marcas(texto: str | None) -> str:
@@ -189,7 +195,7 @@ def gerar_planilha(entradas: Sequence[tuple[Entry, Sequence[Sentence]]]) -> byte
 
 
 class ExportadorExcel:
-    """Implementa o `Exportador` dos comandos: monta a planilha, guarda e devolve o link."""
+    """Implementa o `Exportador` dos comandos: monta a planilha (não envia nada)."""
 
     def __init__(
         self,
@@ -207,5 +213,9 @@ class ExportadorExcel:
             return None
         conteudo = gerar_planilha([(e, self._repo.listar_frases(e.slug)) for e in entradas])
         nome = f"exports/vocabot_{self._agora():%Y-%m-%d_%H%M}.xlsx"
-        link = self._armazenamento.enviar(nome, conteudo, TIPO_XLSX)
-        return ResultadoExportacao(link=link, quantidade=len(entradas))
+        return ResultadoExportacao(
+            nome=nome,
+            conteudo=conteudo,
+            quantidade=len(entradas),
+            gerar_link=lambda: self._armazenamento.enviar(nome, conteudo, TIPO_XLSX),
+        )

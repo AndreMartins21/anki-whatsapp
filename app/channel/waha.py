@@ -1,4 +1,4 @@
-"""Cliente HTTP do WAHA (seção 8.3): send_text, send_seen, typing(on/off), session_status.
+"""Cliente HTTP do WAHA (seção 8.3): send_text, send_file, send_seen, typing(on/off), session_status.
 
 Corpos de request confirmados na doc atual do WAHA (waha.devlike.pro/docs/how-to/*):
 `{"session": ..., "chatId": ...}` mais o campo específico de cada endpoint.
@@ -7,6 +7,7 @@ Corpos de request confirmados na doc atual do WAHA (waha.devlike.pro/docs/how-to
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 
 import httpx
@@ -28,12 +29,14 @@ class WahaChannel:
         api_key: SecretStr,
         session: str,
         timeout: float = 15.0,
+        timeout_arquivo: float = 90.0,
         max_tentativas: int = 3,
         backoff_base: float = 0.5,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._session = session
         self._max_tentativas = max_tentativas
+        self._timeout_arquivo = timeout_arquivo
         self._backoff_base = backoff_base
         self._cliente = httpx.AsyncClient(
             base_url=base_url,
@@ -48,6 +51,29 @@ class WahaChannel:
     async def send_text(self, chat_id: str, text: str) -> None:
         await self._post(
             "/api/sendText", {"session": self._session, "chatId": chat_id, "text": text}
+        )
+
+    async def send_file(
+        self, chat_id: str, nome: str, conteudo: bytes, tipo: str, legenda: str = ""
+    ) -> None:
+        """`POST /api/sendFile` com o arquivo em base64 (`file.data`). Sem retentativa e com
+        timeout maior: reenviar uma resposta lenta duplicaria o arquivo no WhatsApp; se falhar,
+        quem chama decide (o `/export` cai no link)."""
+        await self._com_retentativas(
+            "POST",
+            "/api/sendFile",
+            json={
+                "session": self._session,
+                "chatId": chat_id,
+                "file": {
+                    "mimetype": tipo,
+                    "filename": nome,
+                    "data": base64.b64encode(conteudo).decode("ascii"),
+                },
+                "caption": legenda,
+            },
+            tentativas=1,
+            limite_segundos=self._timeout_arquivo,
         )
 
     async def send_seen(self, chat_id: str) -> None:
@@ -76,12 +102,24 @@ class WahaChannel:
         return await self._com_retentativas("POST", path, json=corpo)
 
     async def _com_retentativas(
-        self, metodo: str, path: str, *, json: dict[str, object] | None
+        self,
+        metodo: str,
+        path: str,
+        *,
+        json: dict[str, object] | None,
+        tentativas: int | None = None,
+        limite_segundos: float | None = None,
     ) -> httpx.Response:
         ultimo_erro: Exception | None = None
-        for tentativa in range(self._max_tentativas):
+        max_tentativas = tentativas or self._max_tentativas
+        for tentativa in range(max_tentativas):
             try:
-                resposta = await self._cliente.request(metodo, path, json=json)
+                if limite_segundos is None:
+                    resposta = await self._cliente.request(metodo, path, json=json)
+                else:
+                    resposta = await self._cliente.request(
+                        metodo, path, json=json, timeout=limite_segundos
+                    )
             except httpx.TransportError as exc:
                 ultimo_erro = exc
                 logger.warning(
@@ -103,7 +141,7 @@ class WahaChannel:
                     path,
                     tentativa + 1,
                 )
-            if tentativa < self._max_tentativas - 1:
+            if tentativa < max_tentativas - 1:
                 await asyncio.sleep(self._backoff_base * (2**tentativa))
         if ultimo_erro is None:
             raise RuntimeError("_com_retentativas terminou sem sucesso nem erro registrado")

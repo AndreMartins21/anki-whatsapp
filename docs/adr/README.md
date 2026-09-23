@@ -24,6 +24,7 @@ operacional: numeração, status e o índice.
 | [0012](0012-agendador-no-processo-com-destino-persistido.md) | Agendador de lembretes no próprio processo, com destino persistido e trava de iniciativa | Aceito | 2026-09-23 |
 | [0013](0013-deploy-continuo-via-github-actions.md) | Deploy contínuo via GitHub Actions, autenticado por Workload Identity Federation | Aceito | 2026-09-23 |
 | [0014](0014-export-em-planilha-excel.md) | Export em planilha Excel no lugar do arquivo de importação do Anki | Aceito | 2026-09-23 |
+| [0015](0015-enviar-a-planilha-direto-pelo-whatsapp.md) | Enviar a planilha direto pelo WhatsApp, com o link do bucket só como plano B | Aceito | 2026-09-24 |
 
 ## Quando escrever um
 

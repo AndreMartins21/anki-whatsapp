@@ -62,6 +62,20 @@ class Conversa:
         await self._channel.send_text(self._chat_id, texto)
         self._seguidas += 1
 
+    async def enviar_arquivo(
+        self, nome: str, conteudo: bytes, tipo: str, legenda: str = ""
+    ) -> None:
+        """Como `enviar`, mas para um arquivo. Levanta a exceção do canal se o envio falhar
+        (o chamador decide o plano B); só um envio bem-sucedido conta no limite."""
+        if self._seguidas >= self._max_seguidas:
+            logger.warning(
+                "limite de %d mensagens sem resposta: envio descartado", self._max_seguidas
+            )
+            return
+        await self._dormir(self._atraso())
+        await self._channel.send_file(self._chat_id, nome, conteudo, tipo, legenda)
+        self._seguidas += 1
+
     @asynccontextmanager
     async def digitando(self) -> AsyncIterator[None]:
         await self._sinalizar(True)
