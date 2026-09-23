@@ -128,8 +128,10 @@ apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/pr
 `/exportar [tudo]`, `/apagar`, `/nivel`, `/cancelar`, `/reminders`, `/review`, `/perfil`)
 **continuam funcionando, mas nenhuma mensagem do bot os divulga**.
 
-- `/list` numera as palavras na ordem de criação (o número é global, não reinicia por página) e
-  mostra 20 por página; `/list 2` é a página 2. Uma página inexistente responde com um aviso.
+- `/list` mostra as palavras **das mais novas para as mais antigas**, 20 por página: as mais
+  novas ficam sempre na página 1, e `/list 2` é a página 2. Uma página inexistente responde com um
+  aviso. O número de cada palavra é **fixo** (1 = a mais antiga, na ordem de criação), então
+  `/info 7` e `/delete 7` continuam apontando para a mesma palavra quando entram palavras novas.
 - `/info N` (número da `/list`) ou `/info palavra` mostra tudo de uma entrada: tradução, definição,
   outros sentidos, nota, status e próxima revisão, as frases do aluno **já corrigidas** (a
   `versao_natural`, sem `[[ ]]`, até 5, sem repetir), até 3 exemplos do bot e os sinônimos salvos.
@@ -141,8 +143,12 @@ apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/pr
 - `/level` aceita A2-B1, B1-B2 e B2-C1.
 - `/reminders` e `/review`: ver seção 5.7.
 - `/profile` mostra o nível, o total de palavras (praticadas e pendentes), quantas estão vencidas
-  para revisão e os lembretes (`every day, 3x between 9h and 21h` ou `off`). Os lembretes rodam
-  todos os dias; não há escolha de dias da semana.
+  para revisão e os lembretes (`every day, 3x between 9h and 21h` ou `off`) e, com os lembretes ligados, **quando o
+  próximo toca** (`Next reminder: today at 14:00`, `tomorrow at 08:00` ou `Mon 28 Sep at 08:00`, no
+  fuso do aluno). `/reminders` (consulta e ao ligar/mudar) mostra o mesmo horário. O horário vem de
+  `profile/me.proximo_lembrete` se ainda está no futuro; senão é calculado da janela
+  (`app/domain/lembretes.py:proximo_a_exibir`). Os lembretes rodam todos os dias; não há escolha de
+  dias da semana.
 - `/status` mostra o status da sessão do WAHA, o total de palavras e as pendentes.
 
 ### 5.3 Calibração pelo nível (B1-B2)

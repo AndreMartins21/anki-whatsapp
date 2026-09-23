@@ -6,11 +6,14 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from app.domain.models import Sessao
 from app.flows.conversa import Conversa
 from app.repo.base import Repository
 from app.services.llm import Tutor
+
+FUSO_PADRAO = ZoneInfo("America/Sao_Paulo")  # o mesmo padrão de `Settings.timezone`
 
 
 @dataclass(frozen=True)
@@ -19,6 +22,7 @@ class Deps:
     tutor: Tutor
     conversa: Conversa
     agora: Callable[[], datetime]
+    fuso: ZoneInfo = FUSO_PADRAO  # fuso do aluno, para mostrar horários de lembrete
 
     def sessao_vazia(self) -> Sessao:
         return Sessao(atualizado_em=self.agora())

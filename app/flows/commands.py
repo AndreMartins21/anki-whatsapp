@@ -12,7 +12,7 @@ from typing import Protocol, get_args
 
 from app import messages
 from app.domain.choices import normalizar
-from app.domain.lembretes import parse_lembretes
+from app.domain.lembretes import parse_lembretes, proximo_a_exibir
 from app.domain.models import Entry, Estado, NivelUsuario, Profile, Sessao, slugify
 from app.domain.srs import vencida
 from app.flows import capture, review
@@ -130,12 +130,13 @@ async def _listar(d: Deps, argumento: str) -> None:
     if not 1 <= numero <= paginas:
         await d.conversa.enviar(messages.PAGINA_INVALIDA)
         return
+    # Das mais novas para as mais antigas; o número de cada palavra é fixo (1 = a mais antiga),
+    # então `/info 7` e `/delete 7` continuam apontando para a mesma palavra quando entram novas.
+    numeradas = list(reversed(list(enumerate(entradas, start=1))))
     inicio = (numero - 1) * TAMANHO_DA_PAGINA
-    fatia = entradas[inicio : inicio + TAMANHO_DA_PAGINA]
+    fatia = [(n, e) for n, e in numeradas[inicio : inicio + TAMANHO_DA_PAGINA]]
     await d.conversa.enviar(
-        messages.lista(
-            fatia, inicio=inicio + 1, total=len(entradas), numero=numero, paginas=paginas
-        )
+        messages.lista(fatia, total=len(entradas), numero=numero, paginas=paginas)
     )
 
 
@@ -159,7 +160,12 @@ async def _perfil(d: Deps, perfil: Profile) -> None:
     para_revisar = sum(1 for e in entradas if vencida(e, d.agora()))
     await d.conversa.enviar(
         messages.perfil_do_aluno(
-            perfil, total=len(entradas), praticadas=praticadas, para_revisar=para_revisar
+            perfil,
+            total=len(entradas),
+            praticadas=praticadas,
+            para_revisar=para_revisar,
+            proximo=proximo_a_exibir(perfil, d.agora(), d.fuso),
+            agora=d.agora(),
         )
     )
 
@@ -233,7 +239,8 @@ async def _lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
     """`/reminders` mostra o estado atual; `/reminders off` desliga; `/reminders 3` ou
     `/reminders 3 9h-22h` liga/muda (seção 5.7, M10)."""
     if not argumento:
-        await d.conversa.enviar(messages.lembretes_atuais(perfil))
+        proximo = proximo_a_exibir(perfil, d.agora(), d.fuso)
+        await d.conversa.enviar(messages.lembretes_atuais(perfil, proximo, d.agora()))
         return
     if normalizar(argumento) in _DESLIGAR:
         if perfil.lembretes_por_dia != 0:
@@ -255,7 +262,8 @@ async def _lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
         }
     )
     await bloq(d.repo.salvar_perfil, novo)
-    await d.conversa.enviar(messages.lembretes_alterados(novo))
+    proximo = proximo_a_exibir(novo, d.agora(), d.fuso)
+    await d.conversa.enviar(messages.lembretes_alterados(novo, proximo, d.agora()))
 
 
 async def _revisar(d: Deps, sessao: Sessao) -> Sessao:

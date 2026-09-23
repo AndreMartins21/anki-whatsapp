@@ -6,6 +6,9 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
+from app.domain.models import Profile
 
 MIN_LEMBRETES = 1
 MAX_LEMBRETES = 8
@@ -50,6 +53,19 @@ def proximo_horario(agora_local: datetime, quantidade: int, inicio: int, fim: in
         minute=primeiro.minute,
         second=0,
         microsecond=0,
+    )
+
+
+def proximo_a_exibir(perfil: Profile, agora: datetime, fuso: ZoneInfo) -> datetime | None:
+    """Quando o próximo lembrete toca, no fuso do aluno; `None` com os lembretes desligados.
+    Usa o horário já agendado em `profile/me` se ainda está no futuro; senão (recém-ligado, ou o
+    agendador ainda não recalculou) calcula o próximo horário da janela a partir de `agora`."""
+    if perfil.lembretes_por_dia == 0:
+        return None
+    if perfil.proximo_lembrete is not None and perfil.proximo_lembrete > agora:
+        return perfil.proximo_lembrete.astimezone(fuso)
+    return proximo_horario(
+        agora.astimezone(fuso), perfil.lembretes_por_dia, perfil.janela_inicio, perfil.janela_fim
     )
 
 

@@ -187,10 +187,13 @@ def _linha_de_entrada(e: Entry) -> str:
     return f"{marca} {e.palavra} — {e.sentido.traducao}"
 
 
-def lista(pagina: Sequence[Entry], *, inicio: int, total: int, numero: int, paginas: int) -> str:
-    """Uma página da lista. `inicio` é o número (1-based) da primeira palavra da página."""
-    corpo = "\n".join(f"{n}. {_linha_de_entrada(e)}" for n, e in enumerate(pagina, start=inicio))
-    texto = f"📚 *Your words* ({total})\n{corpo}\n\n💡 /info {inicio} for details"
+def lista(pagina: Sequence[tuple[int, Entry]], *, total: int, numero: int, paginas: int) -> str:
+    """Uma página da lista, das mais novas para as mais antigas. Cada palavra leva o seu número
+    fixo (1 = a mais antiga), o mesmo que `/info`, `/practice` e `/delete` aceitam."""
+    corpo = "\n".join(f"{n}. {_linha_de_entrada(e)}" for n, e in pagina)
+    texto = (
+        f"📚 *Your words* ({total}) — newest first\n{corpo}\n\n💡 /info {pagina[0][0]} for details"
+    )
     if paginas > 1:
         proxima = f" — /list {numero + 1} for more" if numero < paginas else ""
         texto += f"\nPage {numero}/{paginas}{proxima}"
@@ -246,12 +249,29 @@ def _sem_repetir(frases: Iterable[str]) -> list[str]:
     return unicas
 
 
-def perfil_do_aluno(p: Profile, *, total: int, praticadas: int, para_revisar: int) -> str:
+def _quando(momento: datetime, agora: datetime) -> str:
+    """ "today at 14:00", "tomorrow at 08:00" ou "Mon 28 Sep at 08:00" (ambos no fuso do aluno)."""
+    dias = (momento.date() - agora.astimezone(momento.tzinfo).date()).days
+    dia = "today" if dias == 0 else "tomorrow" if dias == 1 else f"{momento:%a %d %b}"
+    return f"{dia} at {momento:%H:%M}"
+
+
+def perfil_do_aluno(
+    p: Profile,
+    *,
+    total: int,
+    praticadas: int,
+    para_revisar: int,
+    proximo: datetime | None = None,
+    agora: datetime | None = None,
+) -> str:
     if p.lembretes_por_dia == 0:
         lembretes = "off — turn them on with /reminders 3"
     else:
         vezes = "once" if p.lembretes_por_dia == 1 else f"{p.lembretes_por_dia}x"
         lembretes = f"every day, {vezes} between {p.janela_inicio}h and {p.janela_fim}h"
+        if proximo is not None and agora is not None:
+            lembretes += f"\n⏭️ Next reminder: {_quando(proximo, agora)}"
     return (
         "*Your profile* 👤\n"
         f"🎯 Level: {p.nivel}\n"
@@ -345,7 +365,13 @@ def revisao_encerrada(feitas: Sequence[str], lapsos: Sequence[str]) -> str:
     return "\n".join(linhas)
 
 
-def lembretes_atuais(perfil: Profile) -> str:
+def _proximo(proximo: datetime | None, agora: datetime | None) -> str:
+    return f" Next one: {_quando(proximo, agora)}." if proximo and agora else ""
+
+
+def lembretes_atuais(
+    perfil: Profile, proximo: datetime | None = None, agora: datetime | None = None
+) -> str:
     if perfil.lembretes_por_dia == 0:
         return (
             "Reminders are off. Turn them on with /reminders 3 (or /reminders 3 9h-22h for "
@@ -353,14 +379,20 @@ def lembretes_atuais(perfil: Profile) -> str:
         )
     vezes = "once a day" if perfil.lembretes_por_dia == 1 else f"{perfil.lembretes_por_dia}x a day"
     return (
-        f"Reminders: {vezes}, between {perfil.janela_inicio}h and {perfil.janela_fim}h. "
+        f"Reminders: {vezes}, between {perfil.janela_inicio}h and {perfil.janela_fim}h."
+        f"{_proximo(proximo, agora)} "
         "Change with /reminders N or turn off with /reminders off."
     )
 
 
-def lembretes_alterados(perfil: Profile) -> str:
+def lembretes_alterados(
+    perfil: Profile, proximo: datetime | None = None, agora: datetime | None = None
+) -> str:
     vezes = "once a day" if perfil.lembretes_por_dia == 1 else f"{perfil.lembretes_por_dia}x a day"
-    return f"✅ Reminders set: {vezes}, between {perfil.janela_inicio}h and {perfil.janela_fim}h."
+    return (
+        f"✅ Reminders set: {vezes}, between {perfil.janela_inicio}h and {perfil.janela_fim}h."
+        f"{_proximo(proximo, agora)}"
+    )
 
 
 def lembretes_desligados() -> str:
