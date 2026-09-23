@@ -23,5 +23,15 @@ async def gerar(d: Deps, sessao: Sessao, perfil: Profile, n: int = NUMERO_DE_SIN
             sessao.sinonimos_mostrados,
         )
     await d.conversa.enviar(messages.sinonimos(entrada.palavra, entrada.sentido.traducao, itens))
+    # M12: guarda na entrada (sem repetir por expressão) para o /info e o export.
+    ja_salvos = {s.expressao.casefold() for s in entrada.sinonimos}
+    novos = [s for s in itens if s.expressao.casefold() not in ja_salvos]
+    if novos:
+        await bloq(
+            d.repo.salvar_entrada,
+            entrada.model_copy(
+                update={"sinonimos": [*entrada.sinonimos, *novos], "atualizado_em": d.agora()}
+            ),
+        )
     mostrados = [*sessao.sinonimos_mostrados, *(item.expressao for item in itens)]
     return sessao.model_copy(update={"sinonimos_mostrados": mostrados})

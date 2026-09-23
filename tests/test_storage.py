@@ -42,10 +42,10 @@ def test_gcs_sobe_o_arquivo_e_assina_via_iam_com_validade_de_24h() -> None:
         renovar=lambda _: eventos.append("renovar"),
     )
 
-    link = armazenamento.enviar("exports/anki_2026-09-20_1200.txt", "olá".encode())
+    link = armazenamento.enviar("exports/vocabot_2026-09-20_1200.txt", "olá".encode())
 
     assert link == "https://storage.example/assinado"
-    assert nomes == ["exports/anki_2026-09-20_1200.txt"]
+    assert nomes == ["exports/vocabot_2026-09-20_1200.txt"]
     assert blob.enviado == ("olá".encode(), "text/plain; charset=utf-8")
     assert eventos == ["upload", "renovar", "assinar"]  # o token é renovado antes de assinar
     assert blob.assinatura == {
@@ -54,14 +54,14 @@ def test_gcs_sobe_o_arquivo_e_assina_via_iam_com_validade_de_24h() -> None:
         "method": "GET",
         "service_account_email": "vocabot-vm@proj.iam",
         "access_token": "token-falso",
-        "response_disposition": 'attachment; filename="anki_2026-09-20_1200.txt"',
+        "response_disposition": 'attachment; filename="vocabot_2026-09-20_1200.txt"',
     }
 
 
 def test_armazenamento_local_grava_o_arquivo_e_devolve_um_link_de_arquivo(tmp_path: Path) -> None:
     armazenamento = ArmazenamentoLocal(tmp_path / "exports")
 
-    link = armazenamento.enviar("exports/anki_x.txt", b"conteudo")
+    link = armazenamento.enviar("exports/vocabot_x.txt", b"conteudo")
 
-    assert (tmp_path / "exports" / "anki_x.txt").read_bytes() == b"conteudo"
-    assert link == (tmp_path / "exports" / "anki_x.txt").resolve().as_uri()
+    assert (tmp_path / "exports" / "vocabot_x.txt").read_bytes() == b"conteudo"
+    assert link == (tmp_path / "exports" / "vocabot_x.txt").resolve().as_uri()

@@ -20,6 +20,7 @@ from app.domain.models import (
     Sentence,
     SentidoSalvo,
     Sessao,
+    Synonym,
 )
 from app.repo.base import EntradaJaExiste, Repository, resolver_slug
 from app.repo.memory import MemoryRepository
@@ -38,6 +39,9 @@ def _entrada(
         cefr_estimado="B2",
         sentido=SentidoSalvo(traducao=traducao, definicao="to stop making progress"),
         outros_sentidos=[SentidoSalvo(traducao="enrolar", definicao="to delay")],
+        sinonimos=[
+            Synonym(expressao="stumble", significado="to lose momentum", exemplo="It [[stumbled]].")
+        ],
         nota="phrasal em contexto de trabalho",
         tags=["trabalho"],
         origem_texto="stall | the talks stalled",

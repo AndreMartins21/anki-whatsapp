@@ -5,7 +5,7 @@ Instruções para o Claude Code trabalhar neste repositório. Responda sempre em
 ## Fonte da verdade
 
 A especificação completa do projeto está em **[`spec/spec-inicial.md`](spec/spec-inicial.md)** — escopo,
-stack, máquina de estados, contratos de dados, formato do export do Anki, infraestrutura e a tabela de
+stack, máquina de estados, contratos de dados, formato do export (Excel), infraestrutura e a tabela de
 marcos. **Leia a seção relevante antes de escrever código.** Código que contraria a spec é bug.
 
 Trabalhe **marco a marco** (seção 9 da spec): pare ao fim de cada um, relate e espere aprovação.
@@ -77,7 +77,7 @@ O layout esperado completo está na seção 11 da spec.
 - **Testes nunca dependem de credencial ou rede.** Cada dependência externa (WAHA, Firestore,
   Storage, LLM) tem um fake em memória por trás de uma interface (`Channel`, `Repository`,
   `LLMProvider`). A lógica de negócio não importa nada do WAHA diretamente.
-- Formatos fixos (cabeçalho do export do Anki) são testados **byte a byte** contra fixtures.
+- O export em Excel é testado relendo o `.xlsx` gerado (abas, cabeçalhos e valores).
 - Decisões com consequência duradoura viram ADR em `docs/adr/` — numeração `NNNN-titulo-curto.md`,
   índice e regras em `docs/adr/README.md`. `make test` reprova ADR malformado ou fora do índice.
 - Mudou um contrato? Atualize a spec **no mesmo commit** que muda o código.

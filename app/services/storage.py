@@ -17,11 +17,12 @@ from google.auth.transport.requests import Request
 from google.cloud.storage import Client as ClienteStorage
 
 VALIDADE_DO_LINK = timedelta(hours=24)
+TIPO_PADRAO = "text/plain; charset=utf-8"
 _ESCOPO = "https://www.googleapis.com/auth/cloud-platform"
 
 
 class Armazenamento(Protocol):
-    def enviar(self, nome: str, conteudo: bytes) -> str:
+    def enviar(self, nome: str, conteudo: bytes, tipo: str = TIPO_PADRAO) -> str:
         """Guarda o arquivo e devolve o link para baixá-lo."""
         ...
 
@@ -32,7 +33,7 @@ class ArmazenamentoEmMemoria:
     def __init__(self) -> None:
         self.arquivos: dict[str, bytes] = {}
 
-    def enviar(self, nome: str, conteudo: bytes) -> str:
+    def enviar(self, nome: str, conteudo: bytes, tipo: str = TIPO_PADRAO) -> str:  # noqa: ARG002
         self.arquivos[nome] = conteudo
         return f"memoria://{nome}"
 
@@ -43,7 +44,7 @@ class ArmazenamentoLocal:
     def __init__(self, diretorio: Path) -> None:
         self._diretorio = diretorio
 
-    def enviar(self, nome: str, conteudo: bytes) -> str:
+    def enviar(self, nome: str, conteudo: bytes, tipo: str = TIPO_PADRAO) -> str:  # noqa: ARG002
         destino = self._diretorio / Path(nome).name
         destino.parent.mkdir(parents=True, exist_ok=True)
         destino.write_bytes(conteudo)
@@ -68,9 +69,9 @@ class ArmazenamentoGcs:
         self._validade = validade
         self._renovar = renovar
 
-    def enviar(self, nome: str, conteudo: bytes) -> str:
+    def enviar(self, nome: str, conteudo: bytes, tipo: str = TIPO_PADRAO) -> str:
         blob = self._bucket.blob(nome)
-        blob.upload_from_string(conteudo, content_type="text/plain; charset=utf-8")
+        blob.upload_from_string(conteudo, content_type=tipo)
         # Precisa de um access token válido (e, na VM, do e-mail real da conta de serviço, que só
         # aparece depois do primeiro refresh) para assinar via IAM signBlob.
         self._renovar(self._credenciais)

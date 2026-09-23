@@ -23,6 +23,7 @@ operacional: numeração, status e o índice.
 | [0011](0011-revisao-espacada-sm2-simplificado.md) | Revisão espaçada com SM-2 simplificado, independente do agendamento do Anki | Aceito | 2026-09-23 |
 | [0012](0012-agendador-no-processo-com-destino-persistido.md) | Agendador de lembretes no próprio processo, com destino persistido e trava de iniciativa | Aceito | 2026-09-23 |
 | [0013](0013-deploy-continuo-via-github-actions.md) | Deploy contínuo via GitHub Actions, autenticado por Workload Identity Federation | Aceito | 2026-09-23 |
+| [0014](0014-export-em-planilha-excel.md) | Export em planilha Excel no lugar do arquivo de importação do Anki | Aceito | 2026-09-23 |
 
 ## Quando escrever um
 
