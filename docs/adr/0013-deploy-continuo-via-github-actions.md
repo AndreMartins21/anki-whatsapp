@@ -1,6 +1,6 @@
 # ADR-0013: Deploy contínuo via GitHub Actions, autenticado por Workload Identity Federation
 
-- **Status:** Proposto
+- **Status:** Aceito
 - **Data:** 2026-09-23
 - **Fonte:** `spec/spec-inicial.md` seção 10, ADR-0007 (menor privilégio e IAP), skill `gcp-best-practices`
 
@@ -32,17 +32,26 @@ pessoa.
   nenhum fork, nenhuma outra branch e nenhum outro repositório consegue um token, mesmo que copie o
   workflow.
 - **Conta de serviço dedicada `vocabot-deploy`**, diferente da `vocabot-vm` (que é a identidade de
-  execução do bot na VM). Recebe, **no nível da instância** (não do projeto):
-  `roles/compute.osAdminLogin` e `roles/compute.viewer` — o suficiente para logar via OS Login com
-  sudo e resolver a instância. `roles/iap.tunnelResourceAccessor` (abrir o túnel IAP) só pôde ser
-  concedido **no projeto**: o recurso "túnel IAP" de uma instância não tem binding por
+  execução do bot na VM). Recebe **no nível da instância** só `roles/compute.osAdminLogin` (logar
+  via OS Login com sudo). `roles/iap.tunnelResourceAccessor` e `roles/compute.viewer` só puderam
+  ser concedidos **no projeto**, por dois motivos técnicos confirmados tentando (não por escolha):
+  o recurso "túnel IAP" de uma instância não tem binding por
   `gcloud compute instances add-iam-policy-binding` (a API rejeita com "role not supported for this
-  resource" — confirmado tentando); o caminho documentado pela Google para restringir por instância
-  é uma chamada crua à API REST do IAP (`iap.googleapis.com/.../iap_tunnel/.../instances/NAME:setIamPolicy`),
-  mais frágil num script idempotente do que um `gcloud` padrão. Como este projeto nunca tem mais de
-  uma VM (spec 10.8), o binding no projeto já é, na prática, restrito à `vocabot-vm`. Não recebe
-  acesso a Secret Manager, Firestore, Storage ou Vertex AI: quem lê os segredos e renderiza o `.env`
-  continua sendo a própria VM, com a identidade `vocabot-vm` (nada muda em `infra/deploy.sh`).
+  resource"; o caminho documentado pela Google por instância é uma chamada crua à API REST do IAP,
+  mais frágil num script idempotente do que um `gcloud` padrão); e `gcloud compute scp`/`ssh` chamam
+  `compute.projects.get` antes de conectar, uma permissão que só existe no escopo do projeto — um
+  binding de `compute.viewer` só na instância falha o deploy real com "Required
+  compute.projects.get permission" (foi o que aconteceu no primeiro deploy automático). Como este
+  projeto nunca tem mais de uma VM (spec 10.8), os dois bindings no projeto já ficam, na prática,
+  restritos à `vocabot-vm`. Recebe também `roles/iam.serviceAccountUser` **só sobre a `vocabot-vm`**:
+  como a VM roda como essa conta, o SSH falha com `iam.serviceAccounts.actAs` sem esse papel (foi o
+  segundo erro do primeiro deploy automático). Não recebe acesso direto a Secret Manager,
+  Firestore, Storage ou Vertex AI, e quem lê os segredos e renderiza o `.env` continua sendo a
+  própria VM (nada muda em `infra/deploy.sh`). **Mas o alcance real é maior que essa lista:**
+  `osAdminLogin` dá root na VM e `serviceAccountUser` permite agir como `vocabot-vm`, então quem
+  controlar o job `deploy` alcança tudo que a `vocabot-vm` alcança. A defesa é a attribute
+  condition do provider (só este repo, só a `main`) e a branch protection — por isso a proteção da
+  `main` não é opcional.
 - **Segredos de verdade (PII) em GitHub Secrets, não em Variables:** `ALLOWED_NUMBER` e
   `BOT_NUMBER` são números de telefone reais — vão como *Secrets* do repositório (mascarados em log
   automaticamente) mesmo não sendo credencial de acesso. O resto (`GCP_PROJECT_ID`,

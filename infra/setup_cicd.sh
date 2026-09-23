@@ -55,19 +55,28 @@ run gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA_EMAIL" \
   --project "$PROJECT_ID" --role=roles/iam.workloadIdentityUser --format=none \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL}/attribute.repository/${GITHUB_REPO}"
 
-echo "==> 6a. iap.tunnelResourceAccessor (no projeto — o recurso 'túnel IAP' não aceita binding"
-echo "     por instância via gcloud; só há uma VM neste projeto e a spec proíbe criar outra, então"
-echo "     na prática já fica restrito a ela, ver ADR-0013)"
-run gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:${DEPLOY_SA_EMAIL}" --role=roles/iap.tunnelResourceAccessor \
-  --condition=None --quiet --format=none
-
-echo "==> 6b. osAdminLogin (sudo via OS Login) e compute.viewer, só na instância $VM_NAME"
-for papel in roles/compute.osAdminLogin roles/compute.viewer; do
-  run gcloud compute instances add-iam-policy-binding "$VM_NAME" \
-    --zone "$ZONE" --project "$PROJECT_ID" --format=none \
-    --member="serviceAccount:${DEPLOY_SA_EMAIL}" --role="$papel"
+echo "==> 6a. iap.tunnelResourceAccessor e compute.viewer, no projeto (não por instância)"
+echo "     iap.tunnelResourceAccessor: o recurso 'túnel IAP' não aceita binding por instância via"
+echo "     gcloud. compute.viewer: 'gcloud compute scp/ssh' chama compute.projects.get antes de"
+echo "     conectar, e essa permissão só existe no escopo do projeto (confirmado: um binding só na"
+echo "     instância falha com 'Required compute.projects.get permission'). Só há uma VM neste"
+echo "     projeto e a spec proíbe criar outra (10.8), então na prática já fica restrito a ela —"
+echo "     ver ADR-0013."
+for papel in roles/iap.tunnelResourceAccessor roles/compute.viewer; do
+  run gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${DEPLOY_SA_EMAIL}" --role="$papel" \
+    --condition=None --quiet --format=none
 done
+
+echo "==> 6b. osAdminLogin (sudo via OS Login), só na instância $VM_NAME"
+run gcloud compute instances add-iam-policy-binding "$VM_NAME" \
+  --zone "$ZONE" --project "$PROJECT_ID" --format=none \
+  --member="serviceAccount:${DEPLOY_SA_EMAIL}" --role=roles/compute.osAdminLogin
+
+echo "==> 6c. serviceAccountUser só sobre a $SA_NAME (a VM roda como ela; sem isso o SSH falha com actAs)"
+run gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" \
+  --project "$PROJECT_ID" --format=none \
+  --member="serviceAccount:${DEPLOY_SA_EMAIL}" --role=roles/iam.serviceAccountUser
 
 WIF_PROVIDER_RESOURCE="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL}/providers/${WIF_PROVIDER}"
 

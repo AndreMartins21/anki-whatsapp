@@ -539,12 +539,15 @@ Action é visível a qualquer pessoa — nada sensível pode aparecer em log.
   Pool (`github-pool`) e o provider OIDC (`github-provider`, emissor
   `token.actions.githubusercontent.com`, *attribute condition* travada em
   `assertion.repository == 'AndreMartins21/anki-whatsapp' && assertion.ref == 'refs/heads/main'`);
-  cria a conta de serviço `vocabot-deploy` e concede `roles/compute.osAdminLogin` e
-  `roles/compute.viewer` **só na instância da VM**, mais `roles/iap.tunnelResourceAccessor` **no
-  projeto** (o recurso do túnel IAP não aceita binding por instância via `gcloud`; como só existe
-  uma VM neste projeto, na prática já fica restrito a ela — ver ADR-0013). Não concede nada em
-  Secret Manager, Firestore, Storage ou Vertex — quem lê segredo continua sendo a VM, com a
-  identidade `vocabot-vm`.
+  cria a conta de serviço `vocabot-deploy` e concede `roles/compute.osAdminLogin` **só na instância
+  da VM**, mais `roles/iap.tunnelResourceAccessor` e `roles/compute.viewer` **no projeto** (nenhum
+  dos dois funciona só na instância — `gcloud` rejeita o primeiro e o segundo falha o deploy real
+  porque `compute.projects.get` só existe no escopo do projeto; como só existe uma VM neste
+  projeto, na prática já fica restrito a ela — ver ADR-0013) e `roles/iam.serviceAccountUser` só
+  sobre a `vocabot-vm` (sem ele o SSH falha com `actAs`). Não concede nada direto em Secret
+  Manager, Firestore, Storage ou Vertex — quem lê segredo continua sendo a VM —, mas root na VM
+  mais `serviceAccountUser` alcançam tudo que a `vocabot-vm` alcança: a proteção da `main` e a
+  attribute condition são a defesa real (ADR-0013).
 - **Job `deploy` em `.github/workflows/ci.yml`:** `needs: [checks, test, compose]`, só roda em
   `push` para `main`; autentica via `google-github-actions/auth` (WIF, sem chave), roda
   `infra/deploy.sh` e depois `infra/smoke_test.sh` — se o smoke test falhar, o workflow fica
