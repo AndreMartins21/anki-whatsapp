@@ -6,7 +6,7 @@ Usa `ConsoleChannel` e `MemoryRepository` (nada é gravado; ao sair, tudo some),
 `Router` do bot. Sem `--real-llm`, as respostas de IA são fabricadas (`SimTutor`); com ele, usa o
 Gemini com as credenciais locais do Google (`gcloud auth application-default login`), lendo
 GCP_PROJECT_ID e GEMINI_MODEL do ambiente (`make sim` carrega o `.env`). `/exportar` grava o
-arquivo do Anki em `exports/`. Digite `sair` para terminar.
+planilha Excel em `exports/`. Digite `sair` para terminar.
 """
 
 from __future__ import annotations
@@ -23,8 +23,8 @@ from app.domain.models import NivelUsuario
 from app.flows.conversa import Conversa
 from app.flows.router import Router
 from app.repo.memory import MemoryRepository
-from app.services.anki import ExportadorAnki
 from app.services.llm import LLMError, Tutor, tutor_do_ambiente
+from app.services.planilha import ExportadorExcel
 from app.services.storage import ArmazenamentoLocal
 from sim.tutor import SimTutor
 
@@ -99,7 +99,7 @@ def main(
         conversa=conversa,
         nivel_padrao=nivel,
         status_da_sessao=_status_do_simulador,
-        exportador=ExportadorAnki(repo, ArmazenamentoLocal(exports)),
+        exportador=ExportadorExcel(repo, ArmazenamentoLocal(exports)),
     )
     asyncio.run(_conversar(router, entrada, saida))
     return 0

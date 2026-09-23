@@ -51,7 +51,7 @@ logs/
 # ---- Exportações e artefatos do bot ---------------------------------------
 exports/
 *.apkg
-anki_*.txt
+vocabot_*.xlsx
 
 # ---- Editores / SO --------------------------------------------------------
 .vscode/

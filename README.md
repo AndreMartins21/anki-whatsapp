@@ -1,8 +1,8 @@
 # Vocabot
 
-Bot de WhatsApp, de uso pessoal, para praticar vocabulário de inglês (nível B1→B2) e exportar os
-cartões para o **Anki**. Você manda uma palavra, o bot explica, você escreve uma frase, ele avalia —
-e tudo isso vira cartão.
+Bot de WhatsApp, de uso pessoal, para praticar vocabulário de inglês (nível B1→B2) e exportar
+tudo para uma **planilha Excel**. Você manda uma palavra, o bot explica, você escreve uma frase, ele avalia —
+e tudo isso fica guardado (sentidos, frases corrigidas, sinônimos, revisões).
 
 > **Status:** código pronto até o M10 (interface em inglês, roteamento por IA, revisão espaçada com
 > lembretes agendados); implantado na VM desde o M8, com o deploy do M9/M10 ainda pendente. A
@@ -45,9 +45,10 @@ make help      # todos os alvos
 ## Comandos do bot
 
 Manda uma palavra em inglês (`stall` ou `stall | the talks stalled`) e segue o menu numerado.
-`/ajuda` lista tudo: `/lista`, `/pendentes`, `/praticar [palavra]`, `/exportar [tudo]`,
-`/apagar palavra`, `/nivel B1-B2`, `/cancelar`, `/status`. O `/exportar` devolve um link (válido por
-24 h) para um `.txt` que o Anki importa direto no tipo de nota "Inglês – Vocabulário".
+`/help` lista tudo: `/list [página]` (numerada), `/info N` (frases, sinônimos etc. de uma palavra),
+`/pending`, `/practice [N|palavra]`, `/review`, `/reminders 3 9h-22h`, `/profile`, `/export`,
+`/delete N|palavra`, `/level B1-B2`, `/cancel`, `/status`. O `/export` devolve um link (válido por 24 h)
+para um `.xlsx` com três abas: `Words`, `Sentences` e `Synonyms`.
 
 ## Deploy (runbook)
 

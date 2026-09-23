@@ -46,9 +46,9 @@ from app.logging_config import configurar_logs, id_curto
 from app.repo.base import Repository
 from app.repo.firestore import FirestoreRepository
 from app.repo.memory import MemoryRepository
-from app.services.anki import ExportadorAnki
 from app.services.lembretes import Agendador
 from app.services.llm import criar_tutor
+from app.services.planilha import ExportadorExcel
 from app.services.storage import Armazenamento, ArmazenamentoLocal, criar_armazenamento_gcs
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         conversa=Conversa(canal, f"{settings.allowed_number}@c.us"),
         nivel_padrao=settings.user_level,
         status_da_sessao=canal.session_status,
-        exportador=ExportadorAnki(repo, _criar_armazenamento(settings)),
+        exportador=ExportadorExcel(repo, _criar_armazenamento(settings)),
     )
     app.state.router = router
 

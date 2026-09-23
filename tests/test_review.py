@@ -164,3 +164,22 @@ async def test_cancelar_durante_a_revisao_fecha_com_o_resumo() -> None:
 
     assert "🎉 *Practice done*" in resposta or "No pending reviews" in resposta
     assert m.repo.obter_sessao().estado == Estado.IDLE
+
+
+async def test_frase_da_revisao_guarda_a_versao_corrigida() -> None:
+    m = await _com_stall_e_hedge_vencidas()
+    await m.diz("/review")
+    m.tutor.revisoes.append(
+        Revisao(
+            tipo="frase",
+            qualidade="bom",
+            feedback="Nice!",
+            correcao="The talks [[stalled]] for weeks.",
+        )
+    )
+
+    await m.diz("the talks stalled for weeks")
+
+    (frase,) = m.repo.listar_frases("stall")
+    assert frase.autor == "usuario"
+    assert frase.versao_natural == "The talks [[stalled]] for weeks."

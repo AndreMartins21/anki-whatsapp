@@ -239,6 +239,7 @@ class Entry(BaseModel):
     cefr_estimado: Cefr
     sentido: SentidoSalvo
     outros_sentidos: list[SentidoSalvo] = Field(default_factory=list)
+    sinonimos: list[Synonym] = Field(default_factory=list)  # M12: os já mostrados ao aluno
     nota: str = ""
     tags: list[Tag] = Field(default_factory=list)
     origem_texto: str | None = None

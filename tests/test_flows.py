@@ -105,10 +105,10 @@ async def test_ciclo_completo_do_stall() -> None:
     (salvo,) = await m.diz("3")
     assert salvo == (
         "✅ Saved: *stall*.\n"
-        "Practice it any time with /praticar stall, or see everything with /lista.\n"
+        "Practice it any time with /practice stall, or see everything with /list.\n"
         "You might like these too: *stall for time*, *stall out*, *stalled talks*.\n"
         "Send me another word or expression whenever you want."
-        "\n\n💡 Want daily practice reminders? Send /lembretes 3"
+        "\n\n💡 Want daily practice reminders? Send /reminders 3"
     )
     assert m.repo.obter_sessao().estado == Estado.IDLE
     # Nenhuma entrada de expansão foi criada sozinha (M9: é só sugestão em texto).
@@ -372,3 +372,20 @@ async def test_destino_pode_mudar_por_mensagem() -> None:
     await m.router.processar("/ajuda")  # sem destino: continua no último
 
     assert [chat for chat, _ in m.channel.textos_enviados] == ["553199998888@c.us"] * 2
+
+
+async def test_sinonimos_ficam_salvos_na_entrada_sem_duplicar() -> None:
+    m = montar(
+        tutor=FakeTutor(
+            explicacoes=[explicacao_stall()],
+            sinonimos=[SINONIMOS[:1], SINONIMOS],  # o 2º pedido repete "stumble"
+        )
+    )
+    await m.diz("stall | the talks stalled")
+
+    await m.diz("2")
+    await m.diz("2")
+
+    entrada = m.repo.obter_entrada("stall")
+    assert entrada is not None
+    assert [s.expressao for s in entrada.sinonimos] == ["stumble", "grind to a halt"]

@@ -81,7 +81,12 @@ async def responder(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Ses
         await bloq(
             d.repo.adicionar_frase,
             entrada.slug,
-            Sentence(texto=texto, autor="usuario", criado_em=agora),
+            Sentence(
+                texto=texto,
+                autor="usuario",
+                versao_natural=revisao.correcao or None,
+                criado_em=agora,
+            ),
         )
 
     feitas = [*sessao.revisao_feitas, entrada.palavra]

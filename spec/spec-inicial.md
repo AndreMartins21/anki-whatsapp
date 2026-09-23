@@ -18,7 +18,7 @@ Ciclo principal:
 4. Texto livre (frase, pedido de ajuda, palavra nova, ou fora do escopo) é roteado por uma única chamada de IA (seção 5.1) que classifica e já responde. Frase de prática: avalia se usa a palavra corretamente, naquele sentido, e se é natural; o usuário pode tentar de novo.
 5. Ao concluir, tudo fica salvo no Firestore: a palavra, o sentido, as frases do usuário com as avaliações e os exemplos.
 6. Ao salvar ("3" ou pedido livre), o bot sugere até 3 **expressões relacionadas** como texto — sem menu; o usuário só manda a que quiser como qualquer palavra nova.
-7. `/exportar` (ou `/export`) gera um `.txt` para o Anki e envia um **link temporário** para baixar (seção 7.5). O WAHA Core não envia arquivos.
+7. `/export` gera uma **planilha Excel** (`.xlsx`) com tudo o que foi coletado e envia um **link temporário** para baixar (seção 7.3). (Até o M11 era um `.txt` para o Anki; ver ADR-0014.) O WAHA Core não envia arquivos.
 
 **M10:** o bot também faz revisão espaçada com lembretes agendados (seção 5.7) — deixou de ser fora de escopo.
 
@@ -121,17 +121,28 @@ Regras:
 
 ### 5.2 Comandos
 
-`/help`, `/list`, `/pending`, `/practice [palavra]`, `/export`, `/export all`, `/delete palavra`,
-`/level A2-B1|B1-B2|B2-C1`, `/cancel`, `/status`, `/lembretes [N [INICIOh-FIMh] | off]` (M10),
-`/revisar` (M10). Cada um aceita também o apelido em PT-BR que a spec sempre teve (`/ajuda`,
-`/lista`, `/pendentes`, `/praticar`, `/exportar [tudo]`, `/apagar`, `/nivel`, `/cancelar`) — a
-mensagem de "salvo" (seção 5.5, Case D) cita os nomes em português.
+`/help`, `/list [página]`, `/info N|palavra`, `/pending`, `/practice [N|palavra]`, `/review`,
+`/reminders [N [INICIOh-FIMh] | off]`, `/profile`, `/export`, `/delete N|palavra`,
+`/level A2-B1|B1-B2|B2-C1`, `/cancel`, `/status`. Todos os nomes são em inglês (M12, ADR-0014). Os
+apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/praticar`,
+`/exportar [tudo]`, `/apagar`, `/nivel`, `/cancelar`, `/reminders`, `/review`, `/perfil`)
+**continuam funcionando, mas nenhuma mensagem do bot os divulga**.
 
+- `/list` numera as palavras na ordem de criação (o número é global, não reinicia por página) e
+  mostra 20 por página; `/list 2` é a página 2. Uma página inexistente responde com um aviso.
+- `/info N` (número da `/list`) ou `/info palavra` mostra tudo de uma entrada: tradução, definição,
+  outros sentidos, nota, status e próxima revisão, as frases do aluno **já corrigidas** (a
+  `versao_natural`, sem `[[ ]]`, até 5, sem repetir), até 3 exemplos do bot e os sinônimos salvos.
+  `/practice` e `/delete` também aceitam o número.
 - `/pending` lista as entradas com status `nova`.
-- `/export` exporta as entradas ainda não exportadas; `/export all`, todas. Entrada sem nenhuma frase utilizável fica de fora (o bot avisa quantas). O nome do arquivo usa a hora em UTC.
+- `/export` gera a planilha com **todas** as palavras (ver 7.3); `/export all` (e `/exportar tudo`)
+  é aceito e faz o mesmo. Sem nenhuma palavra, o bot avisa que não há o que exportar.
 - `/practice` sem argumento pega a pendente mais antiga.
 - `/level` aceita A2-B1, B1-B2 e B2-C1.
-- `/lembretes` e `/revisar`: ver seção 5.7.
+- `/reminders` e `/review`: ver seção 5.7.
+- `/profile` mostra o nível, o total de palavras (praticadas e pendentes), quantas estão vencidas
+  para revisão e os lembretes (`every day, 3x between 9h and 21h` ou `off`). Os lembretes rodam
+  todos os dias; não há escolha de dias da semana.
 - `/status` mostra o status da sessão do WAHA, o total de palavras e as pendentes.
 
 ### 5.3 Calibração pelo nível (B1-B2)
@@ -217,7 +228,7 @@ texto, sem criar entradas nem menu — se o aluno quiser uma, é só mandá-la c
 nova):
 ```
 ✅ Saved: *stall*.
-Practice it any time with /praticar stall, or see everything with /lista.
+Practice it any time with /practice stall, or see everything with /list.
 You might like these too: *stall for time*, *grind to a halt*, *drag on*.
 Send me another word or expression whenever you want.
 ```
@@ -236,9 +247,9 @@ O bot também **inicia** conversas: no horário combinado, escolhe até 20 palav
 uma sessão de revisão. Espaçamento estilo Anki (SM-2 simplificado, `app/domain/srs.py`), mas a
 nota vem do julgamento da IA sobre a resposta em texto livre do aluno, não de 4 botões.
 
-**Configuração:** `/lembretes` mostra o estado; `/lembretes N` liga N vezes por dia na janela
-padrão (9h–21h); `/lembretes N INICIOh-FIMh` usa uma janela própria (N de 1 a 8, `0 <= início <
-fim <= 23`); `/lembretes off` desliga. Desligado por padrão; a primeira palavra salva mostra uma
+**Configuração:** `/reminders` mostra o estado; `/reminders N` liga N vezes por dia na janela
+padrão (9h–21h); `/reminders N INICIOh-FIMh` usa uma janela própria (N de 1 a 8, `0 <= início <
+fim <= 23`); `/reminders off` desliga. Desligado por padrão; a primeira palavra salva mostra uma
 dica de uma linha sobre o comando, uma única vez. Os horários se distribuem igualmente dentro da
 janela (`app/domain/lembretes.py:horarios_do_dia`).
 
@@ -275,7 +286,7 @@ Send me a new word or expression whenever you want.
 **Fila de uma sessão** (`app/flows/review.py:montar_fila`): as vencidas primeiro (mais antiga
 primeiro; `proxima_revisao=None` = cartão novo, vencido desde já), completando até 20 com as que
 vencem mais cedo entre as que ainda não venceram. Sem nada vencido, o agendador fica em silêncio —
-nunca manda "nada para revisar" sem o aluno pedir (só `/revisar`, chamado explicitamente, avisa).
+nunca manda "nada para revisar" sem o aluno pedir (só `/review`, chamado explicitamente, avisa).
 Uma resposta `de_novo` volta a palavra para o **fim da fila desta sessão** (como no Anki) e conta
 um lapso; as demais notas (`dificil`/`bom`/`facil`) avançam o agendamento.
 
@@ -287,7 +298,7 @@ seguidos sem resposta ao anterior (`lembrete_sem_resposta`, limpo na próxima me
 qualquer que seja). Se a conversa está aberta (`sessao.estado != IDLE`), adia para o próximo tick,
 e desiste (recalculando o próximo horário) se o atraso passar de 2 horas.
 
-`/revisar` começa a sessão na hora, sem esperar o próximo horário.
+`/review` começa a sessão na hora, sem esperar o próximo horário.
 
 ## 6. Contratos com a IA
 
@@ -373,12 +384,14 @@ session/current            { estado, entry_id, sentido_id, sinonimos_mostrados, 
                            # ("Check synonyms" -> "See more synonyms") depois da 1ª vez
                            # M10: os 5 campos de revisao_* só valem com estado=REVIEWING
 entries/{slug}             { palavra, classe, cefr_estimado, sentido:{traducao,definicao}, outros_sentidos,
-                             nota, tags, origem_texto, origem:"usuario"|"expansao", pai?, status:"nova"|"praticada",
+                             sinonimos, nota, tags, origem_texto, origem:"usuario"|"expansao", pai?, status:"nova"|"praticada",
                              exportado, criado_em, atualizado_em,
                              repeticoes, intervalo_dias, facilidade, lapsos, proxima_revisao?, revisada_em? }
+                           # M12: sinonimos = [{expressao, significado, exemplo}] já mostrados ao aluno
                            # M10: campos de SM-2 simplificado (ADR-0011); proxima_revisao=None
                            # é um cartão novo, vencido desde já
 entries/{slug}/sentences/{auto}  { texto, autor:"usuario"|"bot", veredito?, correcoes?, versao_natural?, explicacao?, criado_em }
+                           # M12: versao_natural é a frase do aluno já corrigida pela IA (também nas revisões)
 processed/{message_id}     { criado_em, expira_em }     # deduplicação; política de TTL de 7 dias
 lids/{lid}                 { numero }                   # cache LID -> número (seção 8.2), evita consultar o WAHA a cada mensagem
 ```
@@ -389,24 +402,24 @@ lids/{lid}                 { numero }                   # cache LID -> número (
 - Uma entrada fica `praticada` quando tem ao menos uma frase do usuário avaliada; senão, é `nova`.
 - A frase do cartão é a melhor frase **do usuário** (`correta`, senão a `versao_natural` mais recente). Se não houver, use o primeiro exemplo do bot.
 
-### 7.3 Export para o Anki (formato fixo, não mude)
-O tipo de nota "Inglês – Vocabulário" já existe no Anki do usuário, com os campos `Palavra, Frase, FraseLacuna, Traducao, Definicao, Nota, Producao`. Gere UTF-8 com este cabeçalho exato (o travessão é "–", U+2013):
-```
-#separator:tab
-#html:true
-#notetype:Inglês – Vocabulário
-#deck:Inglês::Vocabulário
-#columns:Palavra	Frase	FraseLacuna	Traducao	Definicao	Nota	Producao	Tags
-#tags column:8
-```
-- `Frase` = frase com `<b>alvo</b>`.
-- `FraseLacuna` = frase com `<span class="lacuna">_____</span>`.
-- `Traducao` = `(classe) tradução`.
-- `Producao` = `y`.
-- `Tags` = `whatsapp` mais as tags da entrada.
-- Troque tab e quebra de linha dentro dos campos por espaço e `<br>`.
+### 7.3 Export em planilha Excel (M12, ADR-0014)
+`/export` gera um `.xlsx` (openpyxl) com **todas** as palavras, em três abas. Cabeçalho em negrito e
+congelado; datas em UTC, sem fuso (o Excel não guarda fuso).
+- **Words** (uma linha por entrada): `#`, `Word`, `Class`, `CEFR`, `Translation`, `Definition`,
+  `Other senses`, `Note`, `Tags`, `Status`, `Source text`, `Best sentence`, `Created`, `Last review`,
+  `Next review`, `Repetitions`, `Lapses`, `Ease`. `Best sentence` segue a regra da seção 7.2, sem `[[ ]]`.
+- **Sentences** (uma linha por frase, do aluno e do bot): `#`, `Word`, `Author` (`you`|`bot`),
+  `Sentence`, `Corrected version`, `Verdict`, `Corrections`, `Explanation`, `Date`.
+- **Synonyms**: `#`, `Word`, `Synonym`, `Meaning`, `Example`.
 
-**Entrega:** faça upload do arquivo em `gs://$EXPORT_BUCKET/exports/anki_AAAA-MM-DD_HHMM.txt` e gere uma **URL assinada V4 válida por 24 h**. Na VM não há chave privada, então assine via IAM `signBlob`: a conta de serviço da VM precisa do papel `roles/iam.serviceAccountTokenCreator` **sobre ela mesma**, e use `service_account_email` + `access_token` no `generate_signed_url`. Envie o link por texto com instruções curtas. O bucket tem uma regra de ciclo de vida que apaga objetos após 7 dias.
+O campo `exportado` das entradas deixou de ser usado (a planilha é sempre um retrato completo).
+
+**Entrega:** upload em `gs://$EXPORT_BUCKET/exports/vocabot_AAAA-MM-DD_HHMM.xlsx` (hora em UTC), com
+content-type `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, e **URL assinada V4
+válida por 24 h**. Na VM não há chave privada, então assine via IAM `signBlob`: a conta de serviço da
+VM precisa do papel `roles/iam.serviceAccountTokenCreator` **sobre ela mesma**, e use
+`service_account_email` + `access_token` no `generate_signed_url`. O bucket tem uma regra de ciclo de
+vida que apaga objetos após 7 dias.
 
 ## 8. Canal: WAHA
 
@@ -443,12 +456,13 @@ Crie a interface `Channel` (enviar texto, marcar como lido, digitando) com as im
 | M2 | Modelos, `Repository` (memória e Firestore), máquina de estados, parser de escolhas numéricas | Testes de todas as transições da seção 5.1, incluindo os atalhos |
 | M3 | `llm.py`, `prompts.py`, schemas, `FakeLLM`, `evals/` | Testes com o fake; `python -m evals.run` funciona se houver chave |
 | M4 | Fluxos e comandos completos | Teste de ponta a ponta do ciclo "stall" com fakes |
-| M5 | Export para o Anki + upload e URL assinada (com fake de storage nos testes) | O `.txt` bate byte a byte com o arquivo esperado |
+| M5 | Export para o Anki + upload e URL assinada (com fake de storage nos testes) | O `.txt` bate byte a byte com o arquivo esperado (substituído pelo Excel no M12) |
 | M6 | **Simulador de terminal** `python -m sim` (`ConsoleChannel` + `MemoryRepository`; `--real-llm` opcional) | Consigo fazer o ciclo completo no terminal |
 | M7 | `docker-compose.yml` (waha + bot), `infra/` (seção 10), README com o runbook | `docker compose config` válido; scripts passam em `bash -n` e `shellcheck`; nenhum segredo versionado |
 | M8 | Provisionar e fazer o deploy na VM, comigo aprovando cada comando; parear o WhatsApp; smoke test | O WAHA está em `WORKING` e o bot responde `/ajuda` no WhatsApp |
 | M9 | Interface em inglês (só 🇧🇷 em PT-BR), máquina de estados reduzida a `IDLE`/`AWAIT_ACTION` com um único menu de ações, roteamento de texto livre por uma chamada de IA (`Tutor.route`, ADR-0009), sinônimos (`Tutor.synonyms`), expansões viram sugestão em texto (sem menu) | `make check` passa; ciclo completo no `sim` bate a seção 5.5; `python -m evals.run --tarefa roteamento` roda contra a API real |
-| M10 | Revisão espaçada (SM-2 simplificado, ADR-0011) com sessão `REVIEWING`, `/lembretes` e `/revisar`, agendador em segundo plano (`Agendador`, ADR-0012) | `make check` passa; `make test-emulador` valida os campos novos no Firestore real; ciclo completo de revisão no `sim`; nenhum lembrete dispara sem `chat_id` conhecido |
+| M10 | Revisão espaçada (SM-2 simplificado, ADR-0011) com sessão `REVIEWING`, `/reminders` e `/review`, agendador em segundo plano (`Agendador`, ADR-0012) | `make check` passa; `make test-emulador` valida os campos novos no Firestore real; ciclo completo de revisão no `sim`; nenhum lembrete dispara sem `chat_id` conhecido |
+| M12 | Comandos em inglês (apelidos PT escondidos), `/list` numerado e paginado, `/info`, `/profile`, sinônimos e frases corrigidas persistidos na entrada, `/export` em planilha Excel no lugar do arquivo do Anki (ADR-0014) | `make check` passa; `make test-emulador` valida `sinonimos` no Firestore real; `/export` no `sim` gera um `.xlsx` com as 3 abas |
 | M11 | Deploy contínuo via GitHub Actions (seção 10.9, ADR-0013): branch protection na `main` (PR + checks obrigatórios), job `deploy` automático no merge, autenticado por Workload Identity Federation | Push direto na `main` é bloqueado pelo GitHub; um PR com CI verde, ao ser mergeado, dispara o job `deploy` e o bot responde `/help` depois do smoke test |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
@@ -569,7 +583,7 @@ vocabot/
     channel/  base.py  waha.py  console.py  parser.py
     domain/   models.py  state.py  choices.py  srs.py  lembretes.py
     flows/    router.py  capture.py  practice.py  expansion.py  synonyms.py  freeform.py  review.py  commands.py
-    services/ llm.py  prompts.py  anki.py  storage.py  lembretes.py
+    services/ llm.py  prompts.py  planilha.py  storage.py  lembretes.py
     repo/     base.py  memory.py  firestore.py
   sim/        __main__.py  tutor.py
   evals/      sentencas.yaml  roteamento.yaml  run.py

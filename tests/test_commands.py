@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass
+from datetime import timedelta
+from pathlib import Path
 
-from app.domain.models import Estado, Explanation, Roteamento, Sense
-from app.services.anki import ResultadoExportacao
+from app import messages
+from app.domain.models import (
+    Entry,
+    Estado,
+    Explanation,
+    Roteamento,
+    Sense,
+    SentidoSalvo,
+    Synonym,
+)
 from app.services.fake_llm import FakeTutor
-from tests.helpers import Montagem, avaliacao, expansoes, explicacao_stall, montar
+from app.services.planilha import ResultadoExportacao
+from tests.helpers import T0, Montagem, avaliacao, expansoes, explicacao_stall, montar
 
 HEDGE = Explanation(
     ok=True,
@@ -71,8 +83,12 @@ async def test_ajuda_lista_os_comandos() -> None:
 
     for comando in (
         "/list",
+        "/info",
         "/pending",
         "/practice",
+        "/review",
+        "/reminders",
+        "/profile",
         "/export",
         "/delete",
         "/level",
@@ -120,8 +136,9 @@ async def test_lista_mostra_praticadas_e_novas() -> None:
     (resposta,) = await m.diz("/list")
 
     assert resposta.startswith("📚 *Your words* (2)")
-    assert "✅ stall — travar, emperrar" in resposta
-    assert "🆕 hedge — proteger-se" in resposta
+    # o relógio de teste é fixo: o desempate por slug põe "hedge" antes de "stall"
+    assert "1. 🆕 hedge — proteger-se" in resposta
+    assert "2. ✅ stall — travar, emperrar" in resposta
 
 
 async def test_pendentes_so_as_novas() -> None:
@@ -285,49 +302,40 @@ async def test_status_funciona_mesmo_com_o_waha_fora() -> None:
 @dataclass
 class ExportadorFalso:
     resultado: ResultadoExportacao | None
-    chamadas: list[bool] = field(default_factory=list)
+    chamadas: int = 0
 
-    def exportar(self, *, tudo: bool) -> ResultadoExportacao | None:
-        self.chamadas.append(tudo)
+    def exportar(self) -> ResultadoExportacao | None:
+        self.chamadas += 1
         return self.resultado
 
 
 async def test_exportar_devolve_o_link() -> None:
-    exportador = ExportadorFalso(ResultadoExportacao("https://exemplo.test/anki.txt", 4, 0))
+    exportador = ExportadorFalso(ResultadoExportacao("https://exemplo.test/vocabot.xlsx", 4))
     m = montar(exportador=exportador)
 
     (resposta,) = await m.diz("/export")
 
-    assert "4 cards" in resposta
-    assert "https://exemplo.test/anki.txt" in resposta
-    assert exportador.chamadas == [False]
+    assert "4 words in the spreadsheet" in resposta
+    assert "https://exemplo.test/vocabot.xlsx" in resposta
+    assert exportador.chamadas == 1
 
 
-async def test_exportar_tudo_pede_tudo() -> None:
-    exportador = ExportadorFalso(ResultadoExportacao("https://exemplo.test/anki.txt", 9, 2))
+async def test_exportar_all_e_o_apelido_em_pt_br_continuam_aceitos() -> None:
+    exportador = ExportadorFalso(ResultadoExportacao("https://exemplo.test/vocabot.xlsx", 1))
     m = montar(exportador=exportador)
 
-    (resposta,) = await m.diz("/export all")
-
-    assert exportador.chamadas == [True]
-    assert "2 word(s) were left out" in resposta
-
-
-async def test_exportar_tudo_aceita_o_apelido_em_pt_br() -> None:
-    exportador = ExportadorFalso(ResultadoExportacao("https://exemplo.test/anki.txt", 1, 0))
-    m = montar(exportador=exportador)
-
+    await m.diz("/export all")
     await m.diz("/exportar tudo")
 
-    assert exportador.chamadas == [True]
+    assert exportador.chamadas == 2
 
 
-async def test_exportar_sem_nada_novo() -> None:
+async def test_exportar_sem_nada() -> None:
     m = montar(exportador=ExportadorFalso(None))
 
     (resposta,) = await m.diz("/export")
 
-    assert "nothing new to export" in resposta
+    assert "nothing to export" in resposta
 
 
 async def test_exportar_sem_exportador_configurado() -> None:
@@ -403,3 +411,148 @@ async def test_lembretes_atuais_mostra_o_que_esta_configurado() -> None:
 
     assert "3x a day" in resposta
     assert "9h" in resposta and "22h" in resposta
+
+
+# ---- /list paginado, /info e /profile (M12) --------------------------------------------------
+
+
+def _preencher_entradas(m: Montagem, quantidade: int) -> None:
+    for i in range(quantidade):
+        m.repo.criar_entrada(
+            Entry(
+                slug=f"w{i:02d}",
+                palavra=f"word{i:02d}",
+                classe="noun",
+                cefr_estimado="B1",
+                sentido=SentidoSalvo(traducao=f"palavra {i}", definicao="a thing"),
+                criado_em=T0 + timedelta(minutes=i),
+                atualizado_em=T0,
+            )
+        )
+
+
+async def test_lista_pagina_de_20_com_numeracao_global() -> None:
+    m = montar()
+    _preencher_entradas(m, 25)
+
+    (primeira,) = await m.diz("/list")
+    (segunda,) = await m.diz("/list 2")
+
+    assert "*Your words* (25)" in primeira
+    assert "1. 🆕 word00" in primeira
+    assert "20. 🆕 word19" in primeira
+    assert "21." not in primeira
+    assert "Page 1/2 — /list 2 for more" in primeira
+    assert "21. 🆕 word20" in segunda
+    assert "25. 🆕 word24" in segunda
+    assert "/info 21 for details" in segunda
+    assert "Page 2/2" in segunda
+    assert "for more" not in segunda
+
+
+async def test_lista_curta_nao_mostra_pagina() -> None:
+    m = await _stall_e_hedge()
+
+    (resposta,) = await m.diz("/list")
+
+    assert "Page" not in resposta
+
+
+async def test_lista_pagina_invalida() -> None:
+    m = await _stall_e_hedge()
+
+    for argumento in ("2", "0", "abc"):
+        (resposta,) = await m.diz(f"/list {argumento}")
+        assert "That page doesn't exist" in resposta
+
+
+async def test_info_por_numero_mostra_frases_corrigidas_exemplos_e_sinonimos() -> None:
+    m = montar(
+        tutor=FakeTutor(
+            explicacoes=[explicacao_stall()],
+            roteamentos=[_roteamento_frase()],
+            sinonimos=[
+                [
+                    Synonym(
+                        expressao="stumble",
+                        significado="to lose momentum",
+                        exemplo="It [[stumbled]].",
+                    )
+                ]
+            ],
+            expansoes=[expansoes()],
+        )
+    )
+    await m.diz("stall | the talks stalled")
+    await m.diz("2")  # synonyms
+    await m.diz("the project stalled")
+    await m.diz("3")  # save
+
+    (resposta,) = await m.diz("/info 1")
+
+    assert resposta.startswith("*1. stall* (verb) — B2")
+    assert "🇧🇷 travar, emperrar" in resposta
+    assert "↔️ enrolar — to delay on purpose" in resposta
+    # a frase do aluno aparece já corrigida, sem [[ ]]
+    assert "• The project stalled because the client didn't send the documents." in resposta
+    assert "[[" not in resposta
+    assert "📝 *Examples*\n• The talks stalled." in resposta
+    assert "🔄 *Synonyms*\n• *stumble* = to lose momentum" in resposta
+
+
+async def test_info_por_palavra_e_pelo_apelido() -> None:
+    m = await _stall_e_hedge()
+
+    (por_palavra,) = await m.diz("/info hedge")
+
+    assert por_palavra.startswith("*2. hedge*") or por_palavra.startswith("*1. hedge*")
+    assert "proteger-se" in por_palavra
+
+
+async def test_info_sem_argumento_ou_inexistente() -> None:
+    m = await _stall_e_hedge()
+
+    (sem_argumento,) = await m.diz("/info")
+    (numero_fora,) = await m.diz("/info 9")
+    (inexistente,) = await m.diz("/info banana")
+
+    assert "Tell me which word" in sem_argumento
+    assert "couldn't find" in numero_fora
+    assert "couldn't find" in inexistente
+
+
+async def test_practice_e_delete_aceitam_o_numero_da_lista() -> None:
+    m = await _stall_e_hedge()
+
+    # a ordem é a da /list: hedge (1) e stall (2)
+    (resposta,) = await m.diz("/delete 1")
+
+    assert "🗑️ *hedge* deleted." in resposta
+    assert [e.slug for e in m.repo.listar_entradas()] == ["stall"]
+
+
+async def test_profile_com_lembretes_desligados() -> None:
+    m = await _stall_e_hedge()
+
+    (resposta,) = await m.diz("/profile")
+
+    assert "Level: B1-B2" in resposta
+    assert "Words: 2 (1 practiced, 1 pending)" in resposta
+    assert "Due for review: 2" in resposta
+    assert "Reminders: off — turn them on with /reminders 3" in resposta
+
+
+async def test_profile_com_lembretes_ligados_mostra_todo_dia() -> None:
+    m = montar()
+    await m.diz("/reminders 3 9h-22h")
+
+    (resposta,) = await m.diz("/perfil")
+
+    assert "Words: 0 (0 practiced, 0 pending)" in resposta
+    assert "Reminders: every day, 3x between 9h and 22h" in resposta
+
+
+def test_nenhuma_mensagem_divulga_o_nome_em_portugues() -> None:
+    fonte = Path(messages.__file__).read_text(encoding="utf-8")
+
+    assert not re.search(r"/(lista|praticar|lembretes|revisar|exportar|apagar|ajuda)\b", fonte)

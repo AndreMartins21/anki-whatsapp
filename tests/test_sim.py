@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from openpyxl import load_workbook
 
 from sim.__main__ import main
 
@@ -24,8 +25,9 @@ def test_ciclo_completo_no_terminal(tmp_path: Path) -> None:
             "1",  # see more examples
             "The negotiations stalled after the first meeting.",
             "3",  # just save
-            "/lista",
-            "/exportar",
+            "/list",
+            "/info 1",
+            "/export",
             "sair",
         ],
         tmp_path,
@@ -36,12 +38,13 @@ def test_ciclo_completo_no_terminal(tmp_path: Path) -> None:
     assert "📝 *Examples with stall*" in tela
     assert "✅ *Perfect!*" in tela
     assert "✅ Saved: *stall*." in tela
-    assert "✅ stall — travar, emperrar" in tela
-    assert "1 card in the Anki file" in tela
-    (arquivo,) = list(tmp_path.glob("anki_*.txt"))
-    assert "The negotiations <b>stalled</b> after the first meeting." in arquivo.read_text(
-        encoding="utf-8"
-    )
+    assert "1. ✅ stall — travar, emperrar" in tela
+    assert "✍️ *Your sentences*" in tela
+    assert "1 word in the spreadsheet" in tela
+    (arquivo,) = list(tmp_path.glob("vocabot_*.xlsx"))
+    livro = load_workbook(arquivo)
+    assert livro.sheetnames == ["Words", "Sentences", "Synonyms"]
+    assert livro["Words"]["B2"].value == "stall"
 
 
 def test_palavra_com_frase_de_contexto_mostra_o_card_direto(tmp_path: Path) -> None:

@@ -1,9 +1,8 @@
-"""Comandos (seção 5.2): /help /list /pending /practice /export /delete /level /cancel /status
-/lembretes /revisar (M10).
+"""Comandos (seção 5.2): /help /list /info /pending /practice /review /reminders /profile /export
+/delete /level /cancel /status.
 
-Cada comando aceita o nome em inglês e o apelido em PT-BR que a spec sempre teve (`/praticar`,
-`/lista`...), já que o Case D de salvar ("Practice it any time with /praticar stall") cita os
-nomes em português."""
+Os nomes são em inglês (M12). Os apelidos em PT-BR que a spec sempre teve (`/praticar`, `/lista`,
+`/lembretes`...) continuam funcionando, mas nenhuma mensagem os divulga."""
 
 from __future__ import annotations
 
@@ -15,14 +14,16 @@ from app import messages
 from app.domain.choices import normalizar
 from app.domain.lembretes import parse_lembretes
 from app.domain.models import Entry, Estado, NivelUsuario, Profile, Sessao, slugify
+from app.domain.srs import vencida
 from app.flows import capture, review
 from app.flows.base import Deps, bloq
 from app.repo.base import Repository
-from app.services.anki import ResultadoExportacao
+from app.services.planilha import ResultadoExportacao
 
 logger = logging.getLogger(__name__)
 
 _NIVEIS: tuple[str, ...] = get_args(NivelUsuario)
+TAMANHO_DA_PAGINA = 20
 
 _AJUDA = {"ajuda", "help"}
 _LISTA = {"lista", "list"}
@@ -33,16 +34,18 @@ _APAGAR = {"apagar", "delete"}
 _NIVEL = {"nivel", "level"}
 _CANCELAR = {"cancelar", "cancel"}
 _STATUS = {"status"}
+_INFO = {"info"}
+_PERFIL = {"profile", "perfil"}
 _LEMBRETES = {"lembretes", "reminders"}
 _REVISAR = {"revisar", "review"}
 _DESLIGAR = {"off", "desligar", "0"}
 
 
 class Exportador(Protocol):
-    """Gera o arquivo do Anki e devolve o resultado; `None` se não há nada a exportar.
+    """Gera a planilha Excel e devolve o resultado; `None` se não há nada a exportar.
     Síncrono, como o resto do acesso a Firestore/Storage."""
 
-    def exportar(self, *, tudo: bool) -> ResultadoExportacao | None: ...
+    def exportar(self) -> ResultadoExportacao | None: ...
 
 
 StatusDaSessao = Callable[[], Awaitable[str]]
@@ -65,8 +68,11 @@ async def executar(
     if comando in _AJUDA:
         await conversa.enviar(messages.AJUDA)
     elif comando in _LISTA:
-        entradas = await bloq(d.repo.listar_entradas)
-        await conversa.enviar(messages.lista(entradas) if entradas else messages.SEM_ENTRADAS)
+        await _listar(d, argumento)
+    elif comando in _INFO:
+        await _info(d, argumento)
+    elif comando in _PERFIL:
+        await _perfil(d, perfil)
     elif comando in _PENDENTES:
         pendentes = await bloq(d.repo.listar_entradas, "nova")
         await conversa.enviar(
@@ -75,7 +81,7 @@ async def executar(
     elif comando in _PRATICAR:
         return await _praticar(d, sessao, perfil, argumento)
     elif comando in _EXPORTAR:
-        await _exportar(d, argumento, exportador)
+        await _exportar(d, exportador)
     elif comando in _APAGAR:
         return await _apagar(d, sessao, argumento)
     elif comando in _NIVEL:
@@ -98,11 +104,64 @@ async def executar(
 
 
 def _achar_entrada(repo: Repository, palavra: str) -> Entry | None:
+    """Acha por número (o da `/list`), slug ou palavra."""
+    if palavra.isdigit():
+        entradas = repo.listar_entradas()
+        numero = int(palavra)
+        return entradas[numero - 1] if 1 <= numero <= len(entradas) else None
     direta = repo.obter_entrada(slugify(palavra))
     if direta is not None:
         return direta
     alvo = normalizar(palavra)
     return next((e for e in repo.listar_entradas() if normalizar(e.palavra) == alvo), None)
+
+
+async def _listar(d: Deps, argumento: str) -> None:
+    """`/list` mostra a página 1; `/list 2`, a página 2 (20 palavras por página)."""
+    entradas = await bloq(d.repo.listar_entradas)
+    if not entradas:
+        await d.conversa.enviar(messages.SEM_ENTRADAS)
+        return
+    paginas = -(-len(entradas) // TAMANHO_DA_PAGINA)
+    if argumento and not argumento.isdigit():
+        await d.conversa.enviar(messages.PAGINA_INVALIDA)
+        return
+    numero = int(argumento) if argumento else 1
+    if not 1 <= numero <= paginas:
+        await d.conversa.enviar(messages.PAGINA_INVALIDA)
+        return
+    inicio = (numero - 1) * TAMANHO_DA_PAGINA
+    fatia = entradas[inicio : inicio + TAMANHO_DA_PAGINA]
+    await d.conversa.enviar(
+        messages.lista(
+            fatia, inicio=inicio + 1, total=len(entradas), numero=numero, paginas=paginas
+        )
+    )
+
+
+async def _info(d: Deps, argumento: str) -> None:
+    if not argumento:
+        await d.conversa.enviar(messages.USO_DO_INFO)
+        return
+    entrada = await bloq(_achar_entrada, d.repo, argumento)
+    if entrada is None:
+        await d.conversa.enviar(messages.palavra_nao_encontrada(argumento))
+        return
+    entradas = await bloq(d.repo.listar_entradas)
+    numero = next(i for i, e in enumerate(entradas, start=1) if e.slug == entrada.slug)
+    frases = await bloq(d.repo.listar_frases, entrada.slug)
+    await d.conversa.enviar(messages.info(entrada, numero, frases))
+
+
+async def _perfil(d: Deps, perfil: Profile) -> None:
+    entradas = await bloq(d.repo.listar_entradas)
+    praticadas = sum(1 for e in entradas if e.status == "praticada")
+    para_revisar = sum(1 for e in entradas if vencida(e, d.agora()))
+    await d.conversa.enviar(
+        messages.perfil_do_aluno(
+            perfil, total=len(entradas), praticadas=praticadas, para_revisar=para_revisar
+        )
+    )
 
 
 async def _praticar(d: Deps, sessao: Sessao, perfil: Profile, palavra: str) -> Sessao:
@@ -120,18 +179,16 @@ async def _praticar(d: Deps, sessao: Sessao, perfil: Profile, palavra: str) -> S
     return await capture.explicar(d, perfil, entrada.palavra, entrada_existente=entrada)
 
 
-async def _exportar(d: Deps, argumento: str, exportador: Exportador | None) -> None:
+async def _exportar(d: Deps, exportador: Exportador | None) -> None:
     if exportador is None:
         await d.conversa.enviar(messages.EXPORTACAO_INDISPONIVEL)
         return
     async with d.conversa.digitando():
-        resultado = await bloq(exportador.exportar, tudo=normalizar(argumento) in {"tudo", "all"})
+        resultado = await bloq(exportador.exportar)
     if resultado is None:
         await d.conversa.enviar(messages.SEM_EXPORTAVEIS)
         return
-    await d.conversa.enviar(
-        messages.exportacao(resultado.link, resultado.quantidade, resultado.ignoradas)
-    )
+    await d.conversa.enviar(messages.exportacao(resultado.link, resultado.quantidade))
 
 
 async def _apagar(d: Deps, sessao: Sessao, palavra: str) -> Sessao:
@@ -173,8 +230,8 @@ async def _status(d: Deps, status_da_sessao: StatusDaSessao | None) -> None:
 
 
 async def _lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
-    """`/lembretes` mostra o estado atual; `/lembretes off` desliga; `/lembretes 3` ou
-    `/lembretes 3 9h-22h` liga/muda (seção 5.7, M10)."""
+    """`/reminders` mostra o estado atual; `/reminders off` desliga; `/reminders 3` ou
+    `/reminders 3 9h-22h` liga/muda (seção 5.7, M10)."""
     if not argumento:
         await d.conversa.enviar(messages.lembretes_atuais(perfil))
         return
@@ -202,7 +259,7 @@ async def _lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
 
 
 async def _revisar(d: Deps, sessao: Sessao) -> Sessao:
-    """`/revisar` começa a sessão de revisão na hora, em vez de esperar o próximo lembrete."""
+    """`/review` começa a sessão de revisão na hora, em vez de esperar o próximo lembrete."""
     entradas = await bloq(d.repo.listar_entradas)
     if not review.montar_fila(entradas, d.agora()):
         await d.conversa.enviar(messages.SEM_NADA_PARA_REVISAR)

@@ -8,7 +8,8 @@ mais o próximo card na revisão espaçada (seção 5.7, M10).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
+from datetime import datetime
 
 from app.domain.models import (
     Entry,
@@ -18,6 +19,7 @@ from app.domain.models import (
     Profile,
     Revisao,
     Sense,
+    Sentence,
     SentidoSalvo,
     Synonym,
     Veredito,
@@ -32,8 +34,12 @@ COMANDO_DESCONHECIDO = "I don't know that command. Send /help to see what I have
 SEM_ENTRADAS = "You don't have any saved words yet. Send me an English word to get started!"
 SEM_PENDENTES = "No pending words. 🎉"
 EXPORTACAO_INDISPONIVEL = "Export isn't available here yet."
-SEM_EXPORTAVEIS = "There's nothing new to export. Use */export all* to export everything again."
+SEM_EXPORTAVEIS = "There's nothing to export yet. Send me an English word to get started!"
+USO_DO_INFO = "Tell me which word: /info 3 (the number from /list) or /info stall."
+PAGINA_INVALIDA = "That page doesn't exist. Use /list to see the first one."
 
+_MAX_FRASES_NO_INFO = 5
+_MAX_EXEMPLOS_NO_INFO = 3
 _NUMEROS = {1: "1️⃣", 2: "2️⃣", 3: "3️⃣", 4: "4️⃣", 5: "5️⃣"}
 
 _CABECALHO_VEREDITO: dict[Veredito, str] = {
@@ -47,16 +53,18 @@ AJUDA = """*How I work* 🤓
 Send me a word or expression in English (you can include the sentence where you saw it: `stall | the talks stalled`). I'll explain it, you practice writing a sentence, and I'll give you feedback.
 
 *Commands*
-/list — your words
+/list [page] — your words, numbered
+/info 3 — everything about a word (sentences, synonyms…)
 /pending — the ones you haven't practiced yet
 /practice [word] — practice one (no word: the oldest pending one)
-/export — generate the Anki file (*/export all* includes the ones already exported)
+/review — start a review session right now
+/reminders 3 9h-22h — daily practice reminders (or /reminders off)
+/profile — your level, words and reminders
+/export — get an Excel spreadsheet with everything
 /delete word — remove a word
 /level B1-B2 — change your level (A2-B1, B1-B2 or B2-C1)
 /cancel — stop what you were doing (nothing is deleted)
-/status — how things are going
-/lembretes 3 9h-22h — daily practice reminders (or /lembretes off)
-/revisar — start a review session right now"""
+/status — how things are going"""
 
 
 def sem_marcas(frase: str) -> str:
@@ -153,7 +161,7 @@ def sinonimos(palavra: str, traducao: str, itens: Sequence[Synonym]) -> str:
 def salvo(palavra: str, sugestoes: Sequence[Expansion] = ()) -> str:
     linhas = [
         f"✅ Saved: *{palavra}*.",
-        f"Practice it any time with /praticar {palavra}, or see everything with /lista.",
+        f"Practice it any time with /practice {palavra}, or see everything with /list.",
     ]
     if sugestoes:
         itens = ", ".join(f"*{e.expressao}*" for e in sugestoes)
@@ -179,14 +187,78 @@ def _linha_de_entrada(e: Entry) -> str:
     return f"{marca} {e.palavra} — {e.sentido.traducao}"
 
 
-def lista(entradas: Sequence[Entry]) -> str:
-    corpo = "\n".join(_linha_de_entrada(e) for e in entradas)
-    return f"📚 *Your words* ({len(entradas)})\n{corpo}"
+def lista(pagina: Sequence[Entry], *, inicio: int, total: int, numero: int, paginas: int) -> str:
+    """Uma página da lista. `inicio` é o número (1-based) da primeira palavra da página."""
+    corpo = "\n".join(f"{n}. {_linha_de_entrada(e)}" for n, e in enumerate(pagina, start=inicio))
+    texto = f"📚 *Your words* ({total})\n{corpo}\n\n💡 /info {inicio} for details"
+    if paginas > 1:
+        proxima = f" — /list {numero + 1} for more" if numero < paginas else ""
+        texto += f"\nPage {numero}/{paginas}{proxima}"
+    return texto
 
 
 def pendentes(entradas: Sequence[Entry]) -> str:
     corpo = "\n".join(f"• {e.palavra} — {e.sentido.traducao}" for e in entradas)
     return f"🆕 *Pending* ({len(entradas)})\n{corpo}\n\nUse /practice to start with the oldest one."
+
+
+def _data_curta(momento: datetime | None) -> str:
+    return f"{momento:%Y-%m-%d}" if momento else "—"
+
+
+def info(entrada: Entry, numero: int, frases: Sequence[Sentence]) -> str:
+    """Tudo o que o bot sabe de uma palavra: sentido, nota, revisão, frases do aluno (já
+    corrigidas), exemplos do bot e sinônimos."""
+    linhas = [
+        f"*{numero}. {entrada.palavra}* ({entrada.classe}) — {entrada.cefr_estimado}",
+        f"🇧🇷 {entrada.sentido.traducao}",
+        f"📖 {entrada.sentido.definicao}",
+    ]
+    for outro in entrada.outros_sentidos:
+        linhas.append(f"↔️ {outro.traducao} — {outro.definicao}")
+    if entrada.nota:
+        linhas.append(f"💡 {entrada.nota}")
+    situacao = "practiced" if entrada.status == "praticada" else "not practiced yet"
+    linhas.append(f"📊 {situacao} · next review: {_data_curta(entrada.proxima_revisao)}")
+
+    do_aluno = _sem_repetir(
+        sem_marcas(f.versao_natural or f.texto) for f in reversed(frases) if f.autor == "usuario"
+    )
+    if do_aluno:
+        linhas += ["", "✍️ *Your sentences*", *(f"• {f}" for f in do_aluno[:_MAX_FRASES_NO_INFO])]
+    do_bot = _sem_repetir(sem_marcas(f.texto) for f in frases if f.autor == "bot")
+    if do_bot:
+        linhas += ["", "📝 *Examples*", *(f"• {f}" for f in do_bot[:_MAX_EXEMPLOS_NO_INFO])]
+    if entrada.sinonimos:
+        linhas += ["", "🔄 *Synonyms*"]
+        linhas += [f"• *{s.expressao}* = {s.significado}" for s in entrada.sinonimos]
+    return "\n".join(linhas)
+
+
+def _sem_repetir(frases: Iterable[str]) -> list[str]:
+    vistas: set[str] = set()
+    unicas: list[str] = []
+    for frase in frases:
+        chave = frase.strip().casefold()
+        if chave and chave not in vistas:
+            vistas.add(chave)
+            unicas.append(frase.strip())
+    return unicas
+
+
+def perfil_do_aluno(p: Profile, *, total: int, praticadas: int, para_revisar: int) -> str:
+    if p.lembretes_por_dia == 0:
+        lembretes = "off — turn them on with /reminders 3"
+    else:
+        vezes = "once" if p.lembretes_por_dia == 1 else f"{p.lembretes_por_dia}x"
+        lembretes = f"every day, {vezes} between {p.janela_inicio}h and {p.janela_fim}h"
+    return (
+        "*Your profile* 👤\n"
+        f"🎯 Level: {p.nivel}\n"
+        f"📚 Words: {total} ({praticadas} practiced, {total - praticadas} pending)\n"
+        f"🔁 Due for review: {para_revisar}\n"
+        f"⏰ Reminders: {lembretes}"
+    )
 
 
 def palavra_nao_encontrada(palavra: str) -> str:
@@ -215,27 +287,21 @@ def status(sessao_waha: str, total: int, pendentes_: int) -> str:
     )
 
 
-def exportacao(link: str, quantidade: int, ignoradas: int = 0) -> str:
-    cartoes = "1 card" if quantidade == 1 else f"{quantidade} cards"
-    texto = (
-        f"📦 Done! {cartoes} in the Anki file (the link is valid for 24 h):\n{link}\n\n"
-        "In Anki: *File → Import* and pick the downloaded file."
+def exportacao(link: str, quantidade: int) -> str:
+    palavras = "1 word" if quantidade == 1 else f"{quantidade} words"
+    return (
+        f"📊 Done! {palavras} in the spreadsheet (the link is valid for 24 h):\n{link}\n\n"
+        "It has three tabs: *Words*, *Sentences* and *Synonyms*."
     )
-    if ignoradas:
-        texto += (
-            f"\n\n({ignoradas} word(s) were left out for having no usable sentence — "
-            "practice them or ask for examples and export again.)"
-        )
-    return texto
 
 
 # ---- revisão espaçada e lembretes (seção 5.7, M10) ---------------------------------------------
 
 SEM_NADA_PARA_REVISAR = "No pending reviews right now. 🎉"
-DICA_DE_LEMBRETES = "\n\n💡 Want daily practice reminders? Send /lembretes 3"
+DICA_DE_LEMBRETES = "\n\n💡 Want daily practice reminders? Send /reminders 3"
 LEMBRETES_INVALIDOS = (
-    "I couldn't understand that. Try /lembretes 3 (3 times a day, 9h-21h) or "
-    "/lembretes 3 9h-22h (your own window), or /lembretes off."
+    "I couldn't understand that. Try /reminders 3 (3 times a day, 9h-21h) or "
+    "/reminders 3 9h-22h (your own window), or /reminders off."
 )
 
 _QUALIDADE_EMOJI: dict[str, str] = {
@@ -282,13 +348,13 @@ def revisao_encerrada(feitas: Sequence[str], lapsos: Sequence[str]) -> str:
 def lembretes_atuais(perfil: Profile) -> str:
     if perfil.lembretes_por_dia == 0:
         return (
-            "Reminders are off. Turn them on with /lembretes 3 (or /lembretes 3 9h-22h for "
+            "Reminders are off. Turn them on with /reminders 3 (or /reminders 3 9h-22h for "
             "your own window)."
         )
     vezes = "once a day" if perfil.lembretes_por_dia == 1 else f"{perfil.lembretes_por_dia}x a day"
     return (
         f"Reminders: {vezes}, between {perfil.janela_inicio}h and {perfil.janela_fim}h. "
-        "Change with /lembretes N or turn off with /lembretes off."
+        "Change with /reminders N or turn off with /reminders off."
     )
 
 
