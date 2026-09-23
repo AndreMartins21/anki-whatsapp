@@ -7,6 +7,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from app import messages
 from app.domain.models import (
@@ -18,7 +19,7 @@ from app.domain.models import (
 )
 from app.domain.state import Acao, Transicao, expirou, transicionar
 from app.flows import capture, commands, freeform, practice, review, synonyms
-from app.flows.base import Deps, bloq
+from app.flows.base import FUSO_PADRAO, Deps, bloq
 from app.flows.commands import Exportador, StatusDaSessao
 from app.flows.conversa import Conversa
 from app.repo.base import Repository
@@ -38,8 +39,9 @@ class Router:
         agora: Callable[[], datetime] = agora_utc,
         status_da_sessao: StatusDaSessao | None = None,
         exportador: Exportador | None = None,
+        fuso: ZoneInfo = FUSO_PADRAO,
     ) -> None:
-        self._d = Deps(repo=repo, tutor=tutor, conversa=conversa, agora=agora)
+        self._d = Deps(repo=repo, tutor=tutor, conversa=conversa, agora=agora, fuso=fuso)
         self._nivel_padrao = nivel_padrao
         self._status_da_sessao = status_da_sessao
         self._exportador = exportador

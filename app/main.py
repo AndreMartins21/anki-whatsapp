@@ -95,6 +95,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         nivel_padrao=settings.user_level,
         status_da_sessao=canal.session_status,
         exportador=ExportadorExcel(repo, _criar_armazenamento(settings)),
+        fuso=ZoneInfo(settings.timezone),
     )
     app.state.router = router
 

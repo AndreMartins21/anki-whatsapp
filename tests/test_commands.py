@@ -137,8 +137,8 @@ async def test_lista_mostra_praticadas_e_novas() -> None:
 
     assert resposta.startswith("📚 *Your words* (2)")
     # o relógio de teste é fixo: o desempate por slug põe "hedge" antes de "stall"
-    assert "1. 🆕 hedge — proteger-se" in resposta
-    assert "2. ✅ stall — travar, emperrar" in resposta
+    assert "1. hedge: proteger-se" in resposta
+    assert "2. stall: travar, emperrar" in resposta
 
 
 async def test_pendentes_so_as_novas() -> None:
@@ -431,23 +431,47 @@ def _preencher_entradas(m: Montagem, quantidade: int) -> None:
         )
 
 
-async def test_lista_pagina_de_20_com_numeracao_global() -> None:
+async def test_lista_das_mais_novas_para_as_mais_antigas_com_numero_fixo() -> None:
     m = montar()
     _preencher_entradas(m, 25)
 
     (primeira,) = await m.diz("/list")
     (segunda,) = await m.diz("/list 2")
 
-    assert "*Your words* (25)" in primeira
-    assert "1. 🆕 word00" in primeira
-    assert "20. 🆕 word19" in primeira
-    assert "21." not in primeira
+    assert "*Your words* (25) — newest first" in primeira
+    # a página 1 traz as 20 mais novas (25 a 6); o número de cada palavra não muda
+    assert primeira.index("25. word24: palavra 24") < primeira.index("6. word05: palavra 5")
+    assert "5." not in primeira.replace("25.", "").replace("15.", "")
+    assert "/info 25 for details" in primeira
     assert "Page 1/2 — /list 2 for more" in primeira
-    assert "21. 🆕 word20" in segunda
-    assert "25. 🆕 word24" in segunda
-    assert "/info 21 for details" in segunda
+    # a página 2 traz as 5 mais antigas (5 a 1)
+    assert segunda.index("5. word04: palavra 4") < segunda.index("1. word00: palavra 0")
     assert "Page 2/2" in segunda
     assert "for more" not in segunda
+
+
+async def test_palavra_nova_vai_para_o_topo_sem_mudar_o_numero_das_outras() -> None:
+    m = montar()
+    _preencher_entradas(m, 3)
+    (antes,) = await m.diz("/info 1")
+
+    _preencher_entradas(m, 0)
+    m.repo.criar_entrada(
+        Entry(
+            slug="novissima",
+            palavra="novissima",
+            classe="noun",
+            cefr_estimado="B1",
+            sentido=SentidoSalvo(traducao="novíssima", definicao="brand new"),
+            criado_em=T0 + timedelta(days=1),
+            atualizado_em=T0,
+        )
+    )
+    (lista,) = await m.diz("/list")
+    (depois,) = await m.diz("/info 1")
+
+    assert lista.index("4. novissima: novíssima") < lista.index("3. word02: palavra 2")
+    assert antes == depois  # o 1 continua sendo a palavra mais antiga
 
 
 async def test_lista_curta_nao_mostra_pagina() -> None:
@@ -556,3 +580,67 @@ def test_nenhuma_mensagem_divulga_o_nome_em_portugues() -> None:
     fonte = Path(messages.__file__).read_text(encoding="utf-8")
 
     assert not re.search(r"/(lista|praticar|lembretes|revisar|exportar|apagar|ajuda)\b", fonte)
+
+
+async def test_profile_mostra_quando_toca_o_proximo_lembrete() -> None:
+    m = montar()  # relógio de teste: 2026-09-20 12:00 UTC = 09:00 em São Paulo
+    await m.diz("/reminders 3 8h-20h")  # horários: 8h, 14h, 20h
+
+    (resposta,) = await m.diz("/profile")
+
+    assert (
+        "⏰ Reminders: every day, 3x between 8h and 20h\n⏭️ Next reminder: today at 14:00"
+        in resposta
+    )
+
+
+async def test_proximo_lembrete_amanha_quando_a_janela_de_hoje_acabou() -> None:
+    m = montar()
+    m.relogio.avancar(
+        timedelta(hours=10)
+    )  # 22:00 UTC = 19:00 em São Paulo, depois da janela 8h-10h
+    await m.diz("/reminders 2 8h-10h")
+
+    (resposta,) = await m.diz("/profile")
+
+    assert "Next reminder: tomorrow at 08:00" in resposta
+
+
+async def test_reminders_mostra_o_proximo_ao_ligar_e_ao_consultar() -> None:
+    m = montar()
+
+    (ligado,) = await m.diz("/reminders 3 8h-20h")
+    (atual,) = await m.diz("/reminders")
+
+    assert "Next one: today at 14:00." in ligado
+    assert "Next one: today at 14:00." in atual
+
+
+async def test_proximo_lembrete_usa_o_horario_ja_agendado() -> None:
+    m = montar()
+    await m.diz("/reminders 3 8h-20h")
+    perfil = m.repo.obter_perfil()
+    assert perfil is not None
+    agendado = T0 + timedelta(hours=11)  # 23:00 UTC = 20:00 em São Paulo
+    m.repo.salvar_perfil(perfil.model_copy(update={"proximo_lembrete": agendado}))
+
+    (resposta,) = await m.diz("/profile")
+
+    assert "Next reminder: today at 20:00" in resposta
+
+
+async def test_profile_sem_lembretes_nao_mostra_proximo() -> None:
+    m = montar()
+
+    (resposta,) = await m.diz("/profile")
+
+    assert "Next reminder" not in resposta
+
+
+async def test_lista_nao_usa_emojis_de_status() -> None:
+    m = await _stall_e_hedge()  # uma praticada e uma nova
+
+    (resposta,) = await m.diz("/list")
+
+    assert "✅" not in resposta
+    assert "🆕" not in resposta
