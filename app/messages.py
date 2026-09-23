@@ -306,11 +306,24 @@ def status(sessao_waha: str, total: int, pendentes_: int) -> str:
     )
 
 
-def exportacao(link: str, quantidade: int) -> str:
-    palavras = "1 word" if quantidade == 1 else f"{quantidade} words"
+def _palavras(quantidade: int) -> str:
+    return "1 word" if quantidade == 1 else f"{quantidade} words"
+
+
+def exportacao(quantidade: int) -> str:
+    """Legenda do arquivo enviado direto pelo WhatsApp."""
     return (
-        f"📊 Done! {palavras} in the spreadsheet (the link is valid for 24 h):\n{link}\n\n"
-        "It has three tabs: *Words*, *Sentences* and *Synonyms*."
+        f"📊 Done! {_palavras(quantidade)} in the spreadsheet. "
+        "Tabs: *Words*, *Sentences* and *Synonyms*."
+    )
+
+
+def exportacao_com_link(link: str, quantidade: int) -> str:
+    """Plano B, quando o WhatsApp não aceitou o arquivo."""
+    return (
+        f"📊 Done! {_palavras(quantidade)} in the spreadsheet. I couldn't send the file here, "
+        f"so here's a link (valid for 24 h):\n{link}\n\n"
+        "Tabs: *Words*, *Sentences* and *Synonyms*."
     )
 
 

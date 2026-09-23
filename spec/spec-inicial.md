@@ -18,7 +18,7 @@ Ciclo principal:
 4. Texto livre (frase, pedido de ajuda, palavra nova, ou fora do escopo) é roteado por uma única chamada de IA (seção 5.1) que classifica e já responde. Frase de prática: avalia se usa a palavra corretamente, naquele sentido, e se é natural; o usuário pode tentar de novo.
 5. Ao concluir, tudo fica salvo no Firestore: a palavra, o sentido, as frases do usuário com as avaliações e os exemplos.
 6. Ao salvar ("3" ou pedido livre), o bot sugere até 3 **expressões relacionadas** como texto — sem menu; o usuário só manda a que quiser como qualquer palavra nova.
-7. `/export` gera uma **planilha Excel** (`.xlsx`) com tudo o que foi coletado e envia um **link temporário** para baixar (seção 7.3). (Até o M11 era um `.txt` para o Anki; ver ADR-0014.) O WAHA Core não envia arquivos.
+7. `/export` gera uma **planilha Excel** (`.xlsx`) com tudo o que foi coletado e **envia o arquivo direto no chat** (seção 7.3); só se o WhatsApp não aceitar, manda um **link temporário**. (Até o M11 era um `.txt` para o Anki; ver ADR-0014. O envio direto vem da ADR-0015: desde a 2026.6.1 o WAHA Core inclui os recursos do Plus, e o `/api/sendFile` deixou de ser exclusivo do Plus.)
 
 **M10:** o bot também faz revisão espaçada com lembretes agendados (seção 5.7) — deixou de ser fora de escopo.
 
@@ -421,7 +421,9 @@ congelado; datas em UTC, sem fuso (o Excel não guarda fuso).
 
 O campo `exportado` das entradas deixou de ser usado (a planilha é sempre um retrato completo).
 
-**Entrega:** upload em `gs://$EXPORT_BUCKET/exports/vocabot_AAAA-MM-DD_HHMM.xlsx` (hora em UTC), com
+**Entrega (ADR-0015):** o bot envia o `.xlsx` direto no chat, como documento, com uma legenda curta
+(`Channel.send_file`, `POST /api/sendFile` com o arquivo em base64). Sem texto separado e sem link.
+**Plano B:** se o envio falhar, o bot sobe o mesmo arquivo no bucket e manda o link. O upload em `gs://$EXPORT_BUCKET/exports/vocabot_AAAA-MM-DD_HHMM.xlsx` (hora em UTC), com
 content-type `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, e **URL assinada V4
 válida por 24 h**. Na VM não há chave privada, então assine via IAM `signBlob`: a conta de serviço da
 VM precisa do papel `roles/iam.serviceAccountTokenCreator` **sobre ela mesma**, e use
@@ -449,10 +451,10 @@ vida que apaga objetos após 7 dias.
 - **Envie sempre para o chatId do remetente autorizado**: o número que o WhatsApp informa (`NUMERO@c.us`, ou o `pn` resolvido do LID), nunca para outro chat. Ele bate com o `ALLOWED_NUMBER` a menos do nono dígito brasileiro: contas antigas são registradas **sem** o 9, e enviar para o número com o 9 falha no WAHA com "no LID found" (visto no deploy real).
 
 ### 8.3 Cliente (`app/channel/waha.py`)
-Implemente `send_text`, `send_seen`, `typing(on/off)` e `session_status`, com o header `X-Api-Key` (ou o nome atual segundo a documentação). Timeouts de 15 s, até 2 novas tentativas com backoff para 5xx, logs **sem** a API key.
+Implemente `send_text`, `send_file`, `send_seen`, `typing(on/off)` e `session_status`, com o header `X-Api-Key` (ou o nome atual segundo a documentação). Timeouts de 15 s, até 2 novas tentativas com backoff para 5xx, logs **sem** a API key. `send_file` é a exceção: timeout de 90 s e **sem** retentativa (reenviar uma resposta lenta duplicaria o arquivo; quem chama decide o plano B).
 
 ### 8.4 Adaptador de canal
-Crie a interface `Channel` (enviar texto, marcar como lido, digitando) com as implementações `WahaChannel`, `ConsoleChannel` (simulador) e `FakeChannel` (testes). A lógica de negócio **não** pode importar nada do WAHA diretamente, para que seja possível trocar por Cloud API ou Telegram no futuro.
+Crie a interface `Channel` (enviar texto, enviar arquivo, marcar como lido, digitando) com as implementações `WahaChannel`, `ConsoleChannel` (simulador) e `FakeChannel` (testes). A lógica de negócio **não** pode importar nada do WAHA diretamente, para que seja possível trocar por Cloud API ou Telegram no futuro.
 
 ## 9. Marcos (pare ao fim de cada um)
 

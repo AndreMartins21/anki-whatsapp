@@ -19,7 +19,7 @@ from app.domain.models import (
 )
 from app.services.fake_llm import FakeTutor
 from app.services.planilha import ResultadoExportacao
-from tests.helpers import T0, Montagem, avaliacao, expansoes, explicacao_stall, montar
+from tests.helpers import CHAT, T0, Montagem, avaliacao, expansoes, explicacao_stall, montar
 
 HEDGE = Explanation(
     ok=True,
@@ -309,19 +309,44 @@ class ExportadorFalso:
         return self.resultado
 
 
-async def test_exportar_devolve_o_link() -> None:
-    exportador = ExportadorFalso(ResultadoExportacao("https://exemplo.test/vocabot.xlsx", 4))
+def _resultado(quantidade: int = 4) -> ResultadoExportacao:
+    return ResultadoExportacao(
+        nome="exports/vocabot_x.xlsx",
+        conteudo=b"PK-planilha",
+        quantidade=quantidade,
+        gerar_link=lambda: "https://exemplo.test/vocabot.xlsx",
+    )
+
+
+async def test_exportar_envia_o_arquivo_direto_pelo_whatsapp() -> None:
+    exportador = ExportadorFalso(_resultado(4))
     m = montar(exportador=exportador)
 
-    (resposta,) = await m.diz("/export")
+    respostas = await m.diz("/export")
 
-    assert "4 words in the spreadsheet" in resposta
-    assert "https://exemplo.test/vocabot.xlsx" in resposta
+    assert respostas == []  # nenhum texto: o arquivo já leva a legenda
+    ((chat, nome, conteudo, legenda),) = m.channel.arquivos_enviados
+    assert chat == CHAT
+    assert nome == "exports/vocabot_x.xlsx"
+    assert conteudo == b"PK-planilha"
+    assert "4 words in the spreadsheet" in legenda
     assert exportador.chamadas == 1
 
 
+async def test_exportar_cai_no_link_se_o_whatsapp_recusar_o_arquivo() -> None:
+    m = montar(exportador=ExportadorFalso(_resultado(4)))
+    m.channel.falha_no_arquivo = True
+
+    (resposta,) = await m.diz("/export")
+
+    assert m.channel.arquivos_enviados == []
+    assert "I couldn't send the file here" in resposta
+    assert "https://exemplo.test/vocabot.xlsx" in resposta
+    assert "4 words in the spreadsheet" in resposta
+
+
 async def test_exportar_all_e_o_apelido_em_pt_br_continuam_aceitos() -> None:
-    exportador = ExportadorFalso(ResultadoExportacao("https://exemplo.test/vocabot.xlsx", 1))
+    exportador = ExportadorFalso(_resultado(1))
     m = montar(exportador=exportador)
 
     await m.diz("/export all")

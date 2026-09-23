@@ -8,12 +8,26 @@ from dataclasses import dataclass, field
 @dataclass
 class FakeChannel:
     textos_enviados: list[tuple[str, str]] = field(default_factory=list)
+    arquivos_enviados: list[tuple[str, str, bytes, str]] = field(default_factory=list)
+    falha_no_arquivo: bool = False
     vistos: list[str] = field(default_factory=list)
     digitando: list[tuple[str, bool]] = field(default_factory=list)
     lids_conhecidos: dict[str, str | None] = field(default_factory=dict)
 
     async def send_text(self, chat_id: str, text: str) -> None:
         self.textos_enviados.append((chat_id, text))
+
+    async def send_file(
+        self,
+        chat_id: str,
+        nome: str,
+        conteudo: bytes,
+        tipo: str,  # noqa: ARG002
+        legenda: str = "",
+    ) -> None:
+        if self.falha_no_arquivo:
+            raise RuntimeError("falha simulada ao enviar o arquivo")
+        self.arquivos_enviados.append((chat_id, nome, conteudo, legenda))
 
     async def send_seen(self, chat_id: str) -> None:
         self.vistos.append(chat_id)
