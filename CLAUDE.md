@@ -37,8 +37,10 @@ Estas skills carregam sozinhas quando o contexto pede; invoque explicitamente se
 | `python-best-practices` | escrever/revisar código Python |
 | `gcp-best-practices` | scripts em `infra/`, comandos `gcloud`, IAM, custos, deploy |
 | `git-workflow` | commits, branches, PRs, limpeza de histórico |
+| `git-deploy-workflow` | commit/PR/merge neste repo (main protegida), `ci.yml`, `infra/setup_cicd.sh`, depurar o deploy automático |
 
-`sdd`, `adr` e `gcp-best-practices` são do projeto (`.claude/skills/`); as demais são globais do usuário.
+`sdd`, `adr`, `gcp-best-practices` e `git-deploy-workflow` são do projeto (`.claude/skills/`); as
+demais são globais do usuário.
 
 ## Comandos
 
