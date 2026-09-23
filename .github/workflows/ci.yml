@@ -64,3 +64,44 @@ jobs:
           else
             echo "Sem docker-compose.yml ainda (chega no M7) - nada a validar."
           fi
+
+  deploy:
+    name: Deploy em produção
+    needs: [checks, test, compose]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # Workload Identity Federation (ADR-0013): sem chave de conta de serviço em arquivo. O
+      # provider só troca o token por credencial se assertion.repository + assertion.ref baterem
+      # (ver infra/setup_cicd.sh) — um fork ou outra branch nunca conseguem autenticar.
+      - name: Autenticar na GCP
+        uses: google-github-actions/auth@v3.0.0
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: vocabot-deploy@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+
+      - name: Instalar gcloud
+        uses: google-github-actions/setup-gcloud@v3.0.1
+
+      - name: Deploy (empacota, copia via IAP, sobe o compose na VM)
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODEL_EVAL: ${{ vars.GEMINI_MODEL_EVAL }}
+          USER_LEVEL: ${{ vars.USER_LEVEL }}
+          TIMEZONE: ${{ vars.TIMEZONE }}
+          ALLOWED_NUMBER: ${{ secrets.ALLOWED_NUMBER }}
+          BOT_NUMBER: ${{ secrets.BOT_NUMBER }}
+        run: bash infra/deploy.sh
+
+      - name: Smoke test (falha o workflow se o bot não subir)
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        run: bash infra/smoke_test.sh
