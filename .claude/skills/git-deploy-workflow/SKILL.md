@@ -24,16 +24,30 @@ Sequência normal de trabalho:
 
 ## Armadilhas já descobertas (não repetir)
 
-- **`roles/iap.tunnelResourceAccessor` não aceita binding por instância.**
-  `gcloud compute instances add-iam-policy-binding VM --role=roles/iap.tunnelResourceAccessor` dá
-  `HTTPError 400: Role ... is not supported for this resource`. Não existe
-  `gcloud iap tunnel-instances add-iam-policy-binding` nem no CLI. O caminho documentado por
-  instância é uma chamada crua à API REST do IAP (`setIamPolicy` em
-  `iap.googleapis.com/.../iap_tunnel/.../instances/NAME`) — mais frágil que um `gcloud` padrão num
-  script idempotente. Solução usada: conceder esse papel específico **no projeto**
-  (`gcloud projects add-iam-policy-binding`); como este projeto nunca tem mais de uma VM (spec
-  10.8), na prática já fica restrito a ela. `compute.osAdminLogin` e `compute.viewer` continuam por
-  instância normalmente (esses dois aceitam `gcloud compute instances add-iam-policy-binding`).
+- **Nem todo papel de IAM aceita binding por instância, mesmo quando `gcloud` aceita a sintaxe.**
+  Dois casos reais neste projeto, ambos resolvidos concedendo **no projeto**
+  (`gcloud projects add-iam-policy-binding`) em vez de só na instância — como este projeto nunca
+  tem mais de uma VM (spec 10.8), na prática o binding no projeto já fica restrito a ela:
+  - `roles/iap.tunnelResourceAccessor`: `gcloud compute instances add-iam-policy-binding VM
+    --role=roles/iap.tunnelResourceAccessor` dá `HTTPError 400: Role ... is not supported for this
+    resource`. Não existe `gcloud iap tunnel-instances add-iam-policy-binding`; o caminho por
+    instância que a Google documenta é uma chamada crua à API REST (`setIamPolicy` em
+    `iap.googleapis.com/.../iap_tunnel/.../instances/NAME`).
+  - `roles/compute.viewer`: o binding por instância **aceita** sem erro, mas não é suficiente — só
+    aparece o problema no deploy de verdade: `gcloud compute scp`/`ssh` chamam
+    `compute.projects.get` antes de conectar, e essa permissão só existe no escopo do projeto. Sem
+    isso o deploy falha com `Required 'compute.projects.get' permission for 'projects/...'`.
+  `compute.osAdminLogin` continua por instância sem problema
+  (`gcloud compute instances add-iam-policy-binding`).
+- **SSH numa VM que roda como conta de serviço exige `roles/iam.serviceAccountUser` sobre essa
+  conta** (`gcloud iam service-accounts add-iam-policy-binding`, só sobre a `vocabot-vm`). Sem isso:
+  `User does not have iam.serviceAccounts.actAs permission on the instance's service account`.
+  Consequência de segurança: `osAdminLogin` (root) + `serviceAccountUser` fazem a `vocabot-deploy`
+  alcançar tudo que a `vocabot-vm` alcança — a defesa é a attribute condition do provider WIF e a
+  branch protection da `main`, então nunca afrouxe nenhuma das duas.
+- **Cada permissão que falta só aparece rodando o deploy de verdade**, uma por vez (`compute.projects.get`,
+  depois `actAs`, ...). Não dá para validar o IAM só lendo: depois de mexer em `setup_cicd.sh`,
+  re-execute só o job falho com `gh api --method POST repos/OWNER/REPO/actions/runs/<id>/rerun-failed-jobs`.
 - **`required_status_checks.contexts` da branch protection precisa do *nome de exibição* do job**
   (o campo `name:` dentro do job no YAML), não da chave do job. Configurar `contexts: [checks, test,
   compose]` (as chaves) nunca bate com o que a Actions reporta de verdade (ex.: "Lint, formatação,
