@@ -183,8 +183,7 @@ def entrada_invalida(motivo: str | None) -> str:
 
 
 def _linha_de_entrada(e: Entry) -> str:
-    marca = "✅" if e.status == "praticada" else "🆕"
-    return f"{marca} {e.palavra} — {e.sentido.traducao}"
+    return f"{e.palavra}: {e.sentido.traducao}"
 
 
 def lista(pagina: Sequence[tuple[int, Entry]], *, total: int, numero: int, paginas: int) -> str:

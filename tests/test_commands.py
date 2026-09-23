@@ -137,8 +137,8 @@ async def test_lista_mostra_praticadas_e_novas() -> None:
 
     assert resposta.startswith("📚 *Your words* (2)")
     # o relógio de teste é fixo: o desempate por slug põe "hedge" antes de "stall"
-    assert "1. 🆕 hedge — proteger-se" in resposta
-    assert "2. ✅ stall — travar, emperrar" in resposta
+    assert "1. hedge: proteger-se" in resposta
+    assert "2. stall: travar, emperrar" in resposta
 
 
 async def test_pendentes_so_as_novas() -> None:
@@ -440,12 +440,12 @@ async def test_lista_das_mais_novas_para_as_mais_antigas_com_numero_fixo() -> No
 
     assert "*Your words* (25) — newest first" in primeira
     # a página 1 traz as 20 mais novas (25 a 6); o número de cada palavra não muda
-    assert primeira.index("25. 🆕 word24") < primeira.index("6. 🆕 word05")
+    assert primeira.index("25. word24: palavra 24") < primeira.index("6. word05: palavra 5")
     assert "5." not in primeira.replace("25.", "").replace("15.", "")
     assert "/info 25 for details" in primeira
     assert "Page 1/2 — /list 2 for more" in primeira
     # a página 2 traz as 5 mais antigas (5 a 1)
-    assert segunda.index("5. 🆕 word04") < segunda.index("1. 🆕 word00")
+    assert segunda.index("5. word04: palavra 4") < segunda.index("1. word00: palavra 0")
     assert "Page 2/2" in segunda
     assert "for more" not in segunda
 
@@ -470,7 +470,7 @@ async def test_palavra_nova_vai_para_o_topo_sem_mudar_o_numero_das_outras() -> N
     (lista,) = await m.diz("/list")
     (depois,) = await m.diz("/info 1")
 
-    assert lista.index("4. 🆕 novissima") < lista.index("3. 🆕 word02")
+    assert lista.index("4. novissima: novíssima") < lista.index("3. word02: palavra 2")
     assert antes == depois  # o 1 continua sendo a palavra mais antiga
 
 
@@ -635,3 +635,12 @@ async def test_profile_sem_lembretes_nao_mostra_proximo() -> None:
     (resposta,) = await m.diz("/profile")
 
     assert "Next reminder" not in resposta
+
+
+async def test_lista_nao_usa_emojis_de_status() -> None:
+    m = await _stall_e_hedge()  # uma praticada e uma nova
+
+    (resposta,) = await m.diz("/list")
+
+    assert "✅" not in resposta
+    assert "🆕" not in resposta

@@ -38,7 +38,7 @@ def test_ciclo_completo_no_terminal(tmp_path: Path) -> None:
     assert "📝 *Examples with stall*" in tela
     assert "✅ *Perfect!*" in tela
     assert "✅ Saved: *stall*." in tela
-    assert "1. ✅ stall — travar, emperrar" in tela
+    assert "1. stall: travar, emperrar" in tela
     assert "✍️ *Your sentences*" in tela
     assert "1 word in the spreadsheet" in tela
     (arquivo,) = list(tmp_path.glob("vocabot_*.xlsx"))

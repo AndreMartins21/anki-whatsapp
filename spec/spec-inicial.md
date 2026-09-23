@@ -130,7 +130,8 @@ apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/pr
 
 - `/list` mostra as palavras **das mais novas para as mais antigas**, 20 por página: as mais
   novas ficam sempre na página 1, e `/list 2` é a página 2. Uma página inexistente responde com um
-  aviso. O número de cada palavra é **fixo** (1 = a mais antiga, na ordem de criação), então
+  aviso. Cada linha é `N. termo: tradução em PT-BR`, sem emoji de status (use `/pending` para ver as
+  ainda não praticadas). O número de cada palavra é **fixo** (1 = a mais antiga, na ordem de criação), então
   `/info 7` e `/delete 7` continuam apontando para a mesma palavra quando entram palavras novas.
 - `/info N` (número da `/list`) ou `/info palavra` mostra tudo de uma entrada: tradução, definição,
   outros sentidos, nota, status e próxima revisão, as frases do aluno **já corrigidas** (a
