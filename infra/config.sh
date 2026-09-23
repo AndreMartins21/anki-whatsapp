@@ -40,6 +40,13 @@ SEGREDOS_GERADOS=(WAHA_API_KEY WAHA_DASHBOARD_PASSWORD WAHA_HOOK_HMAC_KEY)
 
 SSH_FLAGS=(--zone "$ZONE" --project "$PROJECT_ID" --tunnel-through-iap)
 
+# CI/CD (infra/setup_cicd.sh, seção 10.9 da spec / ADR-0013).
+GITHUB_REPO="AndreMartins21/anki-whatsapp"
+WIF_POOL="github-pool"
+WIF_PROVIDER="github-provider"
+DEPLOY_SA_NAME="vocabot-deploy"
+DEPLOY_SA_EMAIL="${DEPLOY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+
 # Comandos que criam ou alteram algo passam por aqui: com DRY_RUN=1 só são mostrados.
 run() {
   if [[ "${DRY_RUN:-0}" == "1" ]]; then

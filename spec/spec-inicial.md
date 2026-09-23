@@ -449,6 +449,7 @@ Crie a interface `Channel` (enviar texto, marcar como lido, digitando) com as im
 | M8 | Provisionar e fazer o deploy na VM, comigo aprovando cada comando; parear o WhatsApp; smoke test | O WAHA está em `WORKING` e o bot responde `/ajuda` no WhatsApp |
 | M9 | Interface em inglês (só 🇧🇷 em PT-BR), máquina de estados reduzida a `IDLE`/`AWAIT_ACTION` com um único menu de ações, roteamento de texto livre por uma chamada de IA (`Tutor.route`, ADR-0009), sinônimos (`Tutor.synonyms`), expansões viram sugestão em texto (sem menu) | `make check` passa; ciclo completo no `sim` bate a seção 5.5; `python -m evals.run --tarefa roteamento` roda contra a API real |
 | M10 | Revisão espaçada (SM-2 simplificado, ADR-0011) com sessão `REVIEWING`, `/lembretes` e `/revisar`, agendador em segundo plano (`Agendador`, ADR-0012) | `make check` passa; `make test-emulador` valida os campos novos no Firestore real; ciclo completo de revisão no `sim`; nenhum lembrete dispara sem `chat_id` conhecido |
+| M11 | Deploy contínuo via GitHub Actions (seção 10.9, ADR-0013): branch protection na `main` (PR + checks obrigatórios), job `deploy` automático no merge, autenticado por Workload Identity Federation | Push direto na `main` é bloqueado pelo GitHub; um PR com CI verde, ao ser mergeado, dispara o job `deploy` e o bot responde `/help` depois do smoke test |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 
@@ -526,6 +527,34 @@ Mostre também como ver a senha do painel **localmente e só quando eu pedir** (
 
 ### 10.8 Custos (para você respeitar)
 A VM `e2-micro` com disco standard de 30 GB em `us-central1` está no nível gratuito. O Gemini no Vertex AI é pago por uso (centavos neste volume), coberto pelos créditos do trial. Os créditos do trial **não** pagam modelos de parceiros (ex.: Claude no Vertex), por isso ele não é opção aqui. O IP externo **não** está: custa alguns dólares por mês, coberto pelos créditos do trial. Firestore, Storage e Secret Manager ficam nas cotas gratuitas. Não crie Cloud NAT, balanceador, IP estático reservado nem máquinas maiores.
+
+### 10.9 Deploy contínuo via GitHub Actions (M11, ADR-0013)
+
+O repositório é público: `pull_request` de fora roda sem segredo (padrão do GitHub), e log de
+Action é visível a qualquer pessoa — nada sensível pode aparecer em log.
+
+- **Branch protection na `main`:** exige PR (sem push direto) e os checks `checks`, `test` e
+  `compose` do `ci.yml` como obrigatórios.
+- **`infra/setup_cicd.sh`** (idempotente, mesmo padrão de `setup.sh`): cria o Workload Identity
+  Pool (`github-pool`) e o provider OIDC (`github-provider`, emissor
+  `token.actions.githubusercontent.com`, *attribute condition* travada em
+  `assertion.repository == 'AndreMartins21/anki-whatsapp' && assertion.ref == 'refs/heads/main'`);
+  cria a conta de serviço `vocabot-deploy` e concede `roles/compute.osAdminLogin` e
+  `roles/compute.viewer` **só na instância da VM**, mais `roles/iap.tunnelResourceAccessor` **no
+  projeto** (o recurso do túnel IAP não aceita binding por instância via `gcloud`; como só existe
+  uma VM neste projeto, na prática já fica restrito a ela — ver ADR-0013). Não concede nada em
+  Secret Manager, Firestore, Storage ou Vertex — quem lê segredo continua sendo a VM, com a
+  identidade `vocabot-vm`.
+- **Job `deploy` em `.github/workflows/ci.yml`:** `needs: [checks, test, compose]`, só roda em
+  `push` para `main`; autentica via `google-github-actions/auth` (WIF, sem chave), roda
+  `infra/deploy.sh` e depois `infra/smoke_test.sh` — se o smoke test falhar, o workflow fica
+  vermelho.
+- **Configuração no GitHub** (Settings → Secrets and variables → Actions): `ALLOWED_NUMBER` e
+  `BOT_NUMBER` como **Secrets** (são telefone real, mascarados em log mesmo não sendo credencial);
+  `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `LLM_PROVIDER`, `GEMINI_MODEL`, `GEMINI_MODEL_EVAL`,
+  `USER_LEVEL`, `TIMEZONE` como **Variables**.
+- Decisão do usuário (2026-09-23): sem gate de aprovação manual entre o merge e o deploy — o CI é a
+  barreira de qualidade. Ver ADR-0013 para as alternativas descartadas.
 
 ## 11. Estrutura esperada
 ```

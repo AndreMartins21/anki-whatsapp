@@ -99,6 +99,22 @@ Notas de operação:
   (Gemini de verdade, com `gcloud auth application-default login`); `make evals` mede a avaliação
   de frases; `make test-emulador` roda o contrato do `Repository` contra o emulador do Firestore.
 
+## Deploy contínuo (M11, ADR-0013)
+
+Depois do `infra/setup.sh` inicial, `infra/deploy.sh` também roda sozinho: todo merge na `main`
+(que só acontece via PR com o CI verde — branch protection) dispara o job `deploy` do
+`.github/workflows/ci.yml`, que faz o deploy e roda o smoke test. Sem chave de conta de serviço:
+autenticação por Workload Identity Federation.
+
+```bash
+DRY_RUN=1 bash infra/setup_cicd.sh   # revisar o que será criado
+bash infra/setup_cicd.sh             # WIF pool/provider + conta de serviço vocabot-deploy
+```
+
+O próprio script imprime, no fim, o que configurar no GitHub (Settings → Secrets and variables →
+Actions: `ALLOWED_NUMBER`/`BOT_NUMBER` como Secrets, o resto como Variables) e lembra de ativar a
+branch protection da `main`.
+
 ## Segurança
 
 - Segredos vivem no **Secret Manager**; na VM o `.env` é renderizado no deploy com permissão 600.
