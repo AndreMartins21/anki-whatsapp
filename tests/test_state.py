@@ -1,4 +1,5 @@
-"""Testes de app/domain/state.py — a máquina de estados do M9 (dois estados, um único menu)."""
+"""Testes de app/domain/state.py — a máquina de estados do M9/M10 (três estados, um único menu
+de ações e a revisão espaçada)."""
 
 from __future__ import annotations
 
@@ -38,6 +39,20 @@ TRANSICOES = [
     ),
     (Estado.AWAIT_ACTION, "hedge", Transicao(Estado.AWAIT_ACTION, Acao.ROTEAR, "hedge")),
     (Estado.AWAIT_ACTION, "7", Transicao(Estado.AWAIT_ACTION, Acao.ROTEAR, "7")),
+    # REVIEWING (M10): qualquer texto é a resposta do aluno, exceto "sair" (0/stop/quit/...).
+    (
+        Estado.REVIEWING,
+        "to stop making progress",
+        Transicao(Estado.REVIEWING, Acao.RESPONDER_REVISAO, "to stop making progress"),
+    ),
+    (
+        Estado.REVIEWING,
+        "The talks stalled last week.",
+        Transicao(Estado.REVIEWING, Acao.RESPONDER_REVISAO, "The talks stalled last week."),
+    ),
+    (Estado.REVIEWING, "0", Transicao(Estado.IDLE, Acao.ENCERRAR_REVISAO)),
+    (Estado.REVIEWING, "stop", Transicao(Estado.IDLE, Acao.ENCERRAR_REVISAO)),
+    (Estado.REVIEWING, "Quit", Transicao(Estado.IDLE, Acao.ENCERRAR_REVISAO)),
 ]
 
 

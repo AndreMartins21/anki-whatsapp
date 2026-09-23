@@ -4,9 +4,10 @@ Bot de WhatsApp, de uso pessoal, para praticar vocabulário de inglês (nível B
 cartões para o **Anki**. Você manda uma palavra, o bot explica, você escreve uma frase, ele avalia —
 e tudo isso vira cartão.
 
-> **Status:** código pronto até o M7 (a aplicação, o compose e os scripts de `infra/`); o M8 é
-> provisionar e fazer o deploy, comando a comando. A especificação completa está em
-> [`spec/spec-inicial.md`](spec/spec-inicial.md); o trabalho anda marco a marco (seção 9 da spec).
+> **Status:** código pronto até o M10 (interface em inglês, roteamento por IA, revisão espaçada com
+> lembretes agendados); implantado na VM desde o M8, com o deploy do M9/M10 ainda pendente. A
+> especificação completa está em [`spec/spec-inicial.md`](spec/spec-inicial.md); o trabalho anda
+> marco a marco (seção 9 da spec).
 
 ## Stack
 

@@ -1,8 +1,9 @@
 """Máquina de estados da conversa (seção 5.1) como função pura (ADR-0004, ADR-0009).
 
-`transicionar` só decide: devolve o próximo estado e a ação que os fluxos (M4/M9) devem executar.
-Não chama LLM, repositório nem canal — mesmo o roteamento por IA (`Acao.ROTEAR`) é decidido aqui
-como "preciso rotear" e executado pelo `Router`.
+`transicionar` só decide: devolve o próximo estado e a ação que os fluxos (M4/M9/M10) devem
+executar. Não chama LLM, repositório nem canal — mesmo o roteamento por IA (`Acao.ROTEAR`) e a
+revisão espaçada (`Acao.RESPONDER_REVISAO`) são decididos aqui como "isto precisa de IA" e
+executados pelo `Router`.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
 
-from app.domain.choices import MENU_ACOES, parse_escolha
+from app.domain.choices import MENU_ACOES, eh_sair, parse_escolha
 from app.domain.models import Estado
 
 SESSAO_EXPIRA_APOS = timedelta(hours=3)
@@ -23,6 +24,8 @@ class Acao(StrEnum):
     GERAR_SINONIMOS = "GERAR_SINONIMOS"
     SALVAR = "SALVAR"
     ROTEAR = "ROTEAR"
+    RESPONDER_REVISAO = "RESPONDER_REVISAO"
+    ENCERRAR_REVISAO = "ENCERRAR_REVISAO"
 
 
 @dataclass(frozen=True)
@@ -49,6 +52,8 @@ def transicionar(estado: Estado, texto: str) -> Transicao:
             return Transicao(Estado.AWAIT_ACTION, Acao.EXPLICAR, texto)
         case Estado.AWAIT_ACTION:
             return _await_action(texto)
+        case Estado.REVIEWING:
+            return _reviewing(texto)
 
 
 def _await_action(texto: str) -> Transicao:
@@ -58,3 +63,11 @@ def _await_action(texto: str) -> Transicao:
         estado = Estado.IDLE if acao is Acao.SALVAR else Estado.AWAIT_ACTION
         return Transicao(estado, acao)
     return Transicao(Estado.AWAIT_ACTION, Acao.ROTEAR, texto)
+
+
+def _reviewing(texto: str) -> Transicao:
+    """Durante a revisão (seção 5.7), qualquer texto que não seja "sair" é a resposta do aluno
+    para a palavra atual — sem roteamento por IA aqui, que só geraria ambiguidade e custo."""
+    if eh_sair(texto):
+        return Transicao(Estado.IDLE, Acao.ENCERRAR_REVISAO)
+    return Transicao(Estado.REVIEWING, Acao.RESPONDER_REVISAO, texto)

@@ -12,6 +12,7 @@ from app.domain.models import (
     Expansion,
     Explanation,
     NivelUsuario,
+    Revisao,
     Roteamento,
     Sense,
     SentidoSalvo,
@@ -65,6 +66,7 @@ class FakeTutor:
     expansoes: list[list[Expansion] | Exception] = field(default_factory=list)
     sinonimos: list[list[Synonym] | Exception] = field(default_factory=list)
     roteamentos: list[Roteamento | Exception] = field(default_factory=list)
+    revisoes: list[Revisao | Exception] = field(default_factory=list)
     chamadas: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
 
     def _proxima[T](self, fila: list[T | Exception]) -> T:
@@ -125,3 +127,13 @@ class FakeTutor:
     ) -> Roteamento:
         self.chamadas.append(("route", (palavra, sentido.traducao, texto, nivel)))
         return self._proxima(self.roteamentos)
+
+    def review(
+        self,
+        palavra: str,
+        sentido: SentidoSalvo | Sense,
+        resposta: str,
+        nivel: NivelUsuario,
+    ) -> Revisao:
+        self.chamadas.append(("review", (palavra, sentido.traducao, resposta, nivel)))
+        return self._proxima(self.revisoes)

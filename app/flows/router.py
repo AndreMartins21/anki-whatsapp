@@ -17,7 +17,7 @@ from app.domain.models import (
     agora_utc,
 )
 from app.domain.state import Acao, Transicao, expirou, transicionar
-from app.flows import capture, commands, freeform, practice, synonyms
+from app.flows import capture, commands, freeform, practice, review, synonyms
 from app.flows.base import Deps, bloq
 from app.flows.commands import Exportador, StatusDaSessao
 from app.flows.conversa import Conversa
@@ -60,6 +60,13 @@ class Router:
                 d.conversa.definir_destino(destino)
             d.conversa.usuario_falou()
             perfil = await bloq(self._perfil)
+            if destino and (perfil.chat_id != destino or perfil.lembrete_sem_resposta):
+                # M10: guarda o destino real (para o agendador saber para onde mandar os
+                # lembretes) e limpa o backoff — o aluno acabou de falar.
+                perfil = perfil.model_copy(
+                    update={"chat_id": destino, "lembrete_sem_resposta": False}
+                )
+                await bloq(d.repo.salvar_perfil, perfil)
             sessao = await bloq(d.repo.obter_sessao)
             if sessao.estado != Estado.IDLE and expirou(sessao.atualizado_em, d.agora()):
                 # Parada há mais de 3 horas: volta para IDLE. O que havia já está salvo.
@@ -111,3 +118,24 @@ class Router:
                 return await practice.concluir(d, sessao, perfil)
             case Acao.ROTEAR:
                 return await freeform.rotear(d, sessao, perfil, str(argumento))
+            case Acao.RESPONDER_REVISAO:
+                return await review.responder(d, sessao, perfil, str(argumento))
+            case Acao.ENCERRAR_REVISAO:
+                return await review.encerrar(d, sessao)
+
+    async def iniciar_revisao(self) -> None:
+        """Chamado pelo agendador (M10, `app/services/lembretes.py`): o bot inicia a conversa,
+        não responde a uma. Mesma trava do resto (não pode correr junto de uma mensagem
+        chegando). Nunca dispara sem um destino real já aprendido, e nunca interrompe uma
+        conversa em andamento — quem decide isso é o próprio agendador, antes de chamar."""
+        async with self._trava:
+            d = self._d
+            perfil = await bloq(self._perfil)
+            if perfil.chat_id is None:
+                return
+            sessao = await bloq(d.repo.obter_sessao)
+            if sessao.estado != Estado.IDLE:
+                return
+            d.conversa.definir_destino(perfil.chat_id)
+            nova = await review.iniciar(d)
+            await bloq(d.repo.salvar_sessao, nova.model_copy(update={"atualizado_em": d.agora()}))

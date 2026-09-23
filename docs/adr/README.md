@@ -20,6 +20,8 @@ operacional: numeração, status e o índice.
 | [0008](0008-continuar-na-gcp-e-manter-a-saida-portavel.md) | Continuar na GCP e manter a saída portátil (casa ou Oracle) para depois do trial | Aceito | 2026-09-20 |
 | [0009](0009-roteamento-de-texto-livre-pela-ia.md) | Roteamento de texto livre por uma chamada de IA, máquina de estados reduzida a dois estados | Aceito | 2026-09-22 |
 | [0010](0010-interface-em-ingles.md) | Interface do bot em inglês, com a tradução como única exceção | Aceito | 2026-09-22 |
+| [0011](0011-revisao-espacada-sm2-simplificado.md) | Revisão espaçada com SM-2 simplificado, independente do agendamento do Anki | Aceito | 2026-09-23 |
+| [0012](0012-agendador-no-processo-com-destino-persistido.md) | Agendador de lembretes no próprio processo, com destino persistido e trava de iniciativa | Aceito | 2026-09-23 |
 
 ## Quando escrever um
 

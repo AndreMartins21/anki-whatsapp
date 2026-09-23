@@ -6,6 +6,7 @@ segundo plano no `Router`, para o WAHA não esperar nem reenviar o evento.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import hashlib
 import hmac as hmac_lib
@@ -17,6 +18,7 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from google.cloud import firestore
@@ -45,6 +47,7 @@ from app.repo.base import Repository
 from app.repo.firestore import FirestoreRepository
 from app.repo.memory import MemoryRepository
 from app.services.anki import ExportadorAnki
+from app.services.lembretes import Agendador
 from app.services.llm import criar_tutor
 from app.services.storage import Armazenamento, ArmazenamentoLocal, criar_armazenamento_gcs
 
@@ -85,7 +88,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     repo = _criar_repositorio(settings)
     app.state.channel = canal
     app.state.repo = repo
-    app.state.router = Router(
+    router = Router(
         repo=repo,
         tutor=criar_tutor(settings),
         conversa=Conversa(canal, f"{settings.allowed_number}@c.us"),
@@ -93,9 +96,22 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         status_da_sessao=canal.session_status,
         exportador=ExportadorAnki(repo, _criar_armazenamento(settings)),
     )
+    app.state.router = router
+
+    # M10: lembretes de revisão espaçada (seção 5.7, ADR-0012) — laço em segundo plano, um
+    # minuto por vez; só dispara com um chat_id real já aprendido de uma mensagem recebida.
+    agendador = Agendador(
+        router=router, repo=repo, agora=agora_utc, fuso=ZoneInfo(settings.timezone)
+    )
+    app.state.agendador = agendador
+    tarefa_do_agendador = asyncio.create_task(agendador.rodar())
     try:
         yield
     finally:
+        agendador.parar()
+        tarefa_do_agendador.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await tarefa_do_agendador
         await canal.aclose()
 
 

@@ -47,6 +47,11 @@ class Conversa:
     def usuario_falou(self) -> None:
         self._seguidas = 0
 
+    def nova_iniciativa(self) -> None:
+        """O bot está iniciando a conversa (M10: revisão espaçada agendada), não respondendo a
+        uma mensagem — também reseta o limite de mensagens seguidas (seção 5.6)."""
+        self._seguidas = 0
+
     async def enviar(self, texto: str) -> None:
         if self._seguidas >= self._max_seguidas:
             logger.warning(

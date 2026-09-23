@@ -104,5 +104,10 @@ async def concluir(d: Deps, sessao: Sessao, perfil: Profile) -> Sessao:
             entrada.model_copy(update={"status": status, "atualizado_em": d.agora()}),
         )
     sugestoes = await expansion.sugestoes(d, entrada, perfil)
-    await d.conversa.enviar(messages.salvo(entrada.palavra, sugestoes))
+    texto = messages.salvo(entrada.palavra, sugestoes)
+    if not perfil.avisou_lembretes:
+        # M10: dica de uma linha, só na primeira vez que o aluno salva uma palavra.
+        texto += messages.DICA_DE_LEMBRETES
+        await bloq(d.repo.salvar_perfil, perfil.model_copy(update={"avisou_lembretes": True}))
+    await d.conversa.enviar(texto)
     return d.sessao_vazia()

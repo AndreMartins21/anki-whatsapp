@@ -20,7 +20,9 @@ Ciclo principal:
 6. Ao salvar ("3" ou pedido livre), o bot sugere até 3 **expressões relacionadas** como texto — sem menu; o usuário só manda a que quiser como qualquer palavra nova.
 7. `/exportar` (ou `/export`) gera um `.txt` para o Anki e envia um **link temporário** para baixar (seção 7.5). O WAHA Core não envia arquivos.
 
-Fora de escopo no MVP: revisão espaçada no WhatsApp, áudio, lembretes agendados, multiusuário, painel web e conversa livre com IA.
+**M10:** o bot também faz revisão espaçada com lembretes agendados (seção 5.7) — deixou de ser fora de escopo.
+
+Fora de escopo no MVP: áudio, multiusuário, painel web e conversa livre com IA sem relação a inglês.
 
 ## 2. Stack e decisões fixas
 
@@ -71,6 +73,7 @@ A VM tem só 1 GB de RAM. Crie um **swap de 2 GB**, limite a memória dos contai
 | `EXPORT_BUCKET` | `.env.infra` | Nome do bucket de exportações |
 | `ANTHROPIC_MODEL` | `.env.infra` (opcional) | Padrão `claude-haiku-4-5-20251001` |
 | `USER_LEVEL` | `.env.infra` | Padrão `B1-B2` |
+| `TIMEZONE` | `.env.infra` | Padrão `America/Sao_Paulo`; fuso para distribuir os lembretes (M10, seção 5.7) |
 | `APP_ENV` | compose | `local` ou `prod` |
 
 Para desenvolvimento local, use um `.env` (no `.gitignore`) com valores falsos. Os testes nunca dependem de credenciais reais. Para o simulador com IA real (`--real-llm`), use as credenciais locais do Google (`gcloud auth application-default login`), sem chave em arquivo.
@@ -119,14 +122,16 @@ Regras:
 ### 5.2 Comandos
 
 `/help`, `/list`, `/pending`, `/practice [palavra]`, `/export`, `/export all`, `/delete palavra`,
-`/level A2-B1|B1-B2|B2-C1`, `/cancel`, `/status`. Cada um aceita também o apelido em PT-BR que a
-spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/praticar`, `/exportar [tudo]`, `/apagar`,
-`/nivel`, `/cancelar`) — a mensagem de "salvo" (seção 5.5, Case D) cita os nomes em português.
+`/level A2-B1|B1-B2|B2-C1`, `/cancel`, `/status`, `/lembretes [N [INICIOh-FIMh] | off]` (M10),
+`/revisar` (M10). Cada um aceita também o apelido em PT-BR que a spec sempre teve (`/ajuda`,
+`/lista`, `/pendentes`, `/praticar`, `/exportar [tudo]`, `/apagar`, `/nivel`, `/cancelar`) — a
+mensagem de "salvo" (seção 5.5, Case D) cita os nomes em português.
 
 - `/pending` lista as entradas com status `nova`.
 - `/export` exporta as entradas ainda não exportadas; `/export all`, todas. Entrada sem nenhuma frase utilizável fica de fora (o bot avisa quantas). O nome do arquivo usa a hora em UTC.
 - `/practice` sem argumento pega a pendente mais antiga.
 - `/level` aceita A2-B1, B1-B2 e B2-C1.
+- `/lembretes` e `/revisar`: ver seção 5.7.
 - `/status` mostra o status da sessão do WAHA, o total de palavras e as pendentes.
 
 ### 5.3 Calibração pelo nível (B1-B2)
@@ -225,6 +230,65 @@ Send me another word or expression whenever you want.
 - **Nunca** envie mensagem para número diferente do `ALLOWED_NUMBER`.
 - Nunca mande mais de 3 mensagens seguidas sem uma resposta do usuário.
 
+### 5.7 Revisão espaçada e lembretes (M10, ADR-0011, ADR-0012)
+
+O bot também **inicia** conversas: no horário combinado, escolhe até 20 palavras vencidas e faz
+uma sessão de revisão. Espaçamento estilo Anki (SM-2 simplificado, `app/domain/srs.py`), mas a
+nota vem do julgamento da IA sobre a resposta em texto livre do aluno, não de 4 botões.
+
+**Configuração:** `/lembretes` mostra o estado; `/lembretes N` liga N vezes por dia na janela
+padrão (9h–21h); `/lembretes N INICIOh-FIMh` usa uma janela própria (N de 1 a 8, `0 <= início <
+fim <= 23`); `/lembretes off` desliga. Desligado por padrão; a primeira palavra salva mostra uma
+dica de uma linha sobre o comando, uma única vez. Os horários se distribuem igualmente dentro da
+janela (`app/domain/lembretes.py:horarios_do_dia`).
+
+**Máquina de estados:** um novo estado, `REVIEWING`. Durante ele, qualquer texto que não seja
+"sair" (`0`, `stop`, `quit`, `exit`, `leave`) é a resposta à palavra atual — sem roteamento por IA
+aqui (seria ambiguidade e custo à toa). Comandos (`/`) continuam funcionando; `/cancelar` fecha a
+sessão com o resumo, como `0` faria.
+
+```
+⏰ *Practice time* — 12 words to review.
+
+🔁 1/12 · *stall*
+Explain it in English in your own words, or write a sentence using it.
+_Type 0 to leave the practice._
+```
+Cada turno seguinte é **uma mensagem só**, com o feedback da resposta anterior e o próximo card
+juntos (respeita o limite de 3 mensagens seguidas, seção 5.6):
+```
+✅ That's it — you clearly remember this one.
+💬 "to stop making progress" is exactly the idea.
+
+🔁 2/12 · *deadline*
+Explain it in English in your own words, or write a sentence using it.
+_Type 0 to leave the practice._
+```
+Ao acabar a fila, digitar `0` ou `/cancelar`:
+```
+🎉 *Practice done* — 9 of 12 reviewed.
+✅ Solid: stall, deadline, overwhelmed
+🔁 Coming back soon: reluctant, mitigate
+Send me a new word or expression whenever you want.
+```
+
+**Fila de uma sessão** (`app/flows/review.py:montar_fila`): as vencidas primeiro (mais antiga
+primeiro; `proxima_revisao=None` = cartão novo, vencido desde já), completando até 20 com as que
+vencem mais cedo entre as que ainda não venceram. Sem nada vencido, o agendador fica em silêncio —
+nunca manda "nada para revisar" sem o aluno pedir (só `/revisar`, chamado explicitamente, avisa).
+Uma resposta `de_novo` volta a palavra para o **fim da fila desta sessão** (como no Anki) e conta
+um lapso; as demais notas (`dificil`/`bom`/`facil`) avançam o agendamento.
+
+**Disparo, com três camadas de segurança** (seção 5.6, ADR-0012): um agendador em segundo plano
+(`app/services/lembretes.py:Agendador`), acordando a cada minuto. Só dispara com um `chat_id` real
+— o número que o WhatsApp de fato usa para esse aluno, aprendido de uma mensagem recebida (nunca o
+`ALLOWED_NUMBER` do `.env` direto: pode diferir no nono dígito, seção 8.2). Nunca dois lembretes
+seguidos sem resposta ao anterior (`lembrete_sem_resposta`, limpo na próxima mensagem do aluno,
+qualquer que seja). Se a conversa está aberta (`sessao.estado != IDLE`), adia para o próximo tick,
+e desiste (recalculando o próximo horário) se o atraso passar de 2 horas.
+
+`/revisar` começa a sessão na hora, sem esperar o próximo horário.
+
 ## 6. Contratos com a IA
 
 Implemente em `app/services/llm.py` uma interface `LLMProvider` com duas implementações:
@@ -281,6 +345,14 @@ class Roteamento(BaseModel):
     usa_palavra_alvo: bool; sentido_correto: bool; veredito: str
     correcoes: list[str]; versao_natural: str; explicacao: str
 # route(palavra, sentido, texto, nivel) -> Roteamento
+
+# Revisão espaçada (M10, seção 5.7, ADR-0011): julga a resposta livre do aluno numa revisão.
+class Revisao(BaseModel):
+    tipo: Literal["definicao","frase","nao_sei","outro"]
+    qualidade: Literal["de_novo","dificil","bom","facil"]
+    feedback: str        # em inglês, máx. 4 linhas
+    correcao: str         # só quando ajuda (qualidade != "facil"); vazio senão
+# review(palavra, sentido, resposta, nivel) -> Revisao
 ```
 
 **Qualidade:** `evals/sentencas.yaml` (~15 casos de frase + veredito esperado) e `evals/roteamento.yaml`
@@ -290,13 +362,22 @@ class Roteamento(BaseModel):
 
 ### 7.1 Firestore
 ```
-profile/me                 { nivel, criado_em }
-session/current            { estado, entry_id, sentido_id, sinonimos_mostrados, atualizado_em }
+profile/me                 { nivel, criado_em,
+                             lembretes_por_dia, janela_inicio, janela_fim, chat_id?,
+                             proximo_lembrete?, lembrete_sem_resposta, avisou_lembretes }
+                           # M10 (seção 5.7): lembretes_por_dia=0 é desligado (padrão); chat_id é o
+                           # destino real, aprendido de uma mensagem recebida (nunca o .env direto)
+session/current            { estado, entry_id, sentido_id, sinonimos_mostrados, atualizado_em,
+                             revisao_fila, revisao_atual?, revisao_feitas, revisao_lapsos, revisao_total }
                            # M9: sinonimos_mostrados evita repetir e troca o rótulo do menu
                            # ("Check synonyms" -> "See more synonyms") depois da 1ª vez
+                           # M10: os 5 campos de revisao_* só valem com estado=REVIEWING
 entries/{slug}             { palavra, classe, cefr_estimado, sentido:{traducao,definicao}, outros_sentidos,
                              nota, tags, origem_texto, origem:"usuario"|"expansao", pai?, status:"nova"|"praticada",
-                             exportado, criado_em, atualizado_em }
+                             exportado, criado_em, atualizado_em,
+                             repeticoes, intervalo_dias, facilidade, lapsos, proxima_revisao?, revisada_em? }
+                           # M10: campos de SM-2 simplificado (ADR-0011); proxima_revisao=None
+                           # é um cartão novo, vencido desde já
 entries/{slug}/sentences/{auto}  { texto, autor:"usuario"|"bot", veredito?, correcoes?, versao_natural?, explicacao?, criado_em }
 processed/{message_id}     { criado_em, expira_em }     # deduplicação; política de TTL de 7 dias
 lids/{lid}                 { numero }                   # cache LID -> número (seção 8.2), evita consultar o WAHA a cada mensagem
@@ -367,6 +448,7 @@ Crie a interface `Channel` (enviar texto, marcar como lido, digitando) com as im
 | M7 | `docker-compose.yml` (waha + bot), `infra/` (seção 10), README com o runbook | `docker compose config` válido; scripts passam em `bash -n` e `shellcheck`; nenhum segredo versionado |
 | M8 | Provisionar e fazer o deploy na VM, comigo aprovando cada comando; parear o WhatsApp; smoke test | O WAHA está em `WORKING` e o bot responde `/ajuda` no WhatsApp |
 | M9 | Interface em inglês (só 🇧🇷 em PT-BR), máquina de estados reduzida a `IDLE`/`AWAIT_ACTION` com um único menu de ações, roteamento de texto livre por uma chamada de IA (`Tutor.route`, ADR-0009), sinônimos (`Tutor.synonyms`), expansões viram sugestão em texto (sem menu) | `make check` passa; ciclo completo no `sim` bate a seção 5.5; `python -m evals.run --tarefa roteamento` roda contra a API real |
+| M10 | Revisão espaçada (SM-2 simplificado, ADR-0011) com sessão `REVIEWING`, `/lembretes` e `/revisar`, agendador em segundo plano (`Agendador`, ADR-0012) | `make check` passa; `make test-emulador` valida os campos novos no Firestore real; ciclo completo de revisão no `sim`; nenhum lembrete dispara sem `chat_id` conhecido |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 
@@ -453,9 +535,9 @@ vocabot/
   app/
     main.py  config.py  messages.py
     channel/  base.py  waha.py  console.py  parser.py
-    domain/   models.py  state.py  choices.py
-    flows/    router.py  capture.py  practice.py  expansion.py  synonyms.py  freeform.py  commands.py
-    services/ llm.py  prompts.py  anki.py  storage.py
+    domain/   models.py  state.py  choices.py  srs.py  lembretes.py
+    flows/    router.py  capture.py  practice.py  expansion.py  synonyms.py  freeform.py  review.py  commands.py
+    services/ llm.py  prompts.py  anki.py  storage.py  lembretes.py
     repo/     base.py  memory.py  firestore.py
   sim/        __main__.py  tutor.py
   evals/      sentencas.yaml  roteamento.yaml  run.py

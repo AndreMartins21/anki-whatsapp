@@ -2,7 +2,8 @@
 tradução literal, fica em português do Brasil).
 
 Formatação do WhatsApp (`*bold*`, `_italic_`), emojis com moderação e, sempre que possível, um
-único texto por resposta: explicação ou avaliação mais o menu (seção 5.5 da spec).
+único texto por resposta: explicação ou avaliação mais o menu (seção 5.5 da spec), ou feedback
+mais o próximo card na revisão espaçada (seção 5.7, M10).
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ from app.domain.models import (
     Evaluation,
     Expansion,
     NivelUsuario,
+    Profile,
+    Revisao,
     Sense,
     SentidoSalvo,
     Synonym,
@@ -51,7 +54,9 @@ Send me a word or expression in English (you can include the sentence where you 
 /delete word — remove a word
 /level B1-B2 — change your level (A2-B1, B1-B2 or B2-C1)
 /cancel — stop what you were doing (nothing is deleted)
-/status — how things are going"""
+/status — how things are going
+/lembretes 3 9h-22h — daily practice reminders (or /lembretes off)
+/revisar — start a review session right now"""
 
 
 def sem_marcas(frase: str) -> str:
@@ -222,3 +227,75 @@ def exportacao(link: str, quantidade: int, ignoradas: int = 0) -> str:
             "practice them or ask for examples and export again.)"
         )
     return texto
+
+
+# ---- revisão espaçada e lembretes (seção 5.7, M10) ---------------------------------------------
+
+SEM_NADA_PARA_REVISAR = "No pending reviews right now. 🎉"
+DICA_DE_LEMBRETES = "\n\n💡 Want daily practice reminders? Send /lembretes 3"
+LEMBRETES_INVALIDOS = (
+    "I couldn't understand that. Try /lembretes 3 (3 times a day, 9h-21h) or "
+    "/lembretes 3 9h-22h (your own window), or /lembretes off."
+)
+
+_QUALIDADE_EMOJI: dict[str, str] = {
+    "de_novo": "❌",
+    "dificil": "🤔",
+    "bom": "✅",
+    "facil": "🌟",
+}
+
+
+def hora_da_pratica(total: int) -> str:
+    palavra = "word" if total == 1 else "words"
+    return f"⏰ *Practice time* — {total} {palavra} to review."
+
+
+def card_de_revisao(indice: int, total: int, palavra: str) -> str:
+    return (
+        f"🔁 {indice}/{total} · *{palavra}*\n"
+        "Explain it in English in your own words, or write a sentence using it.\n"
+        "_Type 0 to leave the practice._"
+    )
+
+
+def feedback_de_revisao(rev: Revisao) -> str:
+    linhas = [f"{_QUALIDADE_EMOJI[rev.qualidade]} {rev.feedback}"]
+    if rev.correcao:
+        linhas.append(f"💬 {rev.correcao}")
+    return "\n".join(linhas)
+
+
+def revisao_encerrada(feitas: Sequence[str], lapsos: Sequence[str]) -> str:
+    if not feitas:
+        return SEM_NADA_PARA_REVISAR
+    solidas = [palavra for palavra in feitas if palavra not in lapsos]
+    linhas = [f"🎉 *Practice done* — {len(feitas)} reviewed."]
+    if solidas:
+        linhas.append(f"✅ Solid: {', '.join(solidas)}")
+    if lapsos:
+        linhas.append(f"🔁 Coming back soon: {', '.join(lapsos)}")
+    linhas.append("Send me a new word or expression whenever you want.")
+    return "\n".join(linhas)
+
+
+def lembretes_atuais(perfil: Profile) -> str:
+    if perfil.lembretes_por_dia == 0:
+        return (
+            "Reminders are off. Turn them on with /lembretes 3 (or /lembretes 3 9h-22h for "
+            "your own window)."
+        )
+    vezes = "once a day" if perfil.lembretes_por_dia == 1 else f"{perfil.lembretes_por_dia}x a day"
+    return (
+        f"Reminders: {vezes}, between {perfil.janela_inicio}h and {perfil.janela_fim}h. "
+        "Change with /lembretes N or turn off with /lembretes off."
+    )
+
+
+def lembretes_alterados(perfil: Profile) -> str:
+    vezes = "once a day" if perfil.lembretes_por_dia == 1 else f"{perfil.lembretes_por_dia}x a day"
+    return f"✅ Reminders set: {vezes}, between {perfil.janela_inicio}h and {perfil.janela_fim}h."
+
+
+def lembretes_desligados() -> str:
+    return "✅ Reminders are off."

@@ -23,6 +23,7 @@ from app.domain.models import (
     Expansoes,
     Explanation,
     NivelUsuario,
+    Revisao,
     Roteamento,
     Sense,
     SentidoSalvo,
@@ -99,6 +100,14 @@ class Tutor(Protocol):
     def route(
         self, palavra: str, sentido: SentidoSalvo | Sense, texto: str, nivel: NivelUsuario
     ) -> Roteamento: ...
+
+    def review(
+        self,
+        palavra: str,
+        sentido: SentidoSalvo | Sense,
+        resposta: str,
+        nivel: NivelUsuario,
+    ) -> Revisao: ...
 
 
 class VertexGeminiProvider:
@@ -328,6 +337,21 @@ class LLMTutor:
             self._provider,
             prompts.prompt_route(nivel, palavra, sentido, texto),
             Roteamento,
+            modelo=self._modelo_avaliacao,
+            temperatura=TEMPERATURA_PRECISA,
+        )
+
+    def review(
+        self,
+        palavra: str,
+        sentido: SentidoSalvo | Sense,
+        resposta: str,
+        nivel: NivelUsuario,
+    ) -> Revisao:
+        return _gerar_validado(
+            self._provider,
+            prompts.prompt_review(nivel, palavra, sentido, resposta),
+            Revisao,
             modelo=self._modelo_avaliacao,
             temperatura=TEMPERATURA_PRECISA,
         )

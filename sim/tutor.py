@@ -14,6 +14,7 @@ from app.domain.models import (
     Expansion,
     Explanation,
     NivelUsuario,
+    Revisao,
     Roteamento,
     Sense,
     SentidoSalvo,
@@ -165,3 +166,17 @@ class SimTutor:
         if len(normalizado.split()) <= 4:
             return Roteamento(intencao="nova_palavra", palavra=texto.strip())
         return Roteamento(intencao="pedido", resposta=_NOTA_DO_SIMULADOR)
+
+    def review(
+        self,
+        palavra: str,
+        sentido: SentidoSalvo | Sense,
+        resposta: str,
+        nivel: NivelUsuario,
+    ) -> Revisao:
+        normalizado = resposta.strip().lower()
+        if normalizado in {"", "i don't know", "no idea", "idk"}:
+            return Revisao(tipo="nao_sei", qualidade="de_novo", feedback=_NOTA_DO_SIMULADOR)
+        if contem_palavra_alvo(resposta, palavra):
+            return Revisao(tipo="frase", qualidade="bom", feedback=_NOTA_DO_SIMULADOR)
+        return Revisao(tipo="definicao", qualidade="bom", feedback=_NOTA_DO_SIMULADOR)

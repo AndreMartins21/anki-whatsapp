@@ -94,6 +94,27 @@ do "o que deu errado e por quê".
 - Toda resposta passa por Pydantic e por regras extras (nº de exemplos, expressões sem repetir), com uma nova
   tentativa que devolve o erro ao modelo. Erros de rede/cota não são repetidos: sobem para o webhook.
 
+## M10: o bot iniciando a conversa
+
+### Mandar a primeira mensagem é o risco real, não o de responder
+- Até o M9 o bot só falava depois de receber uma mensagem — o padrão que mais preocupa o WhatsApp
+  em termos de bloqueio é justamente **iniciar** contato sem o outro lado ter pedido. O agendador
+  de lembretes (M10, ADR-0012) é a primeira peça do bot que faz isso.
+- Mitigação em três camadas, todas antes de mandar qualquer coisa: só dispara com o `chat_id`
+  **real** (aprendido de uma mensagem recebida, nunca o `ALLOWED_NUMBER` do `.env` — mesma lição de
+  `b141c39`), nunca sem fila (silêncio em vez de mensagem vazia) e nunca dois lembretes seguidos
+  sem resposta ao anterior.
+- **Ainda não testado com o WhatsApp de verdade** (só no `sim` e com testes de `_tick` isolados).
+  Antes de deixar `/lembretes` ligado por dias seguidos em produção, vale observar um ou dois
+  disparos reais e confirmar que a sessão do WAHA continua em `WORKING`.
+
+### `python:3.12-slim` não tem o banco de fusos horários
+- `ZoneInfo("America/Sao_Paulo")` funciona local (o SO tem o banco), mas estouraria na imagem
+  Docker sem o pacote `tzdata` do PyPI — adicionado às dependências (`pyproject.toml`) antes de
+  precisar descobrir isso em produção. Conferir com
+  `docker compose run --rm bot python -c "from zoneinfo import ZoneInfo; ZoneInfo('America/Sao_Paulo')"`
+  antes do primeiro deploy com lembretes ligados.
+
 ## Processo
 
 - **Ler a fonte, não a memória:** a tag do WAHA (`gows-2026.8.2`), os nomes das variáveis e o endpoint de LID
@@ -114,3 +135,8 @@ do "o que deu errado e por quê".
 - Se o WAHA passar a permitir `sendFile`, mandar o `.txt` como anexo e dispensar o bucket.
 - Alerta de orçamento em Billing → Budgets.
 - Se o WAHA passar de ~350 MiB depois de dias de uso, subir o `mem_limit` ou reavaliar a VM.
+- Medir a qualidade das notas de revisão espaçada (M10) contra a API real — hoje só há testes com
+  `FakeTutor`; uma nota `bom` generosa demais espaça rápido demais uma palavra que o aluno não sabe.
+  Um `evals/revisao.yaml` (resposta → qualidade esperada), no molde de `evals/roteamento.yaml`.
+- Observar os primeiros disparos reais do agendador de lembretes (M10) no WhatsApp de verdade antes
+  de deixar `/lembretes` ligado por vários dias seguidos.

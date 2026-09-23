@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     allowed_number: str
     bot_number: str
     user_level: NivelUsuario = "B1-B2"
+    # Fuso do aluno, para distribuir os lembretes de revisão espaçada (seção 5.7, M10).
+    timezone: str = "America/Sao_Paulo"
 
     # WAHA (gateway WhatsApp)
     waha_url: str = "http://waha:3000"

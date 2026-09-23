@@ -1,4 +1,5 @@
-"""Comandos (seção 5.2): /help /list /pending /practice /export /delete /level /cancel /status.
+"""Comandos (seção 5.2): /help /list /pending /practice /export /delete /level /cancel /status
+/lembretes /revisar (M10).
 
 Cada comando aceita o nome em inglês e o apelido em PT-BR que a spec sempre teve (`/praticar`,
 `/lista`...), já que o Case D de salvar ("Practice it any time with /praticar stall") cita os
@@ -12,8 +13,9 @@ from typing import Protocol, get_args
 
 from app import messages
 from app.domain.choices import normalizar
-from app.domain.models import Entry, NivelUsuario, Profile, Sessao, slugify
-from app.flows import capture
+from app.domain.lembretes import parse_lembretes
+from app.domain.models import Entry, Estado, NivelUsuario, Profile, Sessao, slugify
+from app.flows import capture, review
 from app.flows.base import Deps, bloq
 from app.repo.base import Repository
 from app.services.anki import ResultadoExportacao
@@ -31,6 +33,9 @@ _APAGAR = {"apagar", "delete"}
 _NIVEL = {"nivel", "level"}
 _CANCELAR = {"cancelar", "cancel"}
 _STATUS = {"status"}
+_LEMBRETES = {"lembretes", "reminders"}
+_REVISAR = {"revisar", "review"}
+_DESLIGAR = {"off", "desligar", "0"}
 
 
 class Exportador(Protocol):
@@ -76,10 +81,17 @@ async def executar(
     elif comando in _NIVEL:
         await _nivel(d, perfil, argumento)
     elif comando in _CANCELAR:
+        if Estado(sessao.estado) == Estado.REVIEWING:
+            # M10: cancelar no meio de uma revisão fecha com o resumo, não o texto genérico.
+            return await review.encerrar(d, sessao)
         await conversa.enviar(messages.CANCELADO)
         return d.sessao_vazia()
     elif comando in _STATUS:
         await _status(d, status_da_sessao)
+    elif comando in _LEMBRETES:
+        await _lembretes(d, perfil, argumento)
+    elif comando in _REVISAR:
+        return await _revisar(d, sessao)
     else:
         await conversa.enviar(messages.COMANDO_DESCONHECIDO)
     return sessao
@@ -158,3 +170,41 @@ async def _status(d: Deps, status_da_sessao: StatusDaSessao | None) -> None:
     entradas = await bloq(d.repo.listar_entradas)
     pendentes = sum(1 for e in entradas if e.status == "nova")
     await d.conversa.enviar(messages.status(sessao_waha, len(entradas), pendentes))
+
+
+async def _lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
+    """`/lembretes` mostra o estado atual; `/lembretes off` desliga; `/lembretes 3` ou
+    `/lembretes 3 9h-22h` liga/muda (seção 5.7, M10)."""
+    if not argumento:
+        await d.conversa.enviar(messages.lembretes_atuais(perfil))
+        return
+    if normalizar(argumento) in _DESLIGAR:
+        if perfil.lembretes_por_dia != 0:
+            desligado = perfil.model_copy(update={"lembretes_por_dia": 0, "proximo_lembrete": None})
+            await bloq(d.repo.salvar_perfil, desligado)
+        await d.conversa.enviar(messages.lembretes_desligados())
+        return
+    analisado = parse_lembretes(argumento)
+    if analisado is None:
+        await d.conversa.enviar(messages.LEMBRETES_INVALIDOS)
+        return
+    quantidade, inicio, fim = analisado
+    novo = perfil.model_copy(
+        update={
+            "lembretes_por_dia": quantidade,
+            "janela_inicio": inicio,
+            "janela_fim": fim,
+            "proximo_lembrete": None,  # o agendador recalcula no próximo tick
+        }
+    )
+    await bloq(d.repo.salvar_perfil, novo)
+    await d.conversa.enviar(messages.lembretes_alterados(novo))
+
+
+async def _revisar(d: Deps, sessao: Sessao) -> Sessao:
+    """`/revisar` começa a sessão de revisão na hora, em vez de esperar o próximo lembrete."""
+    entradas = await bloq(d.repo.listar_entradas)
+    if not review.montar_fila(entradas, d.agora()):
+        await d.conversa.enviar(messages.SEM_NADA_PARA_REVISAR)
+        return sessao
+    return await review.iniciar(d)

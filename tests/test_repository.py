@@ -95,11 +95,61 @@ def test_sessao_persiste_estado_e_sinonimos_mostrados(repo: Repository) -> None:
     assert repo.obter_sessao() == sessao
 
 
+def test_sessao_persiste_a_fila_de_revisao(repo: Repository) -> None:
+    sessao = Sessao(
+        estado=Estado.REVIEWING,
+        revisao_fila=["hedge", "deadline"],
+        revisao_atual="stall",
+        revisao_feitas=["reluctant"],
+        revisao_lapsos=["reluctant"],
+        revisao_total=4,
+        atualizado_em=T0,
+    )
+
+    repo.salvar_sessao(sessao)
+
+    assert repo.obter_sessao() == sessao
+
+
+def test_perfil_persiste_os_campos_de_lembretes(repo: Repository) -> None:
+    perfil = Profile(
+        nivel="B1-B2",
+        criado_em=T0,
+        lembretes_por_dia=3,
+        janela_inicio=9,
+        janela_fim=22,
+        chat_id="5531999998888@c.us",
+        proximo_lembrete=T0 + timedelta(hours=3),
+        lembrete_sem_resposta=True,
+        avisou_lembretes=True,
+    )
+
+    repo.salvar_perfil(perfil)
+
+    assert repo.obter_perfil() == perfil
+
+
 def test_entrada_criada_pode_ser_lida(repo: Repository) -> None:
     repo.criar_entrada(_entrada())
 
     assert repo.obter_entrada("stall") == _entrada()
     assert repo.obter_entrada("outra") is None
+
+
+def test_entrada_persiste_os_campos_de_revisao_espacada(repo: Repository) -> None:
+    entrada = _entrada().model_copy(
+        update={
+            "repeticoes": 3,
+            "intervalo_dias": 7.5,
+            "facilidade": 2.3,
+            "lapsos": 1,
+            "proxima_revisao": T0 + timedelta(days=7),
+            "revisada_em": T0,
+        }
+    )
+    repo.criar_entrada(entrada)
+
+    assert repo.obter_entrada("stall") == entrada
 
 
 def test_criar_entrada_com_slug_existente_falha_sem_sobrescrever(repo: Repository) -> None:

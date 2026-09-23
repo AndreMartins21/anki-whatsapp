@@ -68,7 +68,7 @@ def parse_numero(texto: str, maximo: int) -> int | None:
     return numero if numero is not None and 1 <= numero <= maximo else None
 
 
-def eh_pular(texto: str) -> bool:
+def eh_sair(texto: str) -> bool:
     return normalizar(texto) in _SAIR
 
 

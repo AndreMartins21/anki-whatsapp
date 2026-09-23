@@ -108,6 +108,7 @@ async def test_ciclo_completo_do_stall() -> None:
         "Practice it any time with /praticar stall, or see everything with /lista.\n"
         "You might like these too: *stall for time*, *stall out*, *stalled talks*.\n"
         "Send me another word or expression whenever you want."
+        "\n\n💡 Want daily practice reminders? Send /lembretes 3"
     )
     assert m.repo.obter_sessao().estado == Estado.IDLE
     # Nenhuma entrada de expansão foi criada sozinha (M9: é só sugestão em texto).

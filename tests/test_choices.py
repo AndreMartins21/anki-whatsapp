@@ -7,7 +7,7 @@ import pytest
 from app.domain.choices import (
     MENU_ACOES,
     contem_palavra_alvo,
-    eh_pular,
+    eh_sair,
     marcar_alvo,
     normalizar,
     parse_escolha,
@@ -51,13 +51,13 @@ def test_parse_numero_respeita_o_maximo(texto: str, maximo: int, esperado: int |
 
 
 @pytest.mark.parametrize("texto", ["0", "stop", "Stop", "quit", "exit", "leave"])
-def test_eh_pular(texto: str) -> None:
-    assert eh_pular(texto) is True
+def test_eh_sair(texto: str) -> None:
+    assert eh_sair(texto) is True
 
 
-def test_eh_pular_rejeita_o_resto() -> None:
-    assert eh_pular("1") is False
-    assert eh_pular("stall") is False
+def test_eh_sair_rejeita_o_resto() -> None:
+    assert eh_sair("1") is False
+    assert eh_sair("stall") is False
 
 
 def test_so_numeros() -> None:

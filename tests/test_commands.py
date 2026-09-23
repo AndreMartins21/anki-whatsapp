@@ -336,3 +336,70 @@ async def test_exportar_sem_exportador_configurado() -> None:
     (resposta,) = await m.diz("/export")
 
     assert "isn't available" in resposta
+
+
+# ---- /lembretes (M10) --------------------------------------------------------------------------
+
+
+async def test_lembretes_desligados_por_padrao() -> None:
+    m = montar()
+
+    (resposta,) = await m.diz("/lembretes")
+
+    assert "off" in resposta.lower()
+
+
+async def test_lembretes_liga_com_a_janela_padrao() -> None:
+    m = montar()
+
+    (resposta,) = await m.diz("/lembretes 3")
+
+    assert "3x a day" in resposta
+    assert "9h" in resposta and "21h" in resposta
+    perfil = m.repo.obter_perfil()
+    assert perfil is not None
+    assert (perfil.lembretes_por_dia, perfil.janela_inicio, perfil.janela_fim) == (3, 9, 21)
+
+
+async def test_lembretes_liga_com_janela_propria() -> None:
+    m = montar()
+
+    (resposta,) = await m.diz("/lembretes 2 20h-23h")
+
+    assert "20h" in resposta and "23h" in resposta
+    perfil = m.repo.obter_perfil()
+    assert perfil is not None
+    assert (perfil.lembretes_por_dia, perfil.janela_inicio, perfil.janela_fim) == (2, 20, 23)
+
+
+async def test_lembretes_desliga() -> None:
+    m = montar()
+    await m.diz("/lembretes 3")
+
+    (resposta,) = await m.diz("/lembretes off")
+
+    assert "off" in resposta.lower()
+    perfil = m.repo.obter_perfil()
+    assert perfil is not None
+    assert perfil.lembretes_por_dia == 0
+
+
+async def test_lembretes_argumento_invalido() -> None:
+    m = montar()
+
+    (resposta,) = await m.diz("/lembretes 99")
+
+    assert "couldn't understand" in resposta
+    perfil = m.repo.obter_perfil()
+    assert perfil is not None
+    assert perfil.lembretes_por_dia == 0
+
+
+async def test_lembretes_atuais_mostra_o_que_esta_configurado() -> None:
+    m = montar()
+    await m.diz("/lembretes 3 9h-22h")
+
+    (resposta,) = await m.diz("/lembretes")
+
+    assert "3x a day" in resposta
+    assert "9h" in resposta and "22h" in resposta

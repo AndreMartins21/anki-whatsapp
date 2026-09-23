@@ -21,6 +21,7 @@ TipoExpansao = Literal["colocacao", "familia", "phrasal_verb", "sinonimo", "expr
 Intencao = Literal[
     "frase", "exemplos", "sinonimos", "salvar", "nova_palavra", "pedido", "fora_do_escopo"
 ]
+QualidadeRevisao = Literal["de_novo", "dificil", "bom", "facil"]
 
 
 def agora_utc() -> datetime:
@@ -28,11 +29,13 @@ def agora_utc() -> datetime:
 
 
 class Estado(StrEnum):
-    """Estados da conversa (seção 5.1, M9): só há uma palavra em foco por vez (`IDLE`) e um
-    único menu de ações enquanto ela está em foco (`AWAIT_ACTION`)."""
+    """Estados da conversa (seção 5.1, M9/M10): só há uma palavra em foco por vez (`IDLE`) e um
+    único menu de ações enquanto ela está em foco (`AWAIT_ACTION`); `REVIEWING` é a sessão de
+    revisão espaçada iniciada pelo bot (seção 5.7)."""
 
     IDLE = "IDLE"
     AWAIT_ACTION = "AWAIT_ACTION"
+    REVIEWING = "REVIEWING"
 
 
 def _exige_marca(frase: str) -> str:
@@ -192,6 +195,22 @@ class Roteamento(BaseModel):
         )
 
 
+class Revisao(BaseModel):
+    """Saída de `review` (M10, seção 5.7): julga a resposta de um turno de revisão espaçada —
+    definição com as próprias palavras do aluno, ou uma frase de uso."""
+
+    tipo: Literal["definicao", "frase", "nao_sei", "outro"]
+    qualidade: QualidadeRevisao
+    feedback: str  # em inglês, curto (máx. 4 linhas, como Evaluation.explicacao)
+    correcao: str = ""  # a definição certa ou a frase natural, quando ajuda
+
+    @model_validator(mode="after")
+    def _feedback_curto(self) -> Revisao:
+        if len(self.feedback.strip().splitlines()) > MAX_LINHAS_EXPLICACAO:
+            raise ValueError(f"`feedback` deve ter no máximo {MAX_LINHAS_EXPLICACAO} linhas")
+        return self
+
+
 class SentidoSalvo(BaseModel):
     traducao: str
     definicao: str
@@ -229,6 +248,14 @@ class Entry(BaseModel):
     exportado: bool = False
     criado_em: datetime = Field(default_factory=agora_utc)
     atualizado_em: datetime = Field(default_factory=agora_utc)
+    # Revisão espaçada (M10, seção 5.7): SM-2 simplificado (app/domain/srs.py). Independente do
+    # agendamento do Anki — ver ADR-0011. `proxima_revisao=None` = cartão novo, vencido desde já.
+    repeticoes: int = 0
+    intervalo_dias: float = 0.0
+    facilidade: float = 2.5
+    lapsos: int = 0
+    proxima_revisao: datetime | None = None
+    revisada_em: datetime | None = None
 
 
 class Profile(BaseModel):
@@ -236,6 +263,14 @@ class Profile(BaseModel):
 
     nivel: NivelUsuario
     criado_em: datetime = Field(default_factory=agora_utc)
+    # Lembretes de revisão espaçada (M10, seção 5.7). `lembretes_por_dia=0` = desligado (padrão).
+    lembretes_por_dia: int = 0
+    janela_inicio: int = 9
+    janela_fim: int = 21
+    chat_id: str | None = None  # destino real do WhatsApp, aprendido de uma mensagem recebida
+    proximo_lembrete: datetime | None = None
+    lembrete_sem_resposta: bool = False
+    avisou_lembretes: bool = False  # já mostrou a dica de /lembretes uma vez
 
 
 class Sessao(BaseModel):
@@ -243,7 +278,7 @@ class Sessao(BaseModel):
 
     Além dos campos da spec, guarda os sinônimos já mostrados nesta palavra
     (`sinonimos_mostrados`), para "see more synonyms" não repetir e para o menu saber trocar o
-    rótulo da opção 2.
+    rótulo da opção 2, e a fila de uma sessão de revisão em andamento (M10, `REVIEWING`).
     """
 
     model_config = ConfigDict(use_enum_values=True)
@@ -253,6 +288,12 @@ class Sessao(BaseModel):
     sentido_id: str | None = None
     sinonimos_mostrados: list[str] = Field(default_factory=list)
     atualizado_em: datetime = Field(default_factory=agora_utc)
+    # Sessão de revisão (M10): fila de slugs por revisar, o atual, e o resumo ao final.
+    revisao_fila: list[str] = Field(default_factory=list)
+    revisao_atual: str | None = None
+    revisao_feitas: list[str] = Field(default_factory=list)
+    revisao_lapsos: list[str] = Field(default_factory=list)
+    revisao_total: int = 0
 
 
 def slugify(palavra: str) -> str:

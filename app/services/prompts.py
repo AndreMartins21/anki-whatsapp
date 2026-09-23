@@ -223,3 +223,35 @@ def prompt_route(
         "frase, mesmo curta."
     )
     return Prompt(_sistema(nivel, tarefa), _delimitar(texto_do_usuario))
+
+
+def prompt_review(
+    nivel: NivelUsuario,
+    palavra: str,
+    sentido: SentidoSalvo | Sense,
+    resposta_do_aluno: str,
+) -> Prompt:
+    tarefa = (
+        "julgar a resposta do aluno numa revisão espaçada (M10): ele viu só a palavra-alvo e "
+        "tentou explicar o que ela significa, com as próprias palavras, OU escrever uma frase "
+        "usando-a — sem ver a definição.\n"
+        f"- Palavra-alvo: {palavra}\n- Sentido correto: {_descrever_sentido(sentido)}\n"
+        "- `tipo`: `definicao` (o aluno tentou explicar o significado), `frase` (o aluno usou a "
+        "palavra numa frase), `nao_sei` (o aluno disse que não lembra ou não sabe), `outro` "
+        "(resposta que não é nenhuma das anteriores).\n"
+        "- `qualidade`, a nota da revisão:\n"
+        "  - `de_novo`: errou o sentido, disse que não sabe, ou a resposta não tem relação "
+        "nenhuma com a palavra.\n"
+        "  - `dificil`: acertou o sentido, mas com hesitação clara, erro grande de forma, ou "
+        "precisou de uma dica indireta no próprio texto (ex.: 'acho que é algo como...').\n"
+        "  - `bom`: acertou o sentido com uma explicação ou frase razoável, mesmo com pequenos "
+        "erros de inglês.\n"
+        "  - `facil`: resposta correta, natural e confiante, sem hesitação.\n"
+        "- Seja tolerante com erros de inglês; o que importa aqui é se o aluno **lembra o "
+        "sentido**, não a perfeição gramatical.\n"
+        "- `feedback`: em inglês, no máximo 4 linhas — diga se acertou e por quê, em tom "
+        "encorajador mesmo quando a nota é baixa.\n"
+        "- `correcao`: só quando ajuda (`qualidade` não é `facil`) — a definição certa em uma "
+        "frase curta, ou a frase do aluno reescrita naturalmente; vazio se não precisar."
+    )
+    return Prompt(_sistema(nivel, tarefa), _delimitar(resposta_do_aluno))
