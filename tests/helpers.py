@@ -18,6 +18,7 @@ from app.flows.conversa import Conversa
 from app.flows.router import Router
 from app.repo.memory import MemoryRepository
 from app.services.fake_llm import FakeTutor
+from app.services.letras import LyricsProvider
 
 CHAT = "5531999998888@c.us"
 T0 = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
@@ -103,6 +104,7 @@ def montar(
     tutor: FakeTutor | None = None,
     exportador: Exportador | None = None,
     status_da_sessao: StatusDaSessao | None = None,
+    letras: LyricsProvider | None = None,
 ) -> Montagem:
     channel = FakeChannel()
     repo = MemoryRepository()
@@ -122,5 +124,6 @@ def montar(
         agora=relogio.agora,
         status_da_sessao=status_da_sessao,
         exportador=exportador,
+        letras=letras,
     )
     return Montagem(router, channel, repo, tutor, relogio, conversa, esperas)

@@ -11,6 +11,7 @@ from app.domain.models import (
     Evaluation,
     Expansion,
     Explanation,
+    LinhaDaMusica,
     NivelUsuario,
     Revisao,
     Roteamento,
@@ -67,6 +68,7 @@ class FakeTutor:
     sinonimos: list[list[Synonym] | Exception] = field(default_factory=list)
     roteamentos: list[Roteamento | Exception] = field(default_factory=list)
     revisoes: list[Revisao | Exception] = field(default_factory=list)
+    linhas_de_musica: list[LinhaDaMusica | Exception] = field(default_factory=list)
     chamadas: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
 
     def _proxima[T](self, fila: list[T | Exception]) -> T:
@@ -137,3 +139,15 @@ class FakeTutor:
     ) -> Revisao:
         self.chamadas.append(("review", (palavra, sentido.traducao, resposta, nivel)))
         return self._proxima(self.revisoes)
+
+    def song_line(
+        self,
+        titulo: str,
+        artista: str,
+        verso: str,
+        verso_anterior: str | None,
+        resposta: str,
+        nivel: NivelUsuario,
+    ) -> LinhaDaMusica:
+        self.chamadas.append(("song_line", (titulo, verso, resposta, nivel)))
+        return self._proxima(self.linhas_de_musica)

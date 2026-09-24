@@ -15,7 +15,9 @@ from app.domain.models import (
     Entry,
     Evaluation,
     Expansion,
+    LinhaDaMusica,
     NivelUsuario,
+    OpcaoDeMusica,
     Profile,
     Revisao,
     Sense,
@@ -58,6 +60,7 @@ Send me a word or expression in English (you can include the sentence where you 
 /pending — the ones you haven't practiced yet
 /practice [word] — practice one (no word: the oldest pending one)
 /review — start a review session right now
+/song name - artist — practice with a song, line by line
 /reminders 3 9h-22h — daily practice reminders (or /reminders off)
 /profile — your level, words and reminders
 /export — get an Excel spreadsheet with everything
@@ -409,3 +412,95 @@ def lembretes_alterados(
 
 def lembretes_desligados() -> str:
     return "✅ Reminders are off."
+
+
+# --- Prática com música (M13, seção 5.8) ---
+
+SONG_USO = (
+    "Tell me the song: /song paper plane — or add the artist to narrow it down: "
+    "/song paper plane - the inventors"
+)
+SONG_INDISPONIVEL = "Song practice isn't available here yet."
+SONG_BUSCA_FALHOU = "I couldn't reach the lyrics library right now. Try again in a bit?"
+SONG_SEM_VERSOS = "I found the song, but its lyrics are empty here. Try another one: /song name"
+SONG_DESCARTADAS = "OK, nothing saved. Send me a new word or /song whenever you want."
+SAIR_DA_PRATICA = "_Type 0 to leave the practice._"
+
+_COMPREENSAO_EMOJI = {"entendeu": "✅", "parcial": "🤔", "nao_entendeu": "❌"}
+
+
+def song_nao_encontrada(busca: str, fora_do_ingles: bool) -> str:
+    if fora_do_ingles:
+        return (
+            f"I found *{busca}*, but the lyrics aren't in English — and we can't practice "
+            "English with a song in another language. Send me another one: /song name"
+        )
+    return f"I couldn't find *{busca}*. Check the spelling, or add the artist: /song name - artist"
+
+
+def song_candidatas(opcoes: Sequence[OpcaoDeMusica], *, invalida: bool = False) -> str:
+    cabecalho = (
+        "Pick one of the numbers below." if invalida else "I found more than one. Which one is it?"
+    )
+    linhas = [cabecalho]
+    linhas += [f"{i}. *{o.titulo}* — {o.artista}" for i, o in enumerate(opcoes, start=1)]
+    linhas.append(
+        "Reply with the number, or 0 to cancel. Not here? Send the name with the artist: "
+        "paper plane - the inventors"
+    )
+    return "\n".join(linhas)
+
+
+def song_verso(indice: int, total: int, verso: str) -> str:
+    return (
+        f"🎵 Line {indice}/{total}\n"
+        f"_{verso}_\n"
+        "What does it mean? Explain in English or Portuguese.\n"
+        f"{SAIR_DA_PRATICA}"
+    )
+
+
+def song_inicio(titulo: str, artista: str, total: int, verso: str) -> str:
+    linhas = "line" if total == 1 else "lines"
+    return (
+        f"🎶 *{titulo}* — {artista}\n"
+        f"Let's go line by line ({total} {linhas}, repeated ones skipped): tell me what each "
+        "line means, and I'll give you feedback.\n\n" + song_verso(1, total, verso)
+    )
+
+
+def feedback_de_verso(linha: LinhaDaMusica) -> str:
+    partes = [f"{_COMPREENSAO_EMOJI[linha.compreensao]} {linha.feedback}"]
+    if linha.significado:
+        partes.append(f"💬 {linha.significado}")
+    return "\n".join(partes)
+
+
+def song_resumo(titulo: str, feitas: int, total: int, expressoes: Sequence[str]) -> str:
+    linhas = [f"🎉 *{titulo}* — you went through {feitas} of {total} lines."]
+    if not expressoes:
+        linhas.append("Send me a new word, or /song for another one, whenever you want.")
+        return "\n".join(linhas)
+    linhas.append("Words and expressions you may want to keep:")
+    linhas += [f"{i}. {e}" for i, e in enumerate(expressoes, start=1)]
+    linhas.append(
+        "Want me to save them in your dictionary? Reply with the numbers (e.g. 1 3), *all*, "
+        "or 0 to skip."
+    )
+    return "\n".join(linhas)
+
+
+def song_numeros_invalidos(expressoes: Sequence[str]) -> str:
+    linhas = ["Pick numbers from the list:"]
+    linhas += [f"{i}. {e}" for i, e in enumerate(expressoes, start=1)]
+    linhas.append("Reply with the numbers (e.g. 1 3), *all*, or 0 to skip.")
+    return "\n".join(linhas)
+
+
+def song_salvas(palavras: Sequence[str]) -> str:
+    if not palavras:
+        return "I couldn't save those, sorry. Send me any of them as a new word to try again."
+    return (
+        f"✅ Saved to your dictionary: {', '.join(palavras)}. They're in /pending — practice "
+        "them whenever you want."
+    )

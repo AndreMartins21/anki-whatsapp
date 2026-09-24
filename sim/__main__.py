@@ -1,12 +1,13 @@
 """Simulador de terminal: a conversa inteira, sem WhatsApp (seção 9, M6).
 
-    python -m sim [--real-llm] [--nivel B1-B2]
+    python -m sim [--real-llm] [--letras-reais] [--nivel B1-B2]
 
 Usa `ConsoleChannel` e `MemoryRepository` (nada é gravado; ao sair, tudo some), e o mesmo
 `Router` do bot. Sem `--real-llm`, as respostas de IA são fabricadas (`SimTutor`); com ele, usa o
 Gemini com as credenciais locais do Google (`gcloud auth application-default login`), lendo
 GCP_PROJECT_ID e GEMINI_MODEL do ambiente (`make sim` carrega o `.env`). `/exportar` grava o
-planilha Excel em `exports/`. Digite `sair` para terminar.
+planilha Excel em `exports/`. `/song paper plane` pratica com uma música inventada (com
+`--letras-reais`, busca no LRCLIB de verdade). Digite `sair` para terminar.
 """
 
 from __future__ import annotations
@@ -23,9 +24,11 @@ from app.domain.models import NivelUsuario
 from app.flows.conversa import Conversa
 from app.flows.router import Router
 from app.repo.memory import MemoryRepository
+from app.services.letras import LrclibProvider, LyricsProvider
 from app.services.llm import LLMError, Tutor, tutor_do_ambiente
 from app.services.planilha import ExportadorExcel
 from app.services.storage import ArmazenamentoLocal
+from sim.letras import letras_do_simulador
 from sim.tutor import SimTutor
 
 CHAT_DO_SIMULADOR = "simulador@c.us"
@@ -70,6 +73,9 @@ def main(
         "--provider", choices=["vertex_gemini", "anthropic"], default="vertex_gemini"
     )
     parser.add_argument("--model", help="ID do modelo (com --real-llm)")
+    parser.add_argument(
+        "--letras-reais", action="store_true", help="busca as letras do /song no LRCLIB"
+    )
     parser.add_argument("--nivel", choices=["A2-B1", "B1-B2", "B2-C1"], default="B1-B2")
     parser.add_argument(
         "--atraso", action="store_true", help="mantém a espera de 1-2 s antes de cada resposta"
@@ -93,6 +99,7 @@ def main(
         else Conversa(ConsoleChannel(saida, exports), CHAT_DO_SIMULADOR, dormir=_sem_espera)
     )
     nivel: NivelUsuario = args.nivel
+    letras: LyricsProvider = LrclibProvider() if args.letras_reais else letras_do_simulador()
     router = Router(
         repo=repo,
         tutor=tutor,
@@ -100,6 +107,7 @@ def main(
         nivel_padrao=nivel,
         status_da_sessao=_status_do_simulador,
         exportador=ExportadorExcel(repo, ArmazenamentoLocal(exports)),
+        letras=letras,
     )
     asyncio.run(_conversar(router, entrada, saida))
     return 0

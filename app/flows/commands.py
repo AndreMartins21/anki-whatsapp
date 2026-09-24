@@ -1,5 +1,5 @@
-"""Comandos (seção 5.2): /help /list /info /pending /practice /review /reminders /profile /export
-/delete /level /cancel /status.
+"""Comandos (seção 5.2): /help /list /info /pending /practice /review /song /reminders /profile
+/export /delete /level /cancel /status.
 
 Os nomes são em inglês (M12). Os apelidos em PT-BR que a spec sempre teve (`/praticar`, `/lista`,
 `/lembretes`...) continuam funcionando, mas nenhuma mensagem os divulga."""
@@ -15,7 +15,7 @@ from app.domain.choices import normalizar
 from app.domain.lembretes import parse_lembretes, proximo_a_exibir
 from app.domain.models import Entry, Estado, NivelUsuario, Profile, Sessao, slugify
 from app.domain.srs import vencida
-from app.flows import capture, review
+from app.flows import capture, review, song
 from app.flows.base import Deps, bloq
 from app.repo.base import Repository
 from app.services.planilha import TIPO_XLSX, ResultadoExportacao
@@ -38,6 +38,7 @@ _INFO = {"info"}
 _PERFIL = {"profile", "perfil"}
 _LEMBRETES = {"lembretes", "reminders"}
 _REVISAR = {"revisar", "review"}
+_MUSICA = {"song", "musica", "music"}
 _DESLIGAR = {"off", "desligar", "0"}
 
 
@@ -90,6 +91,9 @@ async def executar(
         if Estado(sessao.estado) == Estado.REVIEWING:
             # M10: cancelar no meio de uma revisão fecha com o resumo, não o texto genérico.
             return await review.encerrar(d, sessao)
+        if Estado(sessao.estado) == Estado.SONG_PRACTICE:
+            # M13: igual ao 0 — resumo e oferta de salvar o que o aluno não pegou.
+            return await song.encerrar(d, sessao)
         await conversa.enviar(messages.CANCELADO)
         return d.sessao_vazia()
     elif comando in _STATUS:
@@ -98,6 +102,11 @@ async def executar(
         await _lembretes(d, perfil, argumento)
     elif comando in _REVISAR:
         return await _revisar(d, sessao)
+    elif comando in _MUSICA:
+        if not argumento:
+            await conversa.enviar(messages.SONG_USO)
+            return sessao
+        return await song.buscar(d, sessao, argumento)
     else:
         await conversa.enviar(messages.COMANDO_DESCONHECIDO)
     return sessao

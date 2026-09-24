@@ -18,11 +18,12 @@ from app.domain.models import (
     agora_utc,
 )
 from app.domain.state import Acao, Transicao, expirou, transicionar
-from app.flows import capture, commands, freeform, practice, review, synonyms
+from app.flows import capture, commands, freeform, practice, review, song, synonyms
 from app.flows.base import FUSO_PADRAO, Deps, bloq
 from app.flows.commands import Exportador, StatusDaSessao
 from app.flows.conversa import Conversa
 from app.repo.base import Repository
+from app.services.letras import LyricsProvider
 from app.services.llm import LLMError, Tutor
 
 logger = logging.getLogger(__name__)
@@ -40,8 +41,11 @@ class Router:
         status_da_sessao: StatusDaSessao | None = None,
         exportador: Exportador | None = None,
         fuso: ZoneInfo = FUSO_PADRAO,
+        letras: LyricsProvider | None = None,
     ) -> None:
-        self._d = Deps(repo=repo, tutor=tutor, conversa=conversa, agora=agora, fuso=fuso)
+        self._d = Deps(
+            repo=repo, tutor=tutor, conversa=conversa, agora=agora, fuso=fuso, letras=letras
+        )
         self._nivel_padrao = nivel_padrao
         self._status_da_sessao = status_da_sessao
         self._exportador = exportador
@@ -124,6 +128,20 @@ class Router:
                 return await review.responder(d, sessao, perfil, str(argumento))
             case Acao.ENCERRAR_REVISAO:
                 return await review.encerrar(d, sessao)
+            case Acao.BUSCAR_MUSICA:
+                return await song.buscar(d, sessao, str(argumento))
+            case Acao.ESCOLHER_MUSICA:
+                return await song.escolher(d, sessao, str(argumento))
+            case Acao.CANCELAR_MUSICA:
+                return await song.cancelar(d)
+            case Acao.RESPONDER_VERSO:
+                return await song.responder(d, sessao, perfil, str(argumento))
+            case Acao.ENCERRAR_MUSICA:
+                return await song.encerrar(d, sessao)
+            case Acao.SALVAR_EXPRESSOES:
+                return await song.salvar(d, sessao, perfil, str(argumento))
+            case Acao.DESCARTAR_EXPRESSOES:
+                return await song.descartar(d)
 
     async def iniciar_revisao(self) -> None:
         """Chamado pelo agendador (M10, `app/services/lembretes.py`): o bot inicia a conversa,

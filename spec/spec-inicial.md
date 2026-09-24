@@ -75,6 +75,7 @@ A VM tem só 1 GB de RAM. Crie um **swap de 2 GB**, limite a memória dos contai
 | `USER_LEVEL` | `.env.infra` | Padrão `B1-B2` |
 | `TIMEZONE` | `.env.infra` | Padrão `America/Sao_Paulo`; fuso para distribuir os lembretes (M10, seção 5.7) |
 | `APP_ENV` | compose | `local` ou `prod` |
+| `LYRICS_URL` | `.env.infra` (opcional) | Padrão `https://lrclib.net`; API pública de letras do `/song` (M13, ADR-0016), sem chave |
 
 Para desenvolvimento local, use um `.env` (no `.gitignore`) com valores falsos. Os testes nunca dependem de credenciais reais. Para o simulador com IA real (`--real-llm`), use as credenciais locais do Google (`gcloud auth application-default login`), sem chave em arquivo.
 
@@ -94,6 +95,10 @@ AWAIT_ACTION  ── 1 "see more examples" ──▶ gerar exemplos   ──▶ 
               ── 3 "just save"         ──▶ salvar e sugerir ──▶ IDLE
               ── qualquer outro texto  ──▶ rotear pela IA (abaixo) ──▶ AWAIT_ACTION (ou IDLE)
 ```
+
+A revisão espaçada (`REVIEWING`, seção 5.7) e a prática com música (`SONG_PICKING`,
+`SONG_PRACTICE`, `SONG_SAVING`, seção 5.8) são sessões à parte, iniciadas por comando (ou pelo
+agendador), com transições próprias descritas nas suas seções.
 
 **Roteamento por IA (`Tutor.route`, ADR-0009):** todo texto livre em `AWAIT_ACTION` que não é uma
 opção do menu vira **uma única chamada de IA** que classifica a intenção e já devolve a resposta
@@ -122,10 +127,10 @@ Regras:
 ### 5.2 Comandos
 
 `/help`, `/list [página]`, `/info N|palavra`, `/pending`, `/practice [N|palavra]`, `/review`,
-`/reminders [N [INICIOh-FIMh] | off]`, `/profile`, `/export`, `/delete N|palavra`,
+`/song nome [- artista]`, `/reminders [N [INICIOh-FIMh] | off]`, `/profile`, `/export`, `/delete N|palavra`,
 `/level A2-B1|B1-B2|B2-C1`, `/cancel`, `/status`. Todos os nomes são em inglês (M12, ADR-0014). Os
 apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/praticar`,
-`/exportar [tudo]`, `/apagar`, `/nivel`, `/cancelar`, `/reminders`, `/review`, `/perfil`)
+`/exportar [tudo]`, `/apagar`, `/nivel`, `/cancelar`, `/reminders`, `/review`, `/perfil`, `/musica`)
 **continuam funcionando, mas nenhuma mensagem do bot os divulga**.
 
 - `/list` mostra as palavras **das mais novas para as mais antigas**, 20 por página: as mais
@@ -143,6 +148,7 @@ apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/pr
 - `/practice` sem argumento pega a pendente mais antiga.
 - `/level` aceita A2-B1, B1-B2 e B2-C1.
 - `/reminders` e `/review`: ver seção 5.7.
+- `/song`: ver seção 5.8. Sem argumento, mostra como usar.
 - `/profile` mostra o nível, o total de palavras (praticadas e pendentes), quantas estão vencidas
   para revisão e os lembretes (`every day, 3x between 9h and 21h` ou `off`) e, com os lembretes ligados, **quando o
   próximo toca** (`Next reminder: today at 14:00`, `tomorrow at 08:00` ou `Mon 28 Sep at 08:00`, no
@@ -307,6 +313,72 @@ e desiste (recalculando o próximo horário) se o atraso passar de 2 horas.
 
 `/review` começa a sessão na hora, sem esperar o próximo horário.
 
+### 5.8 Prática com letra de música (M13, ADR-0016)
+
+`/song nome` (ou `/song nome - artista`) pratica a compreensão de uma música, verso a verso. A
+letra vem do LRCLIB (`app/services/letras.py`, atrás da interface `LyricsProvider`); as regras
+sobre a letra são funções puras em `app/domain/musica.py`, e o fluxo em `app/flows/song.py`.
+
+```
+IDLE / qualquer ── /song nome ──▶ buscar ──▶ 0 músicas: avisa  ──▶ IDLE
+                                          ──▶ 1 música: começa ──▶ SONG_PRACTICE
+                                          ──▶ 2 a 5: lista     ──▶ SONG_PICKING
+SONG_PICKING  ── número da lista   ──▶ começa           ──▶ SONG_PRACTICE
+              ── 0 / stop / quit   ──▶ cancela          ──▶ IDLE
+              ── outro texto       ──▶ nova busca       ──▶ (como /song)
+SONG_PRACTICE ── 0 / stop / quit   ──▶ resumo           ──▶ SONG_SAVING (ou IDLE sem expressões)
+              ── qualquer texto    ──▶ feedback + próximo verso ──▶ SONG_PRACTICE
+                                       (no último verso: feedback + resumo ──▶ SONG_SAVING ou IDLE)
+SONG_SAVING   ── números / all     ──▶ salva as escolhidas ──▶ IDLE
+              ── 0 / stop / quit   ──▶ descarta            ──▶ IDLE
+              ── outro texto       ──▶ é uma palavra nova  ──▶ explicar ──▶ AWAIT_ACTION
+```
+
+**Busca.** Com `- artista` (hífen, meia-risca ou travessão; "by" não separa, porque aparece em
+títulos), busca por `track_name` + `artist_name`; se nada vier, repete a busca livre com o texto
+inteiro. Sem artista, busca por `track_name` e, se nada vier, pela busca livre `q`. Dos resultados,
+ficam só as músicas **com letra** (instrumentais saem), **em inglês** e **uma por artista** (a
+fonte repete a mesma música em coletâneas, com o título sujo), com o título exato na frente, até
+5. Uma candidata só: começa direto. Duas ou mais: lista numerada `N. *Título* — Artista`, com a
+dica de mandar o nome com o artista se a certa não estiver lá. Número fora da lista repete a lista.
+
+**Idioma** (`eh_ingles`): heurística sem IA — a proporção de palavras muito comuns do inglês (sem
+as ambíguas com o português/espanhol, como "a", "no", "me") precisa ser de pelo menos 20%. Letras
+em inglês ficam entre ~33% e ~65%; em português, espanhol, alemão ou coreano, abaixo de 5%. Se a
+busca só achou versões em outro idioma, o bot explica que não dá para praticar inglês com uma
+letra em outra língua e pede outra música.
+
+**Versos** (`extrair_versos`): as linhas com conteúdo, na ordem, sem marcações (`[Chorus]`,
+`(x2)`), sem as de uma palavra só ou só de interjeições (`oh oh`, `yeah yeah`) e **sem repetição**
+(o refrão aparece uma vez). No máximo 40 versos por música.
+
+**Turno** (como a revisão, seção 5.7): qualquer texto em `SONG_PRACTICE` é a explicação do verso
+atual, em inglês ou português — sem roteamento por IA. Uma chamada de `Tutor.song_line` julga o
+sentido (não a gramática) e aponta até 3 palavras/expressões do verso que o aluno não pegou; o
+fluxo descarta as que não estão de fato no verso. A resposta é **uma mensagem só**: feedback e o
+próximo verso, que sempre termina com `Type 0 to leave the practice.`:
+
+```
+🤔 Close! "Hold on" here means "wait / don't give up", not "hold something".
+💬 The city is always awake and busy.
+
+🎵 Line 4/6
+_I wrote your name on a paper plane_
+What does it mean? Explain in English or Portuguese.
+_Type 0 to leave the practice._
+```
+
+**Fim** (último verso, `0` ou `/cancel`): o resumo diz quantos versos foram feitos e lista até 10
+expressões acumuladas (sem repetir), oferecendo salvá-las: `1 3`, `1 and 3`, `all` ou `0`. Cada
+escolhida é explicada por `Tutor.explain` com o verso como contexto (`expressão | verso`, o mesmo
+formato da captura) e gravada como uma entrada `nova` com o exemplo do bot — todas as explicações
+vêm antes de gravar qualquer uma, então uma falha da IA não deixa nada pela metade e a sessão
+continua em `SONG_SAVING`. Sem expressões, o resumo não oferece nada e a sessão volta a IDLE.
+
+**Direito autoral** (ADR-0016): as letras do LRCLIB não são licenciadas; o risco está aceito
+enquanto o bot for de uso pessoal. Testes, fixtures, evals e o simulador usam **só letras
+inventadas**; o prompt proíbe a IA de repetir o verso inteiro no feedback.
+
 ## 6. Contratos com a IA
 
 Implemente em `app/services/llm.py` uma interface `LLMProvider` com duas implementações:
@@ -371,6 +443,14 @@ class Revisao(BaseModel):
     feedback: str        # em inglês, máx. 4 linhas
     correcao: str         # só quando ajuda (qualidade != "facil"); vazio senão
 # review(palavra, sentido, resposta, nivel) -> Revisao
+
+# Prática com música (M13, seção 5.8, ADR-0016): julga a explicação de um verso (EN ou PT).
+class LinhaDaMusica(BaseModel):
+    compreensao: Literal["entendeu","parcial","nao_entendeu"]
+    feedback: str           # em inglês, máx. 4 linhas; nunca repete o verso inteiro
+    significado: str        # o sentido do verso em inglês simples, quando não entendeu; vazio senão
+    expressoes: list[str]   # até 3, copiadas do verso: o que o aluno não pegou
+# song_line(titulo, artista, verso, verso_anterior, resposta, nivel) -> LinhaDaMusica  (modelo de avaliação)
 ```
 
 **Qualidade:** `evals/sentencas.yaml` (~15 casos de frase + veredito esperado) e `evals/roteamento.yaml`
@@ -386,10 +466,15 @@ profile/me                 { nivel, criado_em,
                            # M10 (seção 5.7): lembretes_por_dia=0 é desligado (padrão); chat_id é o
                            # destino real, aprendido de uma mensagem recebida (nunca o .env direto)
 session/current            { estado, entry_id, sentido_id, sinonimos_mostrados, atualizado_em,
-                             revisao_fila, revisao_atual?, revisao_feitas, revisao_lapsos, revisao_total }
+                             revisao_fila, revisao_atual?, revisao_feitas, revisao_lapsos, revisao_total,
+                             musica_opcoes, musica_titulo?, musica_artista?, musica_versos,
+                             musica_indice, musica_expressoes }
                            # M9: sinonimos_mostrados evita repetir e troca o rótulo do menu
                            # ("Check synonyms" -> "See more synonyms") depois da 1ª vez
                            # M10: os 5 campos de revisao_* só valem com estado=REVIEWING
+                           # M13 (seção 5.8): musica_opcoes = [{id, titulo, artista}] em SONG_PICKING;
+                           # musica_versos/indice em SONG_PRACTICE; musica_expressoes =
+                           # [{texto, verso}] acumuladas e oferecidas para salvar em SONG_SAVING
 entries/{slug}             { palavra, classe, cefr_estimado, sentido:{traducao,definicao}, outros_sentidos,
                              sinonimos, nota, tags, origem_texto, origem:"usuario"|"expansao", pai?, status:"nova"|"praticada",
                              exportado, criado_em, atualizado_em,
@@ -472,6 +557,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, marcar como lido, digi
 | M9 | Interface em inglês (só 🇧🇷 em PT-BR), máquina de estados reduzida a `IDLE`/`AWAIT_ACTION` com um único menu de ações, roteamento de texto livre por uma chamada de IA (`Tutor.route`, ADR-0009), sinônimos (`Tutor.synonyms`), expansões viram sugestão em texto (sem menu) | `make check` passa; ciclo completo no `sim` bate a seção 5.5; `python -m evals.run --tarefa roteamento` roda contra a API real |
 | M10 | Revisão espaçada (SM-2 simplificado, ADR-0011) com sessão `REVIEWING`, `/reminders` e `/review`, agendador em segundo plano (`Agendador`, ADR-0012) | `make check` passa; `make test-emulador` valida os campos novos no Firestore real; ciclo completo de revisão no `sim`; nenhum lembrete dispara sem `chat_id` conhecido |
 | M12 | Comandos em inglês (apelidos PT escondidos), `/list` numerado e paginado, `/info`, `/profile`, sinônimos e frases corrigidas persistidos na entrada, `/export` em planilha Excel no lugar do arquivo do Anki (ADR-0014) | `make check` passa; `make test-emulador` valida `sinonimos` no Firestore real; `/export` no `sim` gera um `.xlsx` com as 3 abas |
+| M13 | Prática com letra de música (seção 5.8, ADR-0016): `/song nome [- artista]`, busca no LRCLIB atrás de `LyricsProvider`, escolha entre homônimas (`SONG_PICKING`), recusa de letra fora do inglês, verso a verso com `Tutor.song_line` (`SONG_PRACTICE`), oferta de salvar as expressões não entendidas (`SONG_SAVING`) | `make check` passa; ciclo completo de `/song` no `sim` (escolha, prática, `0`, salvar e a recusa em português); nenhuma letra real em testes, fixtures ou evals |
 | M11 | Deploy contínuo via GitHub Actions (seção 10.9, ADR-0013): branch protection na `main` (PR + checks obrigatórios), job `deploy` automático no merge, autenticado por Workload Identity Federation | Push direto na `main` é bloqueado pelo GitHub; um PR com CI verde, ao ser mergeado, dispara o job `deploy` e o bot responde `/help` depois do smoke test |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
@@ -590,11 +676,11 @@ vocabot/
   app/
     main.py  config.py  messages.py
     channel/  base.py  waha.py  console.py  parser.py
-    domain/   models.py  state.py  choices.py  srs.py  lembretes.py
-    flows/    router.py  capture.py  practice.py  expansion.py  synonyms.py  freeform.py  review.py  commands.py
-    services/ llm.py  prompts.py  planilha.py  storage.py  lembretes.py
+    domain/   models.py  state.py  choices.py  srs.py  lembretes.py  musica.py
+    flows/    router.py  capture.py  practice.py  expansion.py  synonyms.py  freeform.py  review.py  song.py  commands.py
+    services/ llm.py  prompts.py  planilha.py  storage.py  lembretes.py  letras.py
     repo/     base.py  memory.py  firestore.py
-  sim/        __main__.py  tutor.py
+  sim/        __main__.py  tutor.py  letras.py
   evals/      sentencas.yaml  roteamento.yaml  run.py
   infra/      config.sh  setup.sh  secrets.sh  deploy.sh  pair.sh  logs.sh  ssh.sh  smoke_test.sh
               .env.infra.example  vm/startup.sh

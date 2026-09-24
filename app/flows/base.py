@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from app.domain.models import Sessao
 from app.flows.conversa import Conversa
 from app.repo.base import Repository
+from app.services.letras import LyricsProvider
 from app.services.llm import Tutor
 
 FUSO_PADRAO = ZoneInfo("America/Sao_Paulo")  # o mesmo padrão de `Settings.timezone`
@@ -23,6 +24,7 @@ class Deps:
     conversa: Conversa
     agora: Callable[[], datetime]
     fuso: ZoneInfo = FUSO_PADRAO  # fuso do aluno, para mostrar horários de lembrete
+    letras: LyricsProvider | None = None  # M13: fonte das letras do /song (None = indisponível)
 
     def sessao_vazia(self) -> Sessao:
         return Sessao(atualizado_em=self.agora())

@@ -140,3 +140,28 @@ def marcar_alvo(frase: str, palavra: str) -> str | None:
         return None
     inicio, fim = achados[0].start(), achados[-1].end()
     return f"{frase[:inicio]}[[{frase[inicio:fim]}]]{frase[fim:]}"
+
+
+_TODOS = {"all", "all of them", "save all", "everything", "todas", "todos", "tudo"}
+
+
+def eh_todos(texto: str) -> bool:
+    """ "all" na oferta de salvar as expressões da música (M13, seção 5.8)."""
+    return normalizar(texto) in _TODOS
+
+
+def parse_numeros(texto: str, maximo: int) -> list[int] | None:
+    """`1 3`, `1, 3` ou `1 and 3` -> [1, 3] (sem repetição, na ordem). `None` se algum não for
+    um número de 1 a `maximo`, ou se não houver número nenhum."""
+    if not so_numeros(texto):
+        return None
+    numeros: list[int] = []
+    for token in normalizar(texto).split():
+        numero = _como_numero(token)
+        if numero is None:  # "and"
+            continue
+        if not 1 <= numero <= maximo:
+            return None
+        if numero not in numeros:
+            numeros.append(numero)
+    return numeros or None

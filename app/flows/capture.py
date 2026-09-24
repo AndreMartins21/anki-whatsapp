@@ -48,7 +48,7 @@ async def _comecar_pratica(
     sentido: Sense,
     existente: Entry | None,
 ) -> Sessao:
-    entrada = await bloq(_gravar_entrada, d, explicacao, sentido, existente)
+    entrada = await bloq(gravar_entrada, d, explicacao, sentido, existente)
     await bloq(
         d.repo.adicionar_frase,
         entrada.slug,
@@ -73,7 +73,7 @@ async def _comecar_pratica(
     )
 
 
-def _gravar_entrada(
+def gravar_entrada(
     d: Deps, explicacao: Explanation, sentido: Sense, existente: Entry | None
 ) -> Entry:
     agora = d.agora()
