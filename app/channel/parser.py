@@ -7,6 +7,7 @@ lógica de negócio (fora de `channel/`) nunca deve depender destes tipos direta
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -95,3 +96,8 @@ def numero_e_permitido(numero_resolvido: str, allowed_number: str) -> bool:
         _variantes_com_e_sem_nono_digito(numero_resolvido)
         & _variantes_com_e_sem_nono_digito(allowed_number)
     )
+
+
+def numero_esta_na_lista(numero_resolvido: str, permitidos: Iterable[str]) -> bool:
+    """A allowlist do M14 (ADR-0017): o número bate com algum dos permitidos (nono dígito à parte)."""
+    return any(numero_e_permitido(numero_resolvido, permitido) for permitido in permitidos)

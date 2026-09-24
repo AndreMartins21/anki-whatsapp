@@ -23,7 +23,7 @@ from app.channel.console import ConsoleChannel
 from app.domain.models import NivelUsuario
 from app.flows.conversa import Conversa
 from app.flows.router import Router
-from app.repo.memory import MemoryRepository
+from app.repo.memory import MemoryBanco
 from app.services.letras import LrclibProvider, LyricsProvider
 from app.services.llm import LLMError, Tutor, tutor_do_ambiente
 from app.services.planilha import ExportadorExcel
@@ -56,7 +56,7 @@ async def _conversar(
         if texto.lower() in _SAIDAS:
             return
         if texto:
-            await router.processar(texto)
+            await router.processar(texto, CHAT_DO_SIMULADOR)
 
 
 def main(
@@ -92,21 +92,23 @@ def main(
             print(f"erro de configuração: {erro}", file=sys.stderr)
             return 2
 
-    repo = MemoryRepository()
-    conversa = (
-        Conversa(ConsoleChannel(saida, exports), CHAT_DO_SIMULADOR)
-        if args.atraso
-        else Conversa(ConsoleChannel(saida, exports), CHAT_DO_SIMULADOR, dormir=_sem_espera)
-    )
+    banco = MemoryBanco()
+    canal = ConsoleChannel(saida, exports)
+
+    def criar_conversa(chat_id: str) -> Conversa:
+        if args.atraso:
+            return Conversa(canal, chat_id)
+        return Conversa(canal, chat_id, dormir=_sem_espera)
+
     nivel: NivelUsuario = args.nivel
     letras: LyricsProvider = LrclibProvider() if args.letras_reais else letras_do_simulador()
     router = Router(
-        repo=repo,
+        banco=banco,
         tutor=tutor,
-        conversa=conversa,
+        criar_conversa=criar_conversa,
         nivel_padrao=nivel,
         status_da_sessao=_status_do_simulador,
-        exportador=ExportadorExcel(repo, ArmazenamentoLocal(exports)),
+        exportador=ExportadorExcel(ArmazenamentoLocal(exports)),
         letras=letras,
     )
     asyncio.run(_conversar(router, entrada, saida))

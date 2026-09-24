@@ -22,8 +22,8 @@ from app.domain.models import (
     Sessao,
     Synonym,
 )
-from app.repo.base import EntradaJaExiste, Repository, resolver_slug
-from app.repo.memory import MemoryRepository
+from app.repo.base import Banco, EntradaJaExiste, Repository, resolver_slug
+from app.repo.memory import MemoryBanco
 
 T0 = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
 PROJETO_TESTE = "vocabot-teste"
@@ -50,10 +50,15 @@ def _entrada(
     )
 
 
+ALUNO_A = "5531999998888@c.us"
+ALUNO_B = "5511988887777@c.us"
+GRUPO = "120363000000000000@g.us"
+
+
 @pytest.fixture(params=["memory", "firestore"])
-def repo(request: pytest.FixtureRequest) -> Iterator[Repository]:
+def banco(request: pytest.FixtureRequest) -> Iterator[Banco]:
     if request.param == "memory":
-        yield MemoryRepository()
+        yield MemoryBanco()
         return
 
     host = os.environ.get("FIRESTORE_EMULATOR_HOST")
@@ -62,12 +67,18 @@ def repo(request: pytest.FixtureRequest) -> Iterator[Repository]:
 
     from google.cloud import firestore
 
-    from app.repo.firestore import FirestoreRepository
+    from app.repo.firestore import FirestoreBanco
 
     limpar = f"http://{host}/emulator/v1/projects/{PROJETO_TESTE}/databases/(default)/documents"
     httpx.delete(limpar)
-    yield FirestoreRepository(firestore.Client(project=PROJETO_TESTE))
+    yield FirestoreBanco(firestore.Client(project=PROJETO_TESTE))
     httpx.delete(limpar)
+
+
+@pytest.fixture
+def repo(banco: Banco) -> Repository:
+    """O caderno de um espaço (o do primeiro aluno): os testes de contrato antigos usam este."""
+    return banco.do_espaco(ALUNO_A)
 
 
 def test_perfil_ausente_e_none_e_depois_persiste(repo: Repository) -> None:
@@ -225,18 +236,18 @@ def test_apagar_entrada_remove_tambem_as_frases(repo: Repository) -> None:
     assert repo.apagar_entrada("stall") is False
 
 
-def test_mensagem_so_e_marcada_como_processada_uma_vez(repo: Repository) -> None:
-    assert repo.marcar_processada("true_5531@c.us_ABC", T0) is True
-    assert repo.marcar_processada("true_5531@c.us_ABC", T0) is False
-    assert repo.marcar_processada("true_5531@c.us_OUTRA", T0) is True
+def test_mensagem_so_e_marcada_como_processada_uma_vez(banco: Banco) -> None:
+    assert banco.marcar_processada("true_5531@c.us_ABC", T0) is True
+    assert banco.marcar_processada("true_5531@c.us_ABC", T0) is False
+    assert banco.marcar_processada("true_5531@c.us_OUTRA", T0) is True
 
 
-def test_cache_de_lid(repo: Repository) -> None:
-    assert repo.obter_numero_do_lid("257161284317237@lid") is None
+def test_cache_de_lid(banco: Banco) -> None:
+    assert banco.obter_numero_do_lid("257161284317237@lid") is None
 
-    repo.salvar_numero_do_lid("257161284317237@lid", "5531999998888")
+    banco.salvar_numero_do_lid("257161284317237@lid", "5531999998888")
 
-    assert repo.obter_numero_do_lid("257161284317237@lid") == "5531999998888"
+    assert banco.obter_numero_do_lid("257161284317237@lid") == "5531999998888"
 
 
 def test_resolver_slug_usa_a_palavra_quando_esta_livre(repo: Repository) -> None:
@@ -266,3 +277,95 @@ def test_resolver_slug_sufixa_quando_o_sentido_e_outro(repo: Repository) -> None
 
     assert resolver_slug(repo, "stall", "barraca") == "stall--s2"
     assert resolver_slug(repo, "stall", "baia") == "stall--s3"
+
+
+# --- M14: multiusuário por espaço (ADR-0017) --------------------------------------------------
+
+
+def test_espacos_sao_isolados_perfil_sessao_entradas_e_frases(banco: Banco) -> None:
+    a, b = banco.do_espaco(ALUNO_A), banco.do_espaco(ALUNO_B)
+    a.salvar_perfil(Profile(nivel="B2-C1", criado_em=T0))
+    a.salvar_sessao(Sessao(estado=Estado.AWAIT_ACTION))
+    a.criar_entrada(_entrada("stall"))
+    a.adicionar_frase("stall", Sentence(texto="It stalled.", autor="usuario", criado_em=T0))
+
+    assert b.obter_perfil() is None
+    assert b.obter_sessao().estado == Estado.IDLE
+    assert b.obter_entrada("stall") is None
+    assert b.listar_entradas() == []
+    assert b.listar_frases("stall") == []
+
+
+def test_mesmo_slug_pode_existir_em_espacos_diferentes(banco: Banco) -> None:
+    banco.do_espaco(ALUNO_A).criar_entrada(_entrada("stall", traducao="travar"))
+    banco.do_espaco(ALUNO_B).criar_entrada(_entrada("stall", traducao="enrolar"))
+
+    assert banco.do_espaco(ALUNO_A).obter_entrada("stall").sentido.traducao == "travar"  # type: ignore[union-attr]
+    assert banco.do_espaco(ALUNO_B).obter_entrada("stall").sentido.traducao == "enrolar"  # type: ignore[union-attr]
+
+
+def test_apagar_entrada_de_um_espaco_nao_mexe_no_outro(banco: Banco) -> None:
+    banco.do_espaco(ALUNO_A).criar_entrada(_entrada("stall"))
+    banco.do_espaco(ALUNO_B).criar_entrada(_entrada("stall"))
+
+    assert banco.do_espaco(ALUNO_A).apagar_entrada("stall") is True
+
+    assert banco.do_espaco(ALUNO_B).obter_entrada("stall") is not None
+
+
+def test_apagar_tudo_limpa_so_o_espaco_pedido(banco: Banco) -> None:
+    a, b = banco.do_espaco(ALUNO_A), banco.do_espaco(ALUNO_B)
+    for espaco in (a, b):
+        espaco.salvar_perfil(Profile(nivel="B1-B2", criado_em=T0))
+        espaco.salvar_sessao(Sessao(estado=Estado.AWAIT_ACTION))
+        espaco.criar_entrada(_entrada("stall"))
+        espaco.adicionar_frase("stall", Sentence(texto="x", autor="usuario", criado_em=T0))
+
+    a.apagar_tudo()
+
+    assert a.obter_perfil() is None
+    assert a.obter_sessao().estado == Estado.IDLE
+    assert a.listar_entradas() == []
+    assert a.listar_frases("stall") == []
+    assert b.obter_perfil() is not None
+    assert len(b.listar_entradas()) == 1
+    assert len(b.listar_frases("stall")) == 1
+
+
+def _lembretes(chat: str, proximo: datetime | None, por_dia: int = 3) -> Profile:
+    return Profile(nivel="B1-B2", chat_id=chat, lembretes_por_dia=por_dia, proximo_lembrete=proximo)
+
+
+def test_espacos_com_lembrete_devolve_so_os_vencidos(banco: Banco) -> None:
+    banco.do_espaco(ALUNO_A).salvar_perfil(_lembretes(ALUNO_A, T0 - timedelta(minutes=5)))
+    banco.do_espaco(ALUNO_B).salvar_perfil(_lembretes(ALUNO_B, T0 + timedelta(hours=1)))
+    banco.do_espaco(GRUPO).salvar_perfil(_lembretes(GRUPO, T0))
+
+    assert sorted(banco.listar_espacos_com_lembrete(T0)) == sorted([ALUNO_A, GRUPO])
+
+
+def test_espaco_com_lembrete_ligado_mas_sem_horario_ainda_conta_como_vencido(
+    banco: Banco,
+) -> None:
+    banco.do_espaco(ALUNO_A).salvar_perfil(_lembretes(ALUNO_A, None))
+
+    assert banco.listar_espacos_com_lembrete(T0) == [ALUNO_A]
+
+
+def test_espaco_sem_lembretes_ou_sem_destino_nunca_aparece(banco: Banco) -> None:
+    banco.do_espaco(ALUNO_A).salvar_perfil(_lembretes(ALUNO_A, None, por_dia=0))
+    banco.do_espaco(ALUNO_B).salvar_perfil(
+        Profile(nivel="B1-B2", chat_id=None, lembretes_por_dia=3)
+    )
+
+    assert banco.listar_espacos_com_lembrete(T0) == []
+
+
+def test_desligar_os_lembretes_tira_o_espaco_da_consulta(banco: Banco) -> None:
+    espaco = banco.do_espaco(ALUNO_A)
+    espaco.salvar_perfil(_lembretes(ALUNO_A, T0))
+    assert banco.listar_espacos_com_lembrete(T0) == [ALUNO_A]
+
+    espaco.salvar_perfil(_lembretes(ALUNO_A, T0, por_dia=0))
+
+    assert banco.listar_espacos_com_lembrete(T0) == []

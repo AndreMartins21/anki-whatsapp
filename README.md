@@ -100,6 +100,25 @@ Notas de operação:
   (Gemini de verdade, com `gcloud auth application-default login`); `make evals` mede a avaliação
   de frases; `make test-emulador` roda o contrato do `Repository` contra o emulador do Firestore.
 
+## Vários alunos (M14, ADR-0017)
+
+Cada número em `ALLOWED_NUMBERS` (mais o `ALLOWED_NUMBER`, que continua valendo e é o dono) conversa
+com o bot no privado e tem o próprio caderno: palavras, sessão, perfil e lembretes ficam em
+`espacos/{chat}` no Firestore, e um aluno nunca vê os dados de outro. `ALLOWED_GROUPS` autoriza
+grupos (o id de um grupo novo aparece uma vez no log em INFO); o bot só passa a responder neles no M15.
+
+**Migrar o caderno de um usuário só** (roda **na sua máquina**, com `gcloud auth application-default
+login`, não na VM). A ordem importa, porque o merge faz o deploy e o bot antigo continua gravando na
+raiz até lá:
+
+```bash
+python -m scripts.migrar_multiusuario --projeto ID            # dry run: só mostra o que copiaria
+python -m scripts.migrar_multiusuario --projeto ID --executar # copia de verdade (idempotente)
+# merge do PR (deploy) e smoke test; depois, de novo, para trazer o que o bot antigo gravou:
+python -m scripts.migrar_multiusuario --projeto ID --executar
+python -m scripts.migrar_multiusuario --projeto ID --limpar-origem  # só com a cópia completa
+```
+
 ## Deploy contínuo (M11, ADR-0013)
 
 Depois do `infra/setup.sh` inicial, `infra/deploy.sh` também roda sozinho: todo merge na `main`
@@ -113,7 +132,7 @@ bash infra/setup_cicd.sh             # WIF pool/provider + conta de serviço voc
 ```
 
 O próprio script imprime, no fim, o que configurar no GitHub (Settings → Secrets and variables →
-Actions: `ALLOWED_NUMBER`/`BOT_NUMBER` como Secrets, o resto como Variables) e lembra de ativar a
+Actions: `ALLOWED_NUMBER`/`BOT_NUMBER` e, opcionais, `ALLOWED_NUMBERS`/`ALLOWED_GROUPS`/`OWNER_NUMBER` como Secrets, o resto como Variables) e lembra de ativar a
 branch protection da `main`.
 
 ## Segurança

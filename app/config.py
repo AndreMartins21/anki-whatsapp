@@ -8,9 +8,10 @@ do Secret Manager (infra/deploy.sh).
 
 from __future__ import annotations
 
-from typing import Literal
+import re
+from typing import Literal, Self
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 NivelUsuario = Literal["A2-B1", "B1-B2", "B2-C1"]
@@ -27,8 +28,12 @@ class Settings(BaseSettings):
     app_env: AmbienteApp = "local"
     log_level: str = "INFO"
 
-    # Usuário / canal
-    allowed_number: str
+    # Usuários / canal (M14, ADR-0017). `ALLOWED_NUMBER` (um só) continua aceito e entra na lista.
+    # Listas como texto separado por vírgula (o pydantic-settings leria lista como JSON).
+    allowed_number: str = ""
+    allowed_numbers: str = ""
+    allowed_groups: str = ""
+    owner_number: str | None = None  # o dono do bot; padrão = o primeiro número permitido
     bot_number: str
     user_level: NivelUsuario = "B1-B2"
     # Fuso do aluno, para distribuir os lembretes de revisão espaçada (seção 5.7, M10).
@@ -63,6 +68,7 @@ class Settings(BaseSettings):
         "anthropic_api_key",
         "gemini_model",
         "gemini_model_eval",
+        "owner_number",
         mode="before",
     )
     @classmethod
@@ -71,3 +77,28 @@ class Settings(BaseSettings):
         if isinstance(valor, str) and not valor.strip():
             return None
         return valor
+
+    @model_validator(mode="after")
+    def _ao_menos_um_numero(self) -> Self:
+        if not self.numeros_permitidos:
+            raise ValueError("defina ALLOWED_NUMBERS (ou ALLOWED_NUMBER) com ao menos um número")
+        return self
+
+    @property
+    def numeros_permitidos(self) -> list[str]:
+        """Só dígitos, sem repetir. O `ALLOWED_NUMBER` legado vem primeiro: ele é o número que já
+        usava o bot (o dono), e o dono padrão é o primeiro da lista."""
+        vistos: dict[str, None] = {}
+        for bruto in (self.allowed_number, *self.allowed_numbers.split(",")):
+            digitos = re.sub(r"\D", "", bruto)
+            if digitos:
+                vistos.setdefault(digitos)
+        return list(vistos)
+
+    @property
+    def grupos_permitidos(self) -> list[str]:
+        return [g.strip() for g in self.allowed_groups.split(",") if g.strip()]
+
+    @property
+    def dono(self) -> str:
+        return re.sub(r"\D", "", self.owner_number or "") or self.numeros_permitidos[0]

@@ -43,10 +43,10 @@ _DESLIGAR = {"off", "desligar", "0"}
 
 
 class Exportador(Protocol):
-    """Gera a planilha Excel e devolve o resultado; `None` se não há nada a exportar.
-    Síncrono, como o resto do acesso a Firestore/Storage."""
+    """Gera a planilha Excel do espaço `repo` (só o de quem pediu, ADR-0017) e devolve o resultado;
+    `None` se não há nada a exportar. Síncrono, como o resto do acesso a Firestore/Storage."""
 
-    def exportar(self) -> ResultadoExportacao | None: ...
+    def exportar(self, repo: Repository) -> ResultadoExportacao | None: ...
 
 
 StatusDaSessao = Callable[[], Awaitable[str]]
@@ -199,7 +199,7 @@ async def _exportar(d: Deps, exportador: Exportador | None) -> None:
         await d.conversa.enviar(messages.EXPORTACAO_INDISPONIVEL)
         return
     async with d.conversa.digitando():
-        resultado = await bloq(exportador.exportar)
+        resultado = await bloq(exportador.exportar, d.repo)
     if resultado is None:
         await d.conversa.enviar(messages.SEM_EXPORTAVEIS)
         return

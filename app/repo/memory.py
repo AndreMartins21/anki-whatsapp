@@ -1,4 +1,5 @@
-"""MemoryRepository: implementação em memória, para testes e para o simulador (`make sim`).
+"""MemoryBanco / MemoryRepository: implementação em memória, para testes e para o simulador
+(`make sim`).
 
 Guarda cópias, como um banco de verdade: alterar o objeto que você passou (ou recebeu) depois de
 salvar não muda o que está guardado.
@@ -9,17 +10,17 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.domain.models import Entry, Profile, Sentence, Sessao, StatusEntrada
-from app.repo.base import EntradaJaExiste
+from app.repo.base import EntradaJaExiste, Repository, proximo_tick
 
 
 class MemoryRepository:
+    """O caderno de um espaço. Sozinho (`MemoryRepository()`) serve de origem dos scripts."""
+
     def __init__(self) -> None:
         self._perfil: Profile | None = None
         self._sessao: Sessao | None = None
         self._entradas: dict[str, Entry] = {}
         self._frases: dict[str, list[Sentence]] = {}
-        self._processadas: set[str] = set()
-        self._lids: dict[str, str] = {}
 
     def obter_perfil(self) -> Profile | None:
         return self._perfil.model_copy(deep=True) if self._perfil else None
@@ -61,6 +62,31 @@ class MemoryRepository:
     def listar_frases(self, slug: str) -> list[Sentence]:
         frases = sorted(self._frases.get(slug, []), key=lambda f: f.criado_em)
         return [f.model_copy(deep=True) for f in frases]
+
+    def apagar_tudo(self) -> None:
+        self._perfil = None
+        self._sessao = None
+        self._entradas.clear()
+        self._frases.clear()
+
+
+class MemoryBanco:
+    def __init__(self) -> None:
+        self._espacos: dict[str, MemoryRepository] = {}
+        self._processadas: set[str] = set()
+        self._lids: dict[str, str] = {}
+
+    def do_espaco(self, espaco_id: str) -> Repository:
+        return self._espacos.setdefault(espaco_id, MemoryRepository())
+
+    def listar_espacos_com_lembrete(self, agora: datetime) -> list[str]:
+        vencidos: list[str] = []
+        for espaco_id, repo in self._espacos.items():
+            perfil = repo.obter_perfil()
+            tick = proximo_tick(perfil) if perfil else None
+            if tick is not None and tick <= agora:
+                vencidos.append(espaco_id)
+        return vencidos
 
     def marcar_processada(self, message_id: str, agora: datetime) -> bool:  # noqa: ARG002
         if message_id in self._processadas:

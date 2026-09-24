@@ -122,7 +122,7 @@ def test_exportador_monta_a_planilha_sem_enviar_nada() -> None:
     repo.adicionar_frase("stall", _frase("The talks [[stalled]].", autor="bot"))
     armazenamento = ArmazenamentoEmMemoria()
 
-    resultado = ExportadorExcel(repo, armazenamento, agora=lambda: T0).exportar()
+    resultado = ExportadorExcel(armazenamento, agora=lambda: T0).exportar(repo)
 
     assert resultado is not None
     assert resultado.quantidade == 2
@@ -139,7 +139,7 @@ def test_plano_b_sobe_o_mesmo_arquivo_e_devolve_o_link() -> None:
     repo = MemoryRepository()
     repo.criar_entrada(_entrada())
     armazenamento = ArmazenamentoEmMemoria()
-    resultado = ExportadorExcel(repo, armazenamento, agora=lambda: T0).exportar()
+    resultado = ExportadorExcel(armazenamento, agora=lambda: T0).exportar(repo)
     assert resultado is not None
 
     link = resultado.gerar_link()
@@ -149,7 +149,7 @@ def test_plano_b_sobe_o_mesmo_arquivo_e_devolve_o_link() -> None:
 
 
 def test_exportador_sem_entradas_devolve_none() -> None:
-    assert ExportadorExcel(MemoryRepository(), ArmazenamentoEmMemoria()).exportar() is None
+    assert ExportadorExcel(ArmazenamentoEmMemoria()).exportar(MemoryRepository()) is None
 
 
 def test_tipo_do_xlsx() -> None:

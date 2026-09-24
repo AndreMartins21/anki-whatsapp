@@ -22,7 +22,9 @@ Ciclo principal:
 
 **M10:** o bot também faz revisão espaçada com lembretes agendados (seção 5.7) — deixou de ser fora de escopo.
 
-Fora de escopo no MVP: áudio, multiusuário, painel web e conversa livre com IA sem relação a inglês.
+**M14:** o bot atende **vários alunos no privado**, cada um com o próprio caderno (o **espaço**, ADR-0017) — deixou de ser fora de escopo. Grupos são o M15 (`spec/plano-turmas.md`).
+
+Fora de escopo no MVP: áudio, painel web e conversa livre com IA sem relação a inglês.
 
 ## 2. Stack e decisões fixas
 
@@ -66,7 +68,10 @@ A VM tem só 1 GB de RAM. Crie um **swap de 2 GB**, limite a memória dos contai
 | `WAHA_API_KEY` | Secret Manager (gerado) | Chave que o bot usa para chamar o WAHA; o WAHA exige essa chave |
 | `WAHA_DASHBOARD_PASSWORD` | Secret Manager (gerado) | Senha do painel/Swagger do WAHA (usuário `admin`) |
 | `WAHA_HOOK_HMAC_KEY` | Secret Manager (gerado) | Chave da assinatura HMAC dos webhooks (seção 8.1); opcional para o bot |
-| `ALLOWED_NUMBER` | `.env.infra` | Número **pessoal** do usuário, só dígitos (ex.: `5531999998888`) |
+| `ALLOWED_NUMBER` | `.env.infra` | Número **pessoal** do usuário, só dígitos (ex.: `5531999998888`). Desde o M14 (ADR-0017) entra na lista de números permitidos, e é o dono do bot por padrão |
+| `ALLOWED_NUMBERS` | `.env.infra` (opcional) | Lista de números permitidos separados por vírgula, mesma comparação do nono dígito (seção 8.2). Cada número é um aluno, com o próprio caderno |
+| `ALLOWED_GROUPS` | `.env.infra` (opcional) | Lista de ids `@g.us` de grupos autorizados (o id de um grupo novo aparece uma vez no log) |
+| `OWNER_NUMBER` | `.env.infra` (opcional) | O dono do bot; padrão o primeiro número da lista (o `ALLOWED_NUMBER`, se definido) |
 | `BOT_NUMBER` | `.env.infra` | Número Vivo do bot, só dígitos (informativo/logs) |
 | `WAHA_URL` | compose | `http://waha:3000` |
 | `WAHA_SESSION` | compose | `default` |
@@ -251,8 +256,8 @@ Send me another word or expression whenever you want.
 - Marque as mensagens recebidas como lidas (`sendSeen`).
 - Mostre "digitando…" (`startTyping`) enquanto chama a IA e pare antes de enviar.
 - Espere de 1 a 2 s (aleatório) antes de cada envio.
-- **Nunca** envie mensagem para número diferente do `ALLOWED_NUMBER`.
-- Nunca mande mais de 3 mensagens seguidas sem uma resposta do usuário.
+- **Nunca** envie mensagem para um número fora da allowlist (`ALLOWED_NUMBER`/`ALLOWED_NUMBERS`, seção 8.2): só ao chat de quem escreveu.
+- Nunca mande mais de 3 mensagens seguidas sem uma resposta do usuário (o limite vale por espaço, M14).
 
 ### 5.7 Revisão espaçada e lembretes (M10, ADR-0011, ADR-0012)
 
@@ -304,7 +309,7 @@ Uma resposta `de_novo` volta a palavra para o **fim da fila desta sessão** (com
 um lapso; as demais notas (`dificil`/`bom`/`facil`) avançam o agendamento.
 
 **Disparo, com três camadas de segurança** (seção 5.6, ADR-0012): um agendador em segundo plano
-(`app/services/lembretes.py:Agendador`), acordando a cada minuto. Só dispara com um `chat_id` real
+(`app/services/lembretes.py:Agendador`), acordando a cada minuto. Desde o M14 (ADR-0017) ele olha todos os espaços com lembretes ligados (uma consulta por tick, só os vencidos) e cada espaço tem o próprio `chat_id`, `proximo_lembrete` e `lembrete_sem_resposta`; as três camadas valem por espaço. Só dispara com um `chat_id` real
 — o número que o WhatsApp de fato usa para esse aluno, aprendido de uma mensagem recebida (nunca o
 `ALLOWED_NUMBER` do `.env` direto: pode diferir no nono dígito, seção 8.2). Nunca dois lembretes
 seguidos sem resposta ao anterior (`lembrete_sem_resposta`, limpo na próxima mensagem do aluno,
@@ -459,6 +464,11 @@ class LinhaDaMusica(BaseModel):
 ## 7. Dados
 
 ### 7.1 Firestore
+Desde o M14 (ADR-0017) tudo abaixo de `profile/me` até `entries/{slug}/sentences` vive dentro de um
+**espaço**, `espacos/{espaco_id}/...`, com `espaco_id` o chat id (`NUMERO@c.us` no privado). O
+documento `espacos/{espaco_id}` guarda `{tipo:"privado"|"grupo", criado_em, proximo_tick?}`, em que
+`proximo_tick` espelha o perfil para o agendador achar os lembretes vencidos com uma consulta só.
+`processed/` e `lids/` continuam globais. Os caminhos abaixo são relativos ao espaço.
 ```
 profile/me                 { nivel, criado_em,
                              lembretes_por_dia, janela_inicio, janela_fim, chat_id?,
@@ -488,7 +498,8 @@ processed/{message_id}     { criado_em, expira_em }     # deduplicação; polít
 lids/{lid}                 { numero }                   # cache LID -> número (seção 8.2), evita consultar o WAHA a cada mensagem
 ```
 - `slug`: minúsculas, `[^a-z0-9]+` → `-`. Se o mesmo slug surgir com outro sentido, use o sufixo `--s2`.
-- Defina a interface `Repository` (Protocol) com `FirestoreRepository` e `MemoryRepository`. A deduplicação usa `create()`, que falha se o ID já existe.
+- Duas interfaces (Protocol): o `Repository`, o caderno de um espaço, e o `Banco`, a raiz, que entrega o caderno em `do_espaco(espaco_id)` e guarda a deduplicação (`create()`, que falha se o ID já existe), o cache de LIDs e `listar_espacos_com_lembrete`. Implementações: `FirestoreBanco`/`FirestoreRepository` e `MemoryBanco`/`MemoryRepository`, com o mesmo teste de contrato.
+- Migração do formato antigo (raiz do banco): `python -m scripts.migrar_multiusuario` (dry run por padrão, `--executar`, `--limpar-origem`), roda na máquina local com as credenciais padrão.
 
 ### 7.2 Status e frase do cartão
 - Uma entrada fica `praticada` quando tem ao menos uma frase do usuário avaliada; senão, é `nova`.
@@ -522,7 +533,7 @@ vida que apaga objetos após 7 dias.
 - Se o WAHA suportar HMAC de webhook, configure e valide. Se não, confie na rede interna, que fica isolada.
 - Para cada evento `message`:
   1. **Ignore `fromMe == true`**, para o bot não responder a si mesmo e não entrar em loop.
-  2. Ignore grupos (`@g.us`), status/broadcast e canais.
+  2. Ignore grupos (`@g.us`), status/broadcast e canais. Grupo não autorizado (fora de `ALLOWED_GROUPS`): o id vai ao log em INFO uma vez por processo, para o dono descobri-lo e autorizá-lo; nada mais sobre a mensagem é logado.
   3. Aplique a allowlist (8.2).
   4. Deduplique pelo `id` da mensagem.
   5. Faça `sendSeen` e despache ao roteador, com a lógica síncrona em threadpool. A conversa (IA, atrasos "humanos") roda em segundo plano, depois do 200 (M4, ADR-0006).
@@ -532,8 +543,8 @@ vida que apaga objetos após 7 dias.
 - `GET /health`: `{"ok": true}`, usado pelo healthcheck do compose.
 
 ### 8.2 Allowlist e identificadores
-- Em conversas 1:1, o `from` costuma vir como `NUMERO@c.us`, mas o WhatsApp também usa **LIDs** (`...@lid`). Aceite a mensagem se o número extraído bater com `ALLOWED_NUMBER` (comparando as variantes com e sem o 9 depois do DDD). Se vier um LID, resolva o número usando o endpoint de LIDs do WAHA (confira na documentação) e guarde o mapeamento em cache no Firestore.
-- **Envie sempre para o chatId do remetente autorizado**: o número que o WhatsApp informa (`NUMERO@c.us`, ou o `pn` resolvido do LID), nunca para outro chat. Ele bate com o `ALLOWED_NUMBER` a menos do nono dígito brasileiro: contas antigas são registradas **sem** o 9, e enviar para o número com o 9 falha no WAHA com "no LID found" (visto no deploy real).
+- Em conversas 1:1, o `from` costuma vir como `NUMERO@c.us`, mas o WhatsApp também usa **LIDs** (`...@lid`). Aceite a mensagem se o número extraído bater com algum de `ALLOWED_NUMBERS` (ou o `ALLOWED_NUMBER` legado; M14), comparando as variantes com e sem o 9 depois do DDD. Cada número é um espaço. Se vier um LID, resolva o número usando o endpoint de LIDs do WAHA (confira na documentação) e guarde o mapeamento em cache no Firestore.
+- **Envie sempre para o chatId do remetente autorizado**: o número que o WhatsApp informa (`NUMERO@c.us`, ou o `pn` resolvido do LID), nunca para outro chat. Ele bate com o número da allowlist a menos do nono dígito brasileiro: contas antigas são registradas **sem** o 9, e enviar para o número com o 9 falha no WAHA com "no LID found" (visto no deploy real).
 
 ### 8.3 Cliente (`app/channel/waha.py`)
 Implemente `send_text`, `send_file`, `send_seen`, `typing(on/off)` e `session_status`, com o header `X-Api-Key` (ou o nome atual segundo a documentação). Timeouts de 15 s, até 2 novas tentativas com backoff para 5xx, logs **sem** a API key. `send_file` é a exceção: timeout de 90 s e **sem** retentativa (reenviar uma resposta lenta duplicaria o arquivo; quem chama decide o plano B).
@@ -558,6 +569,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, marcar como lido, digi
 | M10 | Revisão espaçada (SM-2 simplificado, ADR-0011) com sessão `REVIEWING`, `/reminders` e `/review`, agendador em segundo plano (`Agendador`, ADR-0012) | `make check` passa; `make test-emulador` valida os campos novos no Firestore real; ciclo completo de revisão no `sim`; nenhum lembrete dispara sem `chat_id` conhecido |
 | M12 | Comandos em inglês (apelidos PT escondidos), `/list` numerado e paginado, `/info`, `/profile`, sinônimos e frases corrigidas persistidos na entrada, `/export` em planilha Excel no lugar do arquivo do Anki (ADR-0014) | `make check` passa; `make test-emulador` valida `sinonimos` no Firestore real; `/export` no `sim` gera um `.xlsx` com as 3 abas |
 | M13 | Prática com letra de música (seção 5.8, ADR-0016): `/song nome [- artista]`, busca no LRCLIB atrás de `LyricsProvider`, escolha entre homônimas (`SONG_PICKING`), recusa de letra fora do inglês, verso a verso com `Tutor.song_line` (`SONG_PRACTICE`), oferta de salvar as expressões não entendidas (`SONG_SAVING`) | `make check` passa; ciclo completo de `/song` no `sim` (escolha, prática, `0`, salvar e a recusa em português); nenhuma letra real em testes, fixtures ou evals |
+| M14 | Multiusuário por espaço (ADR-0017, `spec/plano-turmas.md`): `espacos/{chat}/...`, `Banco` + `Repository`, `ALLOWED_NUMBERS`/`ALLOWED_GROUPS`/`OWNER_NUMBER`, trava e `Conversa` por espaço, agendador por espaço, `scripts.migrar_multiusuario` | Dois alunos no privado isolados (palavras, sessão, `/list`, `/export`, lembretes); migração com dry run, idempotente e `--limpar-origem` seguro; testes antigos do privado passam |
 | M11 | Deploy contínuo via GitHub Actions (seção 10.9, ADR-0013): branch protection na `main` (PR + checks obrigatórios), job `deploy` automático no merge, autenticado por Workload Identity Federation | Push direto na `main` é bloqueado pelo GitHub; um PR com CI verde, ao ser mergeado, dispara o job `deploy` e o bot responde `/help` depois do smoke test |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
@@ -572,7 +584,10 @@ Contém `GCP_PROJECT_ID` (lido do `.env.infra`; se vazio, de `gcloud config get-
 Exemplo de `infra/.env.infra.example`:
 ```dotenv
 GCP_PROJECT_ID=
-ALLOWED_NUMBER=      # número pessoal do usuário, só dígitos (quem conversa com o bot)
+ALLOWED_NUMBER=      # número pessoal do usuário (o dono), só dígitos
+ALLOWED_NUMBERS=     # opcional (M14): alunos, separados por vírgula
+ALLOWED_GROUPS=      # opcional (M14): ids @g.us autorizados, separados por vírgula
+OWNER_NUMBER=        # opcional (M14): o dono; padrão o ALLOWED_NUMBER
 BOT_NUMBER=          # número Vivo do bot, só dígitos
 LLM_PROVIDER=vertex_gemini
 GEMINI_MODEL=        # preencher com o ID confirmado na documentação
@@ -661,8 +676,8 @@ Action é visível a qualquer pessoa — nada sensível pode aparecer em log.
   `push` para `main`; autentica via `google-github-actions/auth` (WIF, sem chave), roda
   `infra/deploy.sh` e depois `infra/smoke_test.sh` — se o smoke test falhar, o workflow fica
   vermelho.
-- **Configuração no GitHub** (Settings → Secrets and variables → Actions): `ALLOWED_NUMBER` e
-  `BOT_NUMBER` como **Secrets** (são telefone real, mascarados em log mesmo não sendo credencial);
+- **Configuração no GitHub** (Settings → Secrets and variables → Actions): `ALLOWED_NUMBER`,
+  `ALLOWED_NUMBERS`, `ALLOWED_GROUPS`, `OWNER_NUMBER` e `BOT_NUMBER` como **Secrets** (são telefone real, mascarados em log mesmo não sendo credencial);
   `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `LLM_PROVIDER`, `GEMINI_MODEL`, `GEMINI_MODEL_EVAL`,
   `USER_LEVEL`, `TIMEZONE` como **Variables**.
 - Decisão do usuário (2026-09-23): sem gate de aprovação manual entre o merge e o deploy — o CI é a
@@ -679,8 +694,9 @@ vocabot/
     domain/   models.py  state.py  choices.py  srs.py  lembretes.py  musica.py
     flows/    router.py  capture.py  practice.py  expansion.py  synonyms.py  freeform.py  review.py  song.py  commands.py
     services/ llm.py  prompts.py  planilha.py  storage.py  lembretes.py  letras.py
-    repo/     base.py  memory.py  firestore.py
+    repo/     base.py  memory.py  firestore.py   # Banco (a raiz) + Repository (um espaço), M14
   sim/        __main__.py  tutor.py  letras.py
+  scripts/    migrar_multiusuario.py   # M14: raiz antiga -> espacos/{chat}
   evals/      sentencas.yaml  roteamento.yaml  run.py
   infra/      config.sh  setup.sh  secrets.sh  deploy.sh  pair.sh  logs.sh  ssh.sh  smoke_test.sh
               .env.infra.example  vm/startup.sh

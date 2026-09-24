@@ -98,6 +98,9 @@ jobs:
           USER_LEVEL: ${{ vars.USER_LEVEL }}
           TIMEZONE: ${{ vars.TIMEZONE }}
           ALLOWED_NUMBER: ${{ secrets.ALLOWED_NUMBER }}
+          ALLOWED_NUMBERS: ${{ secrets.ALLOWED_NUMBERS }}
+          ALLOWED_GROUPS: ${{ secrets.ALLOWED_GROUPS }}
+          OWNER_NUMBER: ${{ secrets.OWNER_NUMBER }}
           BOT_NUMBER: ${{ secrets.BOT_NUMBER }}
         run: bash infra/deploy.sh
 

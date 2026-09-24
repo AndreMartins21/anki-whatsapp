@@ -17,6 +17,7 @@ from app.domain.models import (
     SentidoSalvo,
     Synonym,
 )
+from app.repo.base import Repository
 from app.services.fake_llm import FakeTutor
 from app.services.planilha import ResultadoExportacao
 from tests.helpers import CHAT, T0, Montagem, avaliacao, expansoes, explicacao_stall, montar
@@ -304,7 +305,7 @@ class ExportadorFalso:
     resultado: ResultadoExportacao | None
     chamadas: int = 0
 
-    def exportar(self) -> ResultadoExportacao | None:
+    def exportar(self, repo: Repository) -> ResultadoExportacao | None:
         self.chamadas += 1
         return self.resultado
 

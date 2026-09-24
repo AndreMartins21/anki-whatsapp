@@ -16,7 +16,8 @@ from app.domain.models import (
 from app.flows.commands import Exportador, StatusDaSessao
 from app.flows.conversa import Conversa
 from app.flows.router import Router
-from app.repo.memory import MemoryRepository
+from app.repo.base import Repository
+from app.repo.memory import MemoryBanco
 from app.services.fake_llm import FakeTutor
 from app.services.letras import LyricsProvider
 
@@ -86,7 +87,8 @@ class Relogio:
 class Montagem:
     router: Router
     channel: FakeChannel
-    repo: MemoryRepository
+    banco: MemoryBanco
+    repo: Repository  # o caderno do aluno de `CHAT`
     tutor: FakeTutor
     relogio: Relogio
     conversa: Conversa
@@ -95,7 +97,7 @@ class Montagem:
     async def diz(self, texto: str) -> list[str]:
         """Manda `texto` como o aluno e devolve o que o bot respondeu (só os textos)."""
         antes = len(self.channel.textos_enviados)
-        await self.router.processar(texto)
+        await self.router.processar(texto, CHAT)
         return [t for _, t in self.channel.textos_enviados[antes:]]
 
 
@@ -107,7 +109,7 @@ def montar(
     letras: LyricsProvider | None = None,
 ) -> Montagem:
     channel = FakeChannel()
-    repo = MemoryRepository()
+    banco = MemoryBanco()
     tutor = tutor or FakeTutor()
     relogio = Relogio()
     esperas: list[float] = []
@@ -115,15 +117,26 @@ def montar(
     async def dormir(segundos: float) -> None:
         esperas.append(segundos)
 
-    conversa = Conversa(channel, CHAT, dormir=dormir, atraso=lambda: 1.5)
+    def criar_conversa(chat_id: str) -> Conversa:
+        return Conversa(channel, chat_id, dormir=dormir, atraso=lambda: 1.5)
+
     router = Router(
-        repo=repo,
+        banco=banco,
         tutor=tutor,
-        conversa=conversa,
+        criar_conversa=criar_conversa,
         nivel_padrao="B1-B2",
         agora=relogio.agora,
         status_da_sessao=status_da_sessao,
         exportador=exportador,
         letras=letras,
     )
-    return Montagem(router, channel, repo, tutor, relogio, conversa, esperas)
+    return Montagem(
+        router,
+        channel,
+        banco,
+        banco.do_espaco(CHAT),
+        tutor,
+        relogio,
+        router.conversa_do(CHAT),
+        esperas,
+    )
