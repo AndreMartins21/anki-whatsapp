@@ -47,6 +47,7 @@ from app.repo.base import Repository
 from app.repo.firestore import FirestoreRepository
 from app.repo.memory import MemoryRepository
 from app.services.lembretes import Agendador
+from app.services.letras import LrclibProvider
 from app.services.llm import criar_tutor
 from app.services.planilha import ExportadorExcel
 from app.services.storage import Armazenamento, ArmazenamentoLocal, criar_armazenamento_gcs
@@ -85,6 +86,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         api_key=settings.waha_api_key,
         session=settings.waha_session,
     )
+    letras = LrclibProvider(base_url=settings.lyrics_url)
     repo = _criar_repositorio(settings)
     app.state.channel = canal
     app.state.repo = repo
@@ -96,6 +98,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         status_da_sessao=canal.session_status,
         exportador=ExportadorExcel(repo, _criar_armazenamento(settings)),
         fuso=ZoneInfo(settings.timezone),
+        letras=letras,
     )
     app.state.router = router
 
@@ -114,6 +117,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         with contextlib.suppress(asyncio.CancelledError):
             await tarefa_do_agendador
         await canal.aclose()
+        await letras.aclose()
 
 
 app = FastAPI(title="vocabot", lifespan=_lifespan)

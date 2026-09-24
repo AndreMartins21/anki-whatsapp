@@ -70,3 +70,27 @@ def test_real_llm_sem_configuracao_sai_com_erro(
 
     assert codigo == 2
     assert "GCP_PROJECT_ID" in capsys.readouterr().err
+
+
+def test_ciclo_de_musica_no_terminal(tmp_path: Path) -> None:
+    """M13: as músicas do simulador são inventadas (sim/letras.py, ADR-0016)."""
+    codigo, tela = _executar(
+        [
+            "/song paper plane",
+            "1",  # The Inventors (há uma homônima)
+            "ele deixou as chaves perto da porta",
+            "no idea",  # o SimTutor aponta a palavra mais longa do verso
+            "0",
+            "all",
+            "/song aviao de papel",
+            "sair",
+        ],
+        tmp_path,
+    )
+
+    assert codigo == 0
+    assert "2. *Paper Plane* — Quiet Harbor" in tela
+    assert "Line 1/6" in tela
+    assert "you went through 2 of 6 lines" in tela
+    assert "Saved to your dictionary" in tela
+    assert "aren't in English" in tela

@@ -1,6 +1,6 @@
 """Modelos de domínio (seções 6 e 7.1 da spec): o que entra no banco ou na sessão, e os
 schemas de saída do LLM (`Explanation`, `Evaluation`, `Exemplos`, `Expansoes`, `Sinonimos`,
-`Roteamento`)."""
+`Roteamento`, `LinhaDaMusica`)."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ Intencao = Literal[
     "frase", "exemplos", "sinonimos", "salvar", "nova_palavra", "pedido", "fora_do_escopo"
 ]
 QualidadeRevisao = Literal["de_novo", "dificil", "bom", "facil"]
+CompreensaoDoVerso = Literal["entendeu", "parcial", "nao_entendeu"]
 
 
 def agora_utc() -> datetime:
@@ -31,11 +32,15 @@ def agora_utc() -> datetime:
 class Estado(StrEnum):
     """Estados da conversa (seção 5.1, M9/M10): só há uma palavra em foco por vez (`IDLE`) e um
     único menu de ações enquanto ela está em foco (`AWAIT_ACTION`); `REVIEWING` é a sessão de
-    revisão espaçada iniciada pelo bot (seção 5.7)."""
+    revisão espaçada iniciada pelo bot (seção 5.7); os `SONG_*` são a prática com letra de música
+    (M13, seção 5.8): escolher entre homônimas, explicar verso a verso, salvar as expressões."""
 
     IDLE = "IDLE"
     AWAIT_ACTION = "AWAIT_ACTION"
     REVIEWING = "REVIEWING"
+    SONG_PICKING = "SONG_PICKING"
+    SONG_PRACTICE = "SONG_PRACTICE"
+    SONG_SAVING = "SONG_SAVING"
 
 
 def _exige_marca(frase: str) -> str:
@@ -211,6 +216,27 @@ class Revisao(BaseModel):
         return self
 
 
+MAX_EXPRESSOES_POR_VERSO = 3
+
+
+class LinhaDaMusica(BaseModel):
+    """Saída de `song_line` (M13, seção 5.8): julga a explicação do aluno para um verso da música
+    (em inglês ou português) e aponta o que ele parece não ter entendido."""
+
+    compreensao: CompreensaoDoVerso
+    feedback: str  # em inglês, curto (máx. 4 linhas); nunca repete o verso inteiro
+    significado: str = ""  # o sentido do verso em poucas palavras, quando o aluno não acertou
+    expressoes: list[str] = Field(default_factory=list)  # do próprio verso, as que ele não pegou
+
+    @model_validator(mode="after")
+    def _curto(self) -> LinhaDaMusica:
+        if len(self.feedback.strip().splitlines()) > MAX_LINHAS_EXPLICACAO:
+            raise ValueError(f"`feedback` deve ter no máximo {MAX_LINHAS_EXPLICACAO} linhas")
+        if len(self.expressoes) > MAX_EXPRESSOES_POR_VERSO:
+            raise ValueError(f"`expressoes` deve ter no máximo {MAX_EXPRESSOES_POR_VERSO} itens")
+        return self
+
+
 class SentidoSalvo(BaseModel):
     traducao: str
     definicao: str
@@ -274,6 +300,22 @@ class Profile(BaseModel):
     avisou_lembretes: bool = False  # já mostrou a dica de /lembretes uma vez
 
 
+class OpcaoDeMusica(BaseModel):
+    """Uma candidata da busca, guardada na sessão enquanto o aluno escolhe (sem a letra)."""
+
+    id: int
+    titulo: str
+    artista: str
+
+
+class ExpressaoDaMusica(BaseModel):
+    """Uma palavra/expressão que o aluno não pegou, com o verso onde ela aparece (o contexto
+    que vai para a explicação ao salvar)."""
+
+    texto: str
+    verso: str
+
+
 class Sessao(BaseModel):
     """Documento `session/current`.
 
@@ -295,6 +337,15 @@ class Sessao(BaseModel):
     revisao_feitas: list[str] = Field(default_factory=list)
     revisao_lapsos: list[str] = Field(default_factory=list)
     revisao_total: int = 0
+    # Prática com música (M13, seção 5.8): as candidatas de uma busca (SONG_PICKING), a música
+    # escolhida com os versos a praticar e o índice do verso atual (SONG_PRACTICE), e as
+    # expressões que o aluno não pegou, oferecidas para salvar no fim (SONG_SAVING).
+    musica_opcoes: list[OpcaoDeMusica] = Field(default_factory=list)
+    musica_titulo: str | None = None
+    musica_artista: str | None = None
+    musica_versos: list[str] = Field(default_factory=list)
+    musica_indice: int = 0
+    musica_expressoes: list[ExpressaoDaMusica] = Field(default_factory=list)
 
 
 def slugify(palavra: str) -> str:

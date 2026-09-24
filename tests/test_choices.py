@@ -8,10 +8,12 @@ from app.domain.choices import (
     MENU_ACOES,
     contem_palavra_alvo,
     eh_sair,
+    eh_todos,
     marcar_alvo,
     normalizar,
     parse_escolha,
     parse_numero,
+    parse_numeros,
     so_numeros,
 )
 
@@ -126,3 +128,25 @@ def test_contem_palavra_alvo_rejeita_o_que_nao_e_a_palavra(texto: str, palavra: 
 )
 def test_marcar_alvo(frase: str, palavra: str, esperado: str | None) -> None:
     assert marcar_alvo(frase, palavra) == esperado
+
+
+@pytest.mark.parametrize(
+    ("texto", "maximo", "esperado"),
+    [
+        ("1 3", 5, [1, 3]),
+        ("1, 3 and 2", 5, [1, 3, 2]),
+        ("two", 5, [2]),
+        ("3 3", 5, [3]),
+        ("1 9", 5, None),
+        ("0", 5, None),
+        ("save them", 5, None),
+    ],
+)
+def test_parse_numeros(texto: str, maximo: int, esperado: list[int] | None) -> None:
+    assert parse_numeros(texto, maximo) == esperado
+
+
+def test_eh_todos() -> None:
+    assert eh_todos("All")
+    assert eh_todos("todas")
+    assert not eh_todos("1")

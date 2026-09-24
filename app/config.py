@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # Storage
     export_bucket: str
 
+    # Letras de música do /song (M13, seção 5.8, ADR-0016): API pública do LRCLIB, sem chave.
+    lyrics_url: str = "https://lrclib.net"
+
     @field_validator(
         "waha_hook_hmac_key",
         "anthropic_api_key",

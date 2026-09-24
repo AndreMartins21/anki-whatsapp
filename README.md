@@ -46,7 +46,7 @@ make help      # todos os alvos
 
 Manda uma palavra em inglês (`stall` ou `stall | the talks stalled`) e segue o menu numerado.
 `/help` lista tudo: `/list [página]` (numerada), `/info N` (frases, sinônimos etc. de uma palavra),
-`/pending`, `/practice [N|palavra]`, `/review`, `/reminders 3 9h-22h`, `/profile`, `/export`,
+`/pending`, `/practice [N|palavra]`, `/review`, `/song nome [- artista]` (prática com música, M13), `/reminders 3 9h-22h`, `/profile`, `/export`,
 `/delete N|palavra`, `/level B1-B2`, `/cancel`, `/status`. O `/export` devolve um link (válido por 24 h)
 para um `.xlsx` com três abas: `Words`, `Sentences` e `Synonyms`.
 
