@@ -9,7 +9,7 @@ do Secret Manager (infra/deploy.sh).
 from __future__ import annotations
 
 import re
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +20,7 @@ NivelUsuario = Literal["A2-B1", "B1-B2", "B2-C1"]
 ProvedorLLM = Literal["vertex_gemini", "anthropic"]
 AmbienteApp = Literal["local", "prod"]
 CONTATO_PADRAO = "smartins.bot@gmail.com"
+_NUMERICOS = {"max_groups", "limite_por_sessao_grupo", "timeout_marcacao_horas"}
 
 
 class Settings(BaseSettings):
@@ -90,6 +91,19 @@ class Settings(BaseSettings):
         if isinstance(valor, str) and not valor.strip():
             return None
         return valor
+
+    @model_validator(mode="before")
+    @classmethod
+    def _numerico_vazio_e_nao_configurado(cls, dados: Any) -> Any:
+        """`CHAVE=` no .env (o `infra/deploy.sh` grava assim as opcionais sem valor) vale "não
+        definido" também para os campos numéricos: sem isto, `int("")` derruba o bot na subida."""
+        if not isinstance(dados, dict):
+            return dados
+        return {
+            chave: valor
+            for chave, valor in dados.items()
+            if not (chave in _NUMERICOS and isinstance(valor, str) and not valor.strip())
+        }
 
     @field_validator("group_prefix", mode="before")
     @classmethod

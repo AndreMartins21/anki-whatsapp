@@ -292,3 +292,46 @@ def test_revisao_em_grupo_rejeita_valores_sem_sentido(
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+# --- hotfix: o deploy grava `CHAVE=` vazia no .env da VM para as opcionais não definidas --------
+
+
+def test_opcionais_numericas_vazias_no_env_usam_o_padrao(monkeypatch: pytest.MonkeyPatch) -> None:
+    """O `infra/deploy.sh` escreve `LIMITE_POR_SESSAO_GRUPO=` (vazio) quando a Variable do GitHub
+    não existe. Isso tem que valer como "não definido", não derrubar o bot na inicialização."""
+    _com_env(
+        monkeypatch,
+        LIMITE_POR_SESSAO_GRUPO="",
+        TIMEOUT_MARCACAO_HORAS="  ",
+        MAX_GROUPS="",
+        GROUP_PREFIX="",
+        CONTACT_EMAIL="",
+        OWNER_NUMBER="",
+        ALLOWED_NUMBERS="",
+        ALLOWED_GROUPS="",
+    )
+
+    settings = Settings(_env_file=None)
+
+    assert settings.limite_por_sessao_grupo == 5
+    assert settings.timeout_marcacao_horas == 3.0
+    assert settings.max_groups == 10
+    assert settings.group_prefix == "!"
+
+
+def test_o_env_que_o_deploy_renderiza_carrega_sem_erro(monkeypatch: pytest.MonkeyPatch) -> None:
+    """As variáveis que o `infra/deploy.sh` escreve com padrão vazio (`${X:-}`) chegam vazias à VM
+    quando a Variable/Secret do GitHub não existe."""
+    import re
+    from pathlib import Path
+
+    script = Path("infra/deploy.sh").read_text(encoding="utf-8")
+    vazias = re.findall(r"printf '([A-Z_]+)=%s\\n' \"\$\{\1:-\}\"", script)
+    assert {"LIMITE_POR_SESSAO_GRUPO", "TIMEOUT_MARCACAO_HORAS", "GROUP_PREFIX"} <= set(vazias)
+    _com_env(monkeypatch)
+    for nome in vazias:
+        if nome not in _env_minimo():
+            monkeypatch.setenv(nome, "")
+
+    Settings(_env_file=None)  # não levanta
