@@ -6,12 +6,14 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 from fastapi.testclient import TestClient
 
 from app.channel.fake import FakeChannel
 from app.config import Settings
+from app.flows.base import ConfigGrupo
 from app.flows.conversa import Conversa
 from app.flows.router import Router
 from app.main import app, get_banco, get_channel, get_router, get_settings
@@ -63,6 +65,12 @@ def criar_ambiente() -> Iterator[Ambiente]:
         nivel_padrao="B1-B2",
         prefixo_do_grupo=settings.group_prefix,
         eh_dono=settings.eh_dono,
+        config_grupo=ConfigGrupo(
+            limite=settings.limite_por_sessao_grupo,
+            timeout=timedelta(hours=settings.timeout_marcacao_horas),
+            participantes=canal.group_participants,
+            numero_do_bot=settings.bot_number,
+        ),
     )
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_channel] = lambda: canal

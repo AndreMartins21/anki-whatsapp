@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # Em grupo o bot só reage a mensagens que começam com isto (M16, ADR-0019). Não pode ser a barra
     # (o prefixo do privado), letra ou número (colidiria com o texto normal).
     group_prefix: str = "!"
+    # Revisão em grupo (M17, ADR-0020): palavras por rodada e quanto esperar a pessoa marcada.
+    limite_por_sessao_grupo: int = Field(default=5, ge=1)
+    timeout_marcacao_horas: float = Field(default=3.0, gt=0)
     bot_number: str
     user_level: NivelUsuario = "B1-B2"
     # Fuso do aluno, para distribuir os lembretes de revisão espaçada (seção 5.7, M10).

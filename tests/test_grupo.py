@@ -512,11 +512,12 @@ def _agendador_do_grupo(m: Montagem, *, autorizado: bool = True):  # type: ignor
 def _grupo_com_lembrete_e_palavra_vencida(m: Montagem) -> None:
     from datetime import timedelta
 
-    from app.domain.models import Profile
+    from app.domain.models import Membro, Profile
     from tests.helpers import T0
     from tests.test_agendador import _entrada_vencida
 
     espaco = m.banco.do_espaco(GRUPO)
+    espaco.salvar_membro(ANA.numero, Membro(nome="Ana", entrou_em=T0))  # M17: alguém para marcar
     espaco.criar_entrada(_entrada_vencida())
     espaco.salvar_perfil(
         Profile(nivel="B1-B2", chat_id=GRUPO, lembretes_por_dia=3, proximo_lembrete=T0)
@@ -532,7 +533,7 @@ async def test_o_lembrete_do_grupo_inicia_a_revisao_no_grupo_com_o_prefixo_do_gr
 
     ((chat, texto),) = m.channel.textos_enviados
     assert chat == GRUPO
-    assert "Practice time" in texto and "Type !0 to leave the practice" in texto
+    assert "Practice time" in texto and "Anyone can type !0 to leave the practice" in texto
     _sem_comandos_do_privado([texto])
     assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.REVIEWING
 

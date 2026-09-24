@@ -45,3 +45,21 @@ Formato: o que estava ambíguo, o que foi escolhido, por quê.
   M17 usa a lista de participantes só para a revisão).
 - **Grupo desativado** para de receber lembretes (espelho `proximo_tick` limpo + conferência do
   agendador); reativar os devolve.
+
+## M17 — Revisão em grupo
+
+- **Menção de quem aparece como LID no grupo.** Mando `mentions: ["NUMERO@c.us"]` com o número
+  resolvido (formato da doc do WAHA). Se o participante for um LID e o WhatsApp só entender a menção
+  pelo LID, a pessoa pode não ser notificada (o texto ainda mostra `@numero`). **Validar no WhatsApp
+  real**; o plano B é marcar pelo LID (o cache `lids/` guarda a relação inversa se for preciso).
+- **`participants/v2` no GOWS:** a doc lista o endpoint como suportado no GOWS, mas o formato do `id`
+  (`@c.us` ou `@lid`) só se vê no real. LIDs sem número conhecido ficam de fora da rodada.
+- **Lista vazia de participantes é tratada como falha** (usa o cadastro de `membros/`).
+- **Lembrete sem aluno para marcar** consome a vez do horário (`lembrete_sem_resposta` já foi posto
+  antes de chamar a revisão); o próximo tenta de novo no horário seguinte. É raro (grupo só com
+  professores) e evita um laço de tentativas.
+- **Quem responde durante a revisão** e não é a pessoa marcada recebe feedback, mas o `!list`, `!group`
+  etc. viram respostas até a rodada fechar (só `!0`, `!stop` e `!help` escapam). Decidi assim para a
+  rodada não ser interrompida por comandos soltos; se atrapalhar a discussão, é fácil afrouxar.
+- **Timeout máximo de 6 h por rodada** (3 h + 3 h do repasse); o padrão vem do plano.
+- **Sem métricas ainda:** `respostas/` está gravando; o script de métricas é o M18 (não feito).

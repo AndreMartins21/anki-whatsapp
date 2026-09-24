@@ -78,6 +78,10 @@ class Agendador:
             except Exception:  # um espaço com problema não pode calar os outros
                 logger.exception("falha no lembrete de um espaço; os demais seguem")
         try:
+            await self._expirar_marcacoes(agora_utc)
+        except Exception:  # o Firestore falhando aqui não pode calar os lembretes do próximo tick
+            logger.exception("falha ao expirar marcações de revisão em grupo")
+        try:
             await self._sair_de_grupos_pendentes()
         except Exception:  # o Firestore falhando aqui não pode calar os lembretes do próximo tick
             logger.exception("falha ao sair de grupos pendentes")
@@ -137,6 +141,15 @@ class Agendador:
             repo.salvar_perfil,
             perfil.model_copy(update={"proximo_lembrete": novo.astimezone(UTC)}),
         )
+
+    async def _expirar_marcacoes(self, agora: datetime) -> None:
+        """M17 (ADR-0020): revisão em grupo em que a pessoa marcada não respondeu no prazo. Uma
+        consulta por tick devolve só os grupos vencidos; cada um é tratado à parte."""
+        for grupo_id in await bloq(self._banco.listar_grupos_com_timeout, agora):
+            try:
+                await self._router.expirar_marcacao(grupo_id)
+            except Exception:  # um grupo com problema não pode calar os outros
+                logger.exception("falha ao expirar a marcação de um grupo; os demais seguem")
 
     async def _sair_de_grupos_pendentes(self) -> None:
         """M15 (ADR-0018): o bot não fica em grupo que nenhum admin ativou em 24 h. Sai em

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 
@@ -13,11 +14,17 @@ class FakeChannel:
     vistos: list[str] = field(default_factory=list)
     digitando: list[tuple[str, bool]] = field(default_factory=list)
     lids_conhecidos: dict[str, str | None] = field(default_factory=dict)
+    mencoes_enviadas: list[tuple[str, tuple[str, ...]]] = field(default_factory=list)
+    participantes_de_grupos: dict[str, list[str]] = field(default_factory=dict)
     grupos_deixados: list[str] = field(default_factory=list)
     nomes_de_grupos: dict[str, str] = field(default_factory=dict)
 
-    async def send_text(self, chat_id: str, text: str) -> None:
+    async def send_text(
+        self, chat_id: str, text: str, mentions: Sequence[str] | None = None
+    ) -> None:
         self.textos_enviados.append((chat_id, text))
+        if mentions:
+            self.mencoes_enviadas.append((chat_id, tuple(mentions)))
 
     async def send_file(
         self,
@@ -39,6 +46,9 @@ class FakeChannel:
 
     async def leave_group(self, chat_id: str) -> None:
         self.grupos_deixados.append(chat_id)
+
+    async def group_participants(self, chat_id: str) -> list[str]:
+        return list(self.participantes_de_grupos.get(chat_id, []))
 
     async def group_name(self, chat_id: str) -> str | None:
         return self.nomes_de_grupos.get(chat_id)

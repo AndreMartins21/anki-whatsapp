@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 
 class ConsoleChannel:
     """Com `pasta`, os arquivos "enviados" são gravados lá (o simulador não tem WhatsApp)."""
 
-    def __init__(self, saida: Callable[[str], None] = print, pasta: Path | None = None) -> None:
+    def __init__(
+        self,
+        saida: Callable[[str], None] = print,
+        pasta: Path | None = None,
+        nomes: Mapping[str, str] | None = None,
+    ) -> None:
         self._saida = saida
         self._pasta = pasta
+        # número -> nome, para mostrar a menção como no WhatsApp (o simulador vai preenchendo)
+        self._nomes = nomes if nomes is not None else {}
 
     async def send_file(
         self,
@@ -29,7 +36,15 @@ class ConsoleChannel:
             onde = f"\n{destino.resolve()}"
         await self.send_text("", f"📎 {Path(nome).name} ({len(conteudo)} bytes)\n{legenda}{onde}")
 
-    async def send_text(self, chat_id: str, text: str) -> None:  # noqa: ARG002
+    async def send_text(
+        self,
+        chat_id: str,  # noqa: ARG002
+        text: str,
+        mentions: Sequence[str] | None = None,
+    ) -> None:
+        for numero in mentions or ():
+            if numero in self._nomes:
+                text = text.replace(f"@{numero}", f"@{self._nomes[numero]}")
         corpo = "\n".join(f"│ {linha}" if linha else "│" for linha in text.splitlines())
         self._saida(f"┌─ 🤖 vocabot\n{corpo}\n└─")
 
@@ -38,6 +53,9 @@ class ConsoleChannel:
 
     async def leave_group(self, chat_id: str) -> None:  # noqa: ARG002
         self._saida("  (o bot saiu do grupo)")
+
+    async def group_participants(self, chat_id: str) -> list[str]:  # noqa: ARG002
+        return list(self._nomes)
 
     async def group_name(self, chat_id: str) -> str | None:  # noqa: ARG002
         return None

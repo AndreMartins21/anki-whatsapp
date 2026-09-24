@@ -572,3 +572,52 @@ def test_desativar_o_grupo_tira_os_lembretes_dele_da_consulta_e_reativar_devolve
 
     banco.ativar_grupo(GRUPO, nome=None, por="5531999998888", agora=T1)
     assert banco.listar_espacos_com_lembrete(T1) == [GRUPO]
+
+
+def _revisao_marcada(quem: str, expira: datetime | None) -> Sessao:
+    return Sessao(estado=Estado.REVIEWING, marcado_id=quem, marcacao_expira_em=expira)
+
+
+def test_grupo_com_marcacao_vencida_aparece_na_consulta_de_timeout(banco: Banco) -> None:
+    banco.do_espaco(GRUPO).salvar_sessao(_revisao_marcada("5531999998888", T0))
+
+    assert banco.listar_grupos_com_timeout(T0) == [GRUPO]
+    assert banco.listar_grupos_com_timeout(T0 - timedelta(minutes=1)) == []
+
+
+def test_a_sessao_da_marcacao_persiste_os_campos_novos(repo: Repository) -> None:
+    repo.salvar_sessao(
+        Sessao(
+            estado=Estado.REVIEWING,
+            marcado_id="5531999998888",
+            marcacao_expira_em=T1,
+            marcacao_tentativas=1,
+        )
+    )
+
+    sessao = repo.obter_sessao()
+
+    assert (sessao.marcado_id, sessao.marcacao_expira_em, sessao.marcacao_tentativas) == (
+        "5531999998888",
+        T1,
+        1,
+    )
+
+
+def test_marcacao_respondida_ou_sessao_fechada_sai_da_consulta_de_timeout(banco: Banco) -> None:
+    espaco = banco.do_espaco(GRUPO)
+    espaco.salvar_sessao(_revisao_marcada("5531999998888", T0))
+    assert banco.listar_grupos_com_timeout(T0) == [GRUPO]
+
+    espaco.salvar_sessao(_revisao_marcada("5511988887777", T1))  # o card andou: novo prazo
+    assert banco.listar_grupos_com_timeout(T0) == []
+    assert banco.listar_grupos_com_timeout(T1) == [GRUPO]
+
+    espaco.salvar_sessao(Sessao())  # a sessão fechou
+    assert banco.listar_grupos_com_timeout(T1 + timedelta(days=1)) == []
+
+
+def test_espaco_privado_nunca_entra_na_consulta_de_timeout(banco: Banco) -> None:
+    banco.do_espaco(ALUNO_A).salvar_sessao(_revisao_marcada("5531999998888", T0))
+
+    assert banco.listar_grupos_com_timeout(T1) == []

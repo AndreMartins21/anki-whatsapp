@@ -159,3 +159,44 @@ def test_o_simulador_de_um_usuario_continua_igual(tmp_path: Path) -> None:
     _, tela = _executar(["stall", "sair"], tmp_path)
 
     assert "Simulador do vocabot" in tela and "grupo>" not in tela
+
+
+# --- M17: revisão em grupo no simulador --------------------------------------------------------
+
+
+def test_revisao_em_grupo_marca_o_aluno_pelo_nome_e_fecha_a_rodada(tmp_path: Path) -> None:
+    _, tela = _executar(
+        [
+            "ana: !add stall | the talks stalled",
+            "ana: !3",  # just save: a palavra vira um card da turma
+            "carla: !help",  # a professora aparece, mas nunca é marcada
+            "ana: !review",
+            "ana: !it means to stop making progress",
+            "sair",
+        ],
+        tmp_path,
+        "--grupo",
+        "--professor",
+        "carla",
+    )
+
+    assert "@ana, your turn" in tela and "@carla" not in tela
+    assert "Practice done" in tela
+
+
+def test_timeout_no_simulador_repassa_o_card_e_depois_fecha(tmp_path: Path) -> None:
+    _, tela = _executar(
+        [
+            "ana: !add stall",
+            "ana: !3",
+            "ana: !review",
+            "~timeout",  # ninguém respondeu: repassa
+            "~timeout",  # ninguém respondeu de novo: fecha
+            "sair",
+        ],
+        tmp_path,
+        "--grupo",
+    )
+
+    assert "No answer yet, so I'm passing this one on" in tela
+    assert "Nobody answered in time" in tela

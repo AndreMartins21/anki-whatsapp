@@ -29,6 +29,7 @@ operacional: numeração, status e o índice.
 | [0017](0017-multiusuario-por-espaco.md) | Multiusuário por espaço | Aceito | 2026-09-24 |
 | [0018](0018-acesso-por-admins-e-ativacao-de-grupos.md) | Acesso por admins e ativação de grupos | Aceito | 2026-09-24 |
 | [0019](0019-bot-em-grupo-com-prefixo-e-comandos-limitados.md) | Bot em grupo com prefixo `!` e comandos limitados | Aceito | 2026-09-24 |
+| [0020](0020-revisao-em-grupo-com-mencao-em-rodizio.md) | Revisão em grupo com menção em rodízio | Aceito | 2026-09-24 |
 
 ## Quando escrever um
 

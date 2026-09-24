@@ -15,6 +15,7 @@ import logging
 import os
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
@@ -42,7 +43,7 @@ from app.channel.waha import WahaChannel
 from app.config import Settings
 from app.domain.models import agora_utc
 from app.flows import admin, grupo
-from app.flows.base import Autor
+from app.flows.base import Autor, ConfigGrupo
 from app.flows.conversa import Conversa
 from app.flows.router import Router
 from app.logging_config import configurar_logs, id_curto
@@ -102,6 +103,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         exportador=ExportadorExcel(_criar_armazenamento(settings)),
         prefixo_do_grupo=settings.group_prefix,
         eh_dono=settings.eh_dono,
+        config_grupo=ConfigGrupo(
+            limite=settings.limite_por_sessao_grupo,
+            timeout=timedelta(hours=settings.timeout_marcacao_horas),
+            participantes=canal.group_participants,
+            numero_do_bot=settings.bot_number,
+        ),
         fuso=ZoneInfo(settings.timezone),
         letras=letras,
     )

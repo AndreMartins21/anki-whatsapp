@@ -294,7 +294,7 @@ async def lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
 async def revisar(d: Deps, sessao: Sessao) -> Sessao:
     """`/review` começa a sessão de revisão na hora, em vez de esperar o próximo lembrete."""
     entradas = await bloq(d.repo.listar_entradas)
-    if not review.montar_fila(entradas, d.agora()):
+    if not review.montar_fila(entradas, d.agora(), limite=review.limite(d)):
         await d.conversa.enviar(messages.SEM_NADA_PARA_REVISAR)
         return sessao
-    return await review.iniciar(d)
+    return await review.iniciar(d, avisar=True)

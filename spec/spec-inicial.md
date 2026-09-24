@@ -22,7 +22,7 @@ Ciclo principal:
 
 **M10:** o bot também faz revisão espaçada com lembretes agendados (seção 5.7) — deixou de ser fora de escopo.
 
-**M14:** o bot atende **vários alunos no privado**, cada um com o próprio caderno (o **espaço**, ADR-0017) — deixou de ser fora de escopo. **M15:** controle de acesso — quem não tem plano só recebe um aviso, e grupos só entram por um admin (ADR-0018). Os comandos de grupo (`!add`, `!list`...) são o M16 e a revisão em grupo o M17 (`spec/plano-turmas.md`).
+**M14:** o bot atende **vários alunos no privado**, cada um com o próprio caderno (o **espaço**, ADR-0017) — deixou de ser fora de escopo. **M15:** controle de acesso — quem não tem plano só recebe um aviso, e grupos só entram por um admin (ADR-0018). Os comandos de grupo (`!add`, `!list`...) são o M16 e a revisão em grupo com menção o M17 (`spec/plano-turmas.md`).
 
 Fora de escopo no MVP: áudio, painel web e conversa livre com IA sem relação a inglês.
 
@@ -74,6 +74,8 @@ A VM tem só 1 GB de RAM. Crie um **swap de 2 GB**, limite a memória dos contai
 | `OWNER_NUMBER` | `.env.infra` (opcional) | O dono do bot; padrão o primeiro número da lista (o `ALLOWED_NUMBER`, se definido) |
 | `MAX_GROUPS` | `.env.infra` (opcional) | Padrão `10`: teto de grupos ativados por admin (M15, ADR-0018); os de `ALLOWED_GROUPS` não contam |
 | `GROUP_PREFIX` | `.env.infra` (opcional) | Padrão `!`: em grupo o bot só lê mensagens que começam com isto (M16, ADR-0019); 1 ou 2 símbolos, sem letras, números nem a barra |
+| `LIMITE_POR_SESSAO_GRUPO` | `.env.infra` (opcional) | Padrão `5`: palavras por rodada de revisão em grupo (M17, ADR-0020); no privado são 20 |
+| `TIMEOUT_MARCACAO_HORAS` | `.env.infra` (opcional) | Padrão `3`: quanto esperar a pessoa marcada numa revisão em grupo antes de passar o card ao próximo aluno |
 | `CONTACT_EMAIL` | `.env.infra` (opcional) | E-mail que o aviso "você não tem um plano" mostra a quem não está na lista (M15) |
 | `BOT_NUMBER` | `.env.infra` | Número Vivo do bot, só dígitos (informativo/logs) |
 | `WAHA_URL` | compose | `http://waha:3000` |
@@ -194,6 +196,27 @@ gravado nem marcado como lido (o filtro vem antes da deduplicação e do `sendSe
   `/list`, se uma letra vem logo depois).
 - `python -m sim --grupo`: uma linha `nome: mensagem` por participante; linhas sem prefixo aparecem
   como ignoradas.
+
+**Revisão em grupo (M17, ADR-0020).** `!review` (e o lembrete do grupo) começa uma rodada de
+`LIMITE_POR_SESSAO_GRUPO` (5) palavras em que **cada card marca UM aluno** com uma menção real do
+WhatsApp (`sendText` com `mentions: ["NUMERO@c.us"]`, e `@NUMERO` no texto). A escolha é um rodízio
+(`domain/rodizio.py`): quem foi marcado há mais tempo (ou nunca), desempate aleatório, sem repetir
+seguido se houver outro aluno; professores e o bot nunca são marcados. Os alunos elegíveis vêm da lista
+de participantes do WAHA (`GET /api/{session}/groups/{id}/participants/v2`, atualizada no início de cada
+rodada; sem ela, o cadastro de `membros/`). Sem aluno para marcar, a rodada não começa (o lembrete fica
+em silêncio; o `!review` avisa).
+
+- Resposta = `!` + texto. **Da pessoa marcada**, vale a nota (`Tutor.review`, `srs.reagendar` no cartão
+  do grupo), com o feedback e o próximo card numa mensagem só. **De outra pessoa** (aluno ou
+  professor), o bot dá feedback mas **não** muda a nota nem avança o card; a frase fica salva com o
+  autor. `!0`/`!stop` de qualquer participante fecha com o resumo; na revisão só `!0`, `!stop` e
+  `!help` escapam da resposta.
+- **Timeout:** sem resposta em `TIMEOUT_MARCACAO_HORAS`, o agendador passa o **mesmo card** ao próximo
+  aluno do rodízio, uma vez; sem resposta de novo, fecha com o resumo. O prazo é espelhado em
+  `espacos/{grupo}.timeout_em`, então o agendador acha os grupos vencidos com uma consulta por tick.
+  Respeita o limite de 3 mensagens seguidas (card, repasse, fechamento).
+- `respostas/{auto}` registra `{entry, autor_id, marcado, qualidade}` de cada resposta (alimenta o
+  `!group` e as métricas do piloto).
 
 ### 5.3 Calibração pelo nível (B1-B2)
 
@@ -540,6 +563,8 @@ grupos_pendentes/{grupo}   { visto_em }   # M15: grupo em que o bot está sem at
                            # espacos/{grupo} ganha, ao ativar: ativo, nome?, ativado_por, ativado_em
 espacos/{grupo}/membros/{numero}  { papel:"aluno"|"professor", nome?, entrou_em, marcado_em? }   # M16 (marcado_em: M17)
 espacos/{grupo}/respostas/{auto}  { entry, autor_id, marcado, qualidade, criado_em }              # M17
+                           # M17: session/current ganha marcado_id, marcacao_expira_em, marcacao_tentativas; espacos/{grupo}
+                           # ganha timeout_em (espelho do prazo, para o agendador)
 lids/{lid}                 { numero }                   # cache LID -> número (seção 8.2), evita consultar o WAHA a cada mensagem
 ```
 - `slug`: minúsculas, `[^a-z0-9]+` → `-`. Se o mesmo slug surgir com outro sentido, use o sufixo `--s2`.
@@ -617,6 +642,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, marcar como lido, digi
 | M14 | Multiusuário por espaço (ADR-0017, `spec/plano-turmas.md`): `espacos/{chat}/...`, `Banco` + `Repository`, `ALLOWED_NUMBERS`/`ALLOWED_GROUPS`/`OWNER_NUMBER`, trava e `Conversa` por espaço, agendador por espaço, `scripts.migrar_multiusuario` | Dois alunos no privado isolados (palavras, sessão, `/list`, `/export`, lembretes); migração com dry run, idempotente e `--limpar-origem` seguro; testes antigos do privado passam |
 | M15 | Controle de acesso (ADR-0018): admins no Firestore (`/admin`), grupo ativado só por `!activate` de um admin (`/groups`, `MAX_GROUPS`), grupo não ativado sai em 24 h (`group.v2.join`, `Channel.leave_group`), aviso "sem plano" a número fora da lista sem chamar a IA | Estranho recebe 1 aviso por semana e `FakeTutor.chamadas == []`; `!activate` de não admin não grava nem envia nada; limite respeitado; pendente sai em 24 h (relógio controlado) e ativado antes não sai |
 | M16 | Bot em grupo com prefixo `!` (ADR-0019, seção 5.2b): filtro de prefixo antes de tudo, conjunto fechado de comandos, `!teacher`/`!student`, `membros/`, `autor_id`, textos com o prefixo do espaço, `sim --grupo` | Grupo ativo com/sem prefixo (nada gravado, nenhum `sendSeen`), participante LID, mídia; cada comando; comando do privado recusado; `!` fora de atividade sem IA; ciclo "stall" com dois alunos no `sim --grupo` |
+| M17 | Revisão em grupo com menção em rodízio (ADR-0020, seção 5.2b): `send_text(mentions=)`, participantes do grupo, `domain/rodizio.py`, marcação por card, resposta do marcado vs. de outro, timeout no agendador (uma consulta por tick), `respostas/` | Rodízio (distribuição justa, professores excluídos, sem repetição seguida); resposta de não marcado sem nota; timeout com relógio controlado; menções no `FakeChannel`; rodada completa no `sim --grupo` |
 | M11 | Deploy contínuo via GitHub Actions (seção 10.9, ADR-0013): branch protection na `main` (PR + checks obrigatórios), job `deploy` automático no merge, autenticado por Workload Identity Federation | Push direto na `main` é bloqueado pelo GitHub; um PR com CI verde, ao ser mergeado, dispara o job `deploy` e o bot responde `/help` depois do smoke test |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.

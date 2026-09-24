@@ -23,7 +23,7 @@ from app.domain.models import (
 )
 from app.domain.state import Acao, Transicao, expirou, transicionar
 from app.flows import capture, commands, freeform, grupo, practice, review, song, synonyms
-from app.flows.base import FUSO_PADRAO, Autor, Deps, bloq
+from app.flows.base import FUSO_PADRAO, Autor, ConfigGrupo, Deps, bloq
 from app.flows.commands import Exportador, StatusDaSessao
 from app.flows.conversa import Conversa
 from app.repo.base import Banco
@@ -48,6 +48,7 @@ class Router:
         letras: LyricsProvider | None = None,
         prefixo_do_grupo: str = "!",
         eh_dono: Callable[[str], bool] = lambda _numero: False,
+        config_grupo: ConfigGrupo | None = None,
     ) -> None:
         self._banco = banco
         self._tutor = tutor
@@ -57,6 +58,7 @@ class Router:
         self._letras = letras
         self._prefixo_do_grupo = prefixo_do_grupo
         self._eh_dono = eh_dono
+        self._config_grupo = config_grupo or ConfigGrupo()
         self._nivel_padrao = nivel_padrao
         self._status_da_sessao = status_da_sessao
         self._exportador = exportador
@@ -82,6 +84,8 @@ class Router:
             letras=self._letras,
             grupo_prefixo=self._prefixo_do_grupo if chat_id.endswith("@g.us") else None,
             autor=autor,
+            chat_id=chat_id,
+            grupo_cfg=self._config_grupo,
         )
 
     async def responder_avulso(self, chat_id: str, texto: str) -> None:
@@ -220,4 +224,19 @@ class Router:
             if sessao.estado != Estado.IDLE:
                 return
             nova = await review.iniciar(d)
+            await bloq(d.repo.salvar_sessao, nova.model_copy(update={"atualizado_em": d.agora()}))
+
+    async def expirar_marcacao(self, chat_id: str, forcar: bool = False) -> None:
+        """M17: chamado pelo agendador quando a pessoa marcada numa revisão em grupo não respondeu
+        no prazo (`forcar` ignora o prazo, para o simulador). Sem revisão em andamento, ou já
+        respondida a tempo, não faz nada. Mesma trava do resto; não conta como fala do aluno."""
+        async with self._trava(chat_id):
+            d = self._deps(chat_id)
+            sessao = await bloq(d.repo.obter_sessao)
+            prazo = sessao.marcacao_expira_em
+            if Estado(sessao.estado) != Estado.REVIEWING or prazo is None:
+                return
+            if not forcar and prazo > d.agora():
+                return
+            nova = await review.sem_resposta(d, sessao)
             await bloq(d.repo.salvar_sessao, nova.model_copy(update={"atualizado_em": d.agora()}))

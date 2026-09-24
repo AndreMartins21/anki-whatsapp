@@ -179,3 +179,44 @@ def test_o_privado_do_dono_aceita_exclamacao_como_apelido_da_barra(ambiente: Amb
 
     ((chat, texto),) = ambiente.canal.textos_enviados
     assert chat == f"{DONO}@c.us" and texto == messages.SEM_ENTRADAS
+
+
+def test_review_pelo_webhook_marca_um_aluno_da_lista_do_waha_e_nunca_o_bot(
+    ambiente: Ambiente,
+) -> None:
+    ambiente.tutor.expansoes.append(expansoes())
+    bia = "5511977776666"
+    ambiente.canal.participantes_de_grupos[GRUPO_FIXO] = [
+        ANA,
+        bia,
+        "5531988887777",
+    ]  # o bot é o BOT_NUMBER
+    for participante, texto in [(ANA, "!add stall"), (ANA, "!3"), (ANA, "!review")]:
+        ambiente.cliente.post(
+            "/waha/webhook", json=_do_grupo(GRUPO_FIXO, f"{participante}@c.us", texto)
+        )
+
+    (chat, mencoes) = ambiente.canal.mencoes_enviadas[-1]
+    (marcado,) = mencoes
+    texto_do_card = ambiente.canal.textos_enviados[-1][1]
+    assert chat == GRUPO_FIXO and marcado in {ANA, bia}
+    assert f"@{marcado}, your turn" in texto_do_card
+    assert "5531988887777" not in texto_do_card
+
+
+def test_a_resposta_da_pessoa_marcada_pelo_webhook_avanca_o_card(ambiente: Ambiente) -> None:
+    from app.domain.models import Revisao
+
+    ambiente.tutor.expansoes.append(expansoes())
+    ambiente.tutor.revisoes.append(Revisao(tipo="definicao", qualidade="bom", feedback="Nice!"))
+    ambiente.canal.participantes_de_grupos[GRUPO_FIXO] = [ANA]
+    for texto in ("!add stall", "!3", "!review"):
+        ambiente.cliente.post("/waha/webhook", json=_do_grupo(GRUPO_FIXO, f"{ANA}@c.us", texto))
+
+    ambiente.cliente.post(
+        "/waha/webhook", json=_do_grupo(GRUPO_FIXO, f"{ANA}@c.us", "!it means to stop")
+    )
+
+    assert "Practice done" in ambiente.canal.textos_enviados[-1][1]
+    (resposta,) = ambiente.banco.do_espaco(GRUPO_FIXO).listar_respostas()
+    assert (resposta.autor_id, resposta.marcado) == (ANA, True)

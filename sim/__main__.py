@@ -6,7 +6,9 @@
 Com `--grupo` (M16), simula um grupo de turma com vários participantes: cada linha é
 `nome: mensagem` (ex.: `ana: !add stall`). Só as linhas que começam com o prefixo (`!`) chegam ao
 bot; as outras aparecem como ignoradas, como no WhatsApp real. O participante `dono` é o dono do
-bot (pode usar `!teacher`); `--professor NOME` cadastra professores de saída.
+bot (pode usar `!teacher`); `--professor NOME` cadastra professores de saída. Na revisão em
+grupo (`ana: !review`) o bot marca um aluno (`@ana`); `~timeout` força o prazo da marcação
+(o repasse, e depois o fechamento) sem esperar as 3 horas.
 
 Usa `ConsoleChannel` e `MemoryRepository` (nada é gravado; ao sair, tudo some), e o mesmo
 `Router` do bot. Sem `--real-llm`, as respostas de IA são fabricadas (`SimTutor`); com ele, usa o
@@ -29,7 +31,7 @@ from pathlib import Path
 from app.channel.console import ConsoleChannel
 from app.domain.models import Membro, NivelUsuario, agora_utc
 from app.flows import grupo as flows_grupo
-from app.flows.base import Autor
+from app.flows.base import Autor, ConfigGrupo
 from app.flows.conversa import Conversa
 from app.flows.router import Router
 from app.repo.memory import MemoryBanco
@@ -79,7 +81,10 @@ def numero_do_participante(nome: str) -> str:
 
 
 async def _conversar_no_grupo(
-    router: Router, entrada: Callable[[str], str], saida: Callable[[str], None]
+    router: Router,
+    entrada: Callable[[str], str],
+    saida: Callable[[str], None],
+    nomes: dict[str, str],
 ) -> None:
     saida(
         "Simulador do grupo — uma linha por mensagem: `nome: mensagem` (ex.: `ana: !add stall`).\n"
@@ -95,6 +100,9 @@ async def _conversar_no_grupo(
             return
         if not linha:
             continue
+        if linha.lower() in {"~timeout", "timeout"}:
+            await router.expirar_marcacao(GRUPO_DO_SIMULADOR, forcar=True)
+            continue
         nome, separador, texto = linha.partition(":")
         if not separador or not nome.strip() or not texto.strip():
             saida("  (use `nome: mensagem`)")
@@ -105,6 +113,7 @@ async def _conversar_no_grupo(
             saida("  (ignorado: sem prefixo, o bot não lê)")
             continue
         autor = Autor(numero_do_participante(nome), nome)
+        nomes[autor.numero] = nome
         await router.processar(texto, GRUPO_DO_SIMULADOR, autor)
 
 
@@ -148,7 +157,8 @@ def main(
             return 2
 
     banco = MemoryBanco()
-    canal = ConsoleChannel(saida, exports)
+    nomes: dict[str, str] = {}  # número -> nome dos participantes do grupo (para as menções)
+    canal = ConsoleChannel(saida, exports, nomes=nomes)
 
     def criar_conversa(chat_id: str) -> Conversa:
         if args.atraso:
@@ -166,6 +176,7 @@ def main(
         exportador=ExportadorExcel(ArmazenamentoLocal(exports)),
         letras=letras,
         prefixo_do_grupo=PREFIXO_DO_SIMULADOR,
+        config_grupo=ConfigGrupo(participantes=canal.group_participants),
         eh_dono=lambda numero: numero == numero_do_participante(NOME_DO_DONO),
     )
     if args.grupo:
@@ -175,7 +186,8 @@ def main(
                 numero_do_participante(nome),
                 Membro(papel="professor", nome=nome, entrou_em=agora_utc()),
             )
-        asyncio.run(_conversar_no_grupo(router, entrada, saida))
+            nomes[numero_do_participante(nome)] = nome
+        asyncio.run(_conversar_no_grupo(router, entrada, saida, nomes))
         return 0
     asyncio.run(_conversar(router, entrada, saida))
     return 0

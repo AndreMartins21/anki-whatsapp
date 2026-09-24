@@ -420,7 +420,23 @@ def hora_da_pratica(total: int) -> str:
     return f"⏰ *Practice time* — {total} {palavra} to review."
 
 
-def card_de_revisao(indice: int, total: int, palavra: str, *, grupo: str | None = None) -> str:
+def card_de_revisao(
+    indice: int,
+    total: int,
+    palavra: str,
+    *,
+    grupo: str | None = None,
+    marcado: str | None = None,
+) -> str:
+    """`marcado` (M17) é o número de quem responde este card no grupo: o texto leva `@numero` e
+    quem envia passa o número em `mentions`."""
+    if grupo is not None and marcado is not None:
+        return (
+            f"🔁 {indice}/{total} · *{palavra}*\n"
+            f"@{marcado}, your turn: explain it in English in your own words, or write a "
+            f"sentence using it (start with {grupo}).\n"
+            f"_Anyone can type {grupo}0 to leave the practice._"
+        )
     if grupo is not None:
         return (
             f"🔁 {indice}/{total} · *{palavra}*\n"
@@ -442,7 +458,7 @@ def feedback_de_revisao(rev: Revisao) -> str:
     return "\n".join(linhas)
 
 
-def revisao_encerrada(feitas: Sequence[str], lapsos: Sequence[str]) -> str:
+def revisao_encerrada(feitas: Sequence[str], lapsos: Sequence[str], *, p: str = "/") -> str:
     if not feitas:
         return SEM_NADA_PARA_REVISAR
     solidas = [palavra for palavra in feitas if palavra not in lapsos]
@@ -451,7 +467,10 @@ def revisao_encerrada(feitas: Sequence[str], lapsos: Sequence[str]) -> str:
         linhas.append(f"✅ Solid: {', '.join(solidas)}")
     if lapsos:
         linhas.append(f"🔁 Coming back soon: {', '.join(lapsos)}")
-    linhas.append("Send me a new word or expression whenever you want.")
+    if p == "/":
+        linhas.append("Send me a new word or expression whenever you want.")
+    else:  # no grupo, palavra nova entra só por !add
+        linhas.append(f"Add a new word whenever you want: {p}add word.")
     return "\n".join(linhas)
 
 
@@ -732,3 +751,39 @@ def grupo_perfil(
     else:
         linhas.append("👥 Nobody has used me here yet.")
     return "\n".join(linhas)
+
+
+# --- Revisão em grupo (M17, ADR-0020) ----------------------------------------------------------
+
+
+def grupo_sem_aluno(p: str = "!") -> str:
+    return (
+        "I couldn't find anyone to tag for a review. Teachers are never tagged, so I need at "
+        f"least one student in the group (they can say {p}help to make sure I know them)."
+    )
+
+
+def feedback_sem_nota(rev: Revisao) -> str:
+    """Resposta de quem NÃO é a pessoa marcada: feedback, mas o card e a nota não mudam."""
+    return (
+        "💬 Nice try — this one doesn't count, the card is for the person I tagged.\n"
+        + feedback_de_revisao(rev)
+    )
+
+
+def repasse(indice: int, total: int, palavra: str, marcado: str, p: str = "!") -> str:
+    return (
+        "⏰ No answer yet, so I'm passing this one on.\n"
+        f"🔁 {indice}/{total} · *{palavra}*\n"
+        f"@{marcado}, your turn: explain it in English or write a sentence using it "
+        f"(start with {p})."
+    )
+
+
+def revisao_sem_resposta(feitas: Sequence[str], lapsos: Sequence[str], *, p: str = "!") -> str:
+    """A rodada fechou porque ninguém respondeu a tempo."""
+    if not feitas:
+        return "😴 Nobody answered in time, so I closed this review. I'll be back later."
+    return "😴 Nobody answered in time, so I closed this review.\n" + revisao_encerrada(
+        feitas, lapsos, p=p
+    )

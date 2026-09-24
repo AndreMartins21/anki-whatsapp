@@ -109,6 +109,11 @@ class Banco(Protocol):
         ainda não foi calculado). Uma consulta só por tick do agendador, sem ler os demais."""
         ...
 
+    def listar_grupos_com_timeout(self, agora: datetime) -> list[str]:
+        """Grupos com uma revisão em andamento cuja marcação já passou do prazo (M17). Uma
+        consulta por tick do agendador, sem ler os demais grupos."""
+        ...
+
     def marcar_processada(self, message_id: str, agora: datetime) -> bool:
         """Deduplicação do webhook: `True` na primeira vez que vê o id, `False` depois."""
         ...

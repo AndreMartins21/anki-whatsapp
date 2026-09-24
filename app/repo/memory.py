@@ -9,7 +9,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.domain.models import Entry, Membro, Profile, Resposta, Sentence, Sessao, StatusEntrada
+from app.domain.models import (
+    Entry,
+    Estado,
+    Membro,
+    Profile,
+    Resposta,
+    Sentence,
+    Sessao,
+    StatusEntrada,
+)
 from app.repo.base import EntradaJaExiste, GrupoAtivo, Repository, proximo_tick
 
 
@@ -112,6 +121,17 @@ class MemoryBanco:
             perfil = repo.obter_perfil()
             tick = proximo_tick(perfil) if perfil else None
             if tick is not None and tick <= agora:
+                vencidos.append(espaco_id)
+        return vencidos
+
+    def listar_grupos_com_timeout(self, agora: datetime) -> list[str]:
+        vencidos: list[str] = []
+        for espaco_id, repo in self._espacos.items():
+            if not espaco_id.endswith("@g.us"):
+                continue
+            sessao = repo.obter_sessao()
+            prazo = sessao.marcacao_expira_em
+            if sessao.estado == Estado.REVIEWING and prazo is not None and prazo <= agora:
                 vencidos.append(espaco_id)
         return vencidos
 

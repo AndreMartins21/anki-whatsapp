@@ -260,3 +260,35 @@ def test_group_prefix_rejeita_barra_letra_numero_e_o_grande_demais(
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+# --- M17: revisão em grupo (ADR-0020) ----------------------------------------------------------
+
+
+def test_revisao_em_grupo_tem_padroes_e_e_configuravel(monkeypatch: pytest.MonkeyPatch) -> None:
+    _com_env(monkeypatch)
+    padrao = Settings(_env_file=None)
+    assert (padrao.limite_por_sessao_grupo, padrao.timeout_marcacao_horas) == (5, 3.0)
+
+    monkeypatch.setenv("LIMITE_POR_SESSAO_GRUPO", "8")
+    monkeypatch.setenv("TIMEOUT_MARCACAO_HORAS", "0.5")
+    ajustado = Settings(_env_file=None)
+
+    assert (ajustado.limite_por_sessao_grupo, ajustado.timeout_marcacao_horas) == (8, 0.5)
+
+
+@pytest.mark.parametrize(
+    ("campo", "valor"),
+    [
+        ("LIMITE_POR_SESSAO_GRUPO", "0"),
+        ("TIMEOUT_MARCACAO_HORAS", "0"),
+        ("TIMEOUT_MARCACAO_HORAS", "-1"),
+    ],
+)
+def test_revisao_em_grupo_rejeita_valores_sem_sentido(
+    monkeypatch: pytest.MonkeyPatch, campo: str, valor: str
+) -> None:
+    _com_env(monkeypatch, **{campo: valor})
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

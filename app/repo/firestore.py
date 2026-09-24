@@ -22,7 +22,16 @@ from google.api_core.exceptions import AlreadyExists
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from app.domain.models import Entry, Membro, Profile, Resposta, Sentence, Sessao, StatusEntrada
+from app.domain.models import (
+    Entry,
+    Estado,
+    Membro,
+    Profile,
+    Resposta,
+    Sentence,
+    Sessao,
+    StatusEntrada,
+)
 from app.repo.base import (
     PROCESSED_TTL,
     EntradaJaExiste,
@@ -64,6 +73,14 @@ class FirestoreRepository:
 
     def salvar_sessao(self, sessao: Sessao) -> None:
         self._raiz.collection("session").document("current").set(sessao.model_dump())
+        if self._espaco is not None and tipo_do_espaco(self._espaco.id) == "grupo":
+            # Espelha o prazo da marcação (M17) para o agendador achar as vencidas com uma
+            # consulta só, sem ler os demais grupos.
+            prazo = sessao.marcacao_expira_em if sessao.estado == Estado.REVIEWING else None
+            self._espaco.set(
+                {"timeout_em": prazo if prazo is not None else firestore.DELETE_FIELD},
+                merge=True,
+            )
 
     def obter_entrada(self, slug: str) -> Entry | None:
         dados = self._raiz.collection("entries").document(slug).get().to_dict()
@@ -159,6 +176,12 @@ class FirestoreBanco:
     def listar_espacos_com_lembrete(self, agora: datetime) -> list[str]:
         consulta = self._db.collection("espacos").where(
             filter=FieldFilter("proximo_tick", "<=", agora)
+        )
+        return [d.id for d in consulta.stream()]
+
+    def listar_grupos_com_timeout(self, agora: datetime) -> list[str]:
+        consulta = self._db.collection("espacos").where(
+            filter=FieldFilter("timeout_em", "<=", agora)
         )
         return [d.id for d in consulta.stream()]
 

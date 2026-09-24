@@ -117,8 +117,10 @@ adicioná-lo.
 
 **Dentro do grupo (M16, ADR-0019):** o bot só lê mensagens que começam com `!` (`GROUP_PREFIX`); o
 resto é a conversa da turma e ele não lê nem grava. `!add palavra`, `!list`, `!practice`, `!review`,
-`!reminder 3`, `!group` e `!help`; durante a prática, `!1`, `!2`, `!3` ou `!` + a frase. Testar sem
-WhatsApp: `make sim ARGS=--grupo` (linhas `ana: !add stall`).
+`!reminder 3`, `!group` e `!help`; durante a prática, `!1`, `!2`, `!3` ou `!` + a frase. A revisão em grupo (M17, ADR-0020)
+marca **um aluno por card**, em rodízio, com menção real; só a resposta de quem foi marcado vale a nota, e
+sem resposta em 3 h o card passa ao próximo aluno (depois fecha). Testar sem WhatsApp:
+`make sim ARGS=--grupo` (linhas `ana: !add stall`; `~timeout` força o prazo).
 
 **Migrar o caderno de um usuário só** (roda **na sua máquina**, com `gcloud auth application-default
 login`, não na VM). A ordem importa, porque o merge faz o deploy e o bot antigo continua gravando na

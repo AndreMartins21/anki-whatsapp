@@ -3,6 +3,7 @@ respostas de IA do ciclo "stall" (M9: interface em inglês, menu único)."""
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -13,7 +14,8 @@ from app.domain.models import (
     Explanation,
     Sense,
 )
-from app.flows.base import Autor
+from app.domain.rodizio import Candidato
+from app.flows.base import Autor, ConfigGrupo, Participantes
 from app.flows.commands import Exportador, StatusDaSessao
 from app.flows.conversa import Conversa
 from app.flows.router import Router
@@ -121,6 +123,11 @@ def montar(
     status_da_sessao: StatusDaSessao | None = None,
     letras: LyricsProvider | None = None,
     prefixo_do_grupo: str = "!",
+    grupo_limite: int = 5,
+    grupo_timeout: timedelta = timedelta(hours=3),
+    numero_do_bot: str | None = None,
+    sortear: Callable[[Sequence[Candidato]], Candidato] | None = None,
+    participantes: Participantes | None = None,
 ) -> Montagem:
     channel = FakeChannel()
     banco = MemoryBanco()
@@ -145,6 +152,13 @@ def montar(
         letras=letras,
         prefixo_do_grupo=prefixo_do_grupo,
         eh_dono=lambda numero: numero == DONO_NUMERO,
+        config_grupo=ConfigGrupo(
+            limite=grupo_limite,
+            timeout=grupo_timeout,
+            participantes=participantes or channel.group_participants,
+            numero_do_bot=numero_do_bot,
+            **({"sortear": sortear} if sortear else {}),
+        ),
     )
     return Montagem(
         router,
