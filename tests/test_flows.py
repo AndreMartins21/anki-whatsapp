@@ -351,7 +351,7 @@ async def test_falha_no_digitando_nao_derruba_a_resposta() -> None:
 async def test_midia_responde_que_so_entende_texto() -> None:
     m = montar()
 
-    await m.router.midia_nao_suportada()
+    await m.router.midia_nao_suportada(CHAT)
 
     assert "only read *text*" in m.channel.textos_enviados[0][1]
 
@@ -365,13 +365,16 @@ async def test_o_nivel_do_perfil_vai_para_a_ia() -> None:
     assert m.tutor.chamadas[0] == ("explain", ("stall", "A2-B1"))
 
 
-async def test_destino_pode_mudar_por_mensagem() -> None:
+async def test_a_resposta_vai_para_o_chat_de_quem_escreveu() -> None:
     m = montar()
 
-    await m.router.processar("/ajuda", destino="553199998888@c.us")
-    await m.router.processar("/ajuda")  # sem destino: continua no último
+    await m.router.processar("/ajuda", "553199998888@c.us")
+    await m.router.processar("/ajuda", "5511988887777@c.us")
 
-    assert [chat for chat, _ in m.channel.textos_enviados] == ["553199998888@c.us"] * 2
+    assert [chat for chat, _ in m.channel.textos_enviados] == [
+        "553199998888@c.us",
+        "5511988887777@c.us",
+    ]
 
 
 async def test_sinonimos_ficam_salvos_na_entrada_sem_duplicar() -> None:

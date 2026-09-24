@@ -187,3 +187,112 @@ async def test_send_file_nao_tenta_de_novo_para_nao_duplicar_o_arquivo() -> None
     await canal.aclose()
 
     assert chamadas == 1
+
+
+async def test_leave_group_usa_o_endpoint_de_sair_do_grupo() -> None:
+    vistos: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        vistos.append((request.method, request.url.path))
+        return httpx.Response(200, json={})
+
+    canal = _canal(httpx.MockTransport(handler))
+    await canal.leave_group("120363000000000000@g.us")
+    await canal.aclose()
+
+    assert vistos == [("POST", "/api/default/groups/120363000000000000@g.us/leave")]
+
+
+async def test_group_name_le_o_assunto_do_grupo() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/api/default/groups/120363000000000000@g.us"
+        return httpx.Response(200, json={"id": "120363000000000000@g.us", "subject": "Turma A"})
+
+    canal = _canal(httpx.MockTransport(handler))
+    nome = await canal.group_name("120363000000000000@g.us")
+    await canal.aclose()
+
+    assert nome == "Turma A"
+
+
+async def test_group_name_devolve_none_quando_falha_ou_nao_ha_assunto() -> None:
+    respostas = iter([httpx.Response(404, json={}), httpx.Response(200, json={"id": "x@g.us"})])
+
+    canal = _canal(httpx.MockTransport(lambda _: next(respostas)))
+
+    assert await canal.group_name("1@g.us") is None  # o nome é só um enfeite: nunca levanta
+    assert await canal.group_name("2@g.us") is None
+    await canal.aclose()
+
+
+# --- M17: menções e participantes de grupo ----------------------------------------------------
+
+
+async def test_send_text_com_mencoes_manda_os_ids_e_o_texto_leva_o_arroba() -> None:
+    corpos: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        corpos.append(json.loads(request.content))
+        return httpx.Response(200, json={"id": "abc"})
+
+    canal = _canal(httpx.MockTransport(handler))
+    await canal.send_text(
+        "120363000000000001@g.us", "@5531999998888 your turn", mentions=["5531999998888"]
+    )
+    await canal.aclose()
+
+    assert corpos == [
+        {
+            "session": "default",
+            "chatId": "120363000000000001@g.us",
+            "text": "@5531999998888 your turn",
+            "mentions": ["5531999998888@c.us"],  # o formato que a doc do WAHA mostra
+        }
+    ]
+
+
+async def test_send_text_sem_mencoes_nao_manda_o_campo() -> None:
+    corpos: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        corpos.append(json.loads(request.content))
+        return httpx.Response(200, json={})
+
+    canal = _canal(httpx.MockTransport(handler))
+    await canal.send_text("5531999998888@c.us", "oi", mentions=[])
+    await canal.aclose()
+
+    assert "mentions" not in corpos[0]
+
+
+async def test_group_participants_devolve_os_numeros_e_resolve_lids() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/default/groups/120363000000000001@g.us/participants/v2":
+            return httpx.Response(
+                200,
+                json=[
+                    {"id": "5531999998888@c.us", "role": "admin"},
+                    {"id": "257161284317237@lid", "role": "participant"},
+                    {"id": "999@lid", "role": "participant"},  # sem telefone conhecido
+                ],
+            )
+        if request.url.path == "/api/default/lids/257161284317237":
+            return httpx.Response(200, json={"pn": "5511988887777@c.us"})
+        return httpx.Response(200, json={"pn": None})
+
+    canal = _canal(httpx.MockTransport(handler))
+    numeros = await canal.group_participants("120363000000000001@g.us")
+    await canal.aclose()
+
+    assert numeros == ["5531999998888", "5511988887777"]  # o LID sem número é descartado
+
+
+async def test_group_participants_levanta_quando_o_waha_falha_para_o_chamador_usar_o_cache() -> (
+    None
+):
+    canal = _canal(httpx.MockTransport(lambda _: httpx.Response(404, json={})))
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await canal.group_participants("120363000000000001@g.us")
+    await canal.aclose()

@@ -37,6 +37,10 @@ async def rotear(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Sessao
         case "salvar":
             return await practice.concluir(d, sessao, perfil)
         case "nova_palavra":
+            if d.em_grupo:
+                # M16: no grupo toda palavra nova entra por `!add`; aqui nada é aberto nem salvo.
+                await d.conversa.enviar(messages.nova_palavra_no_grupo(d.p))
+                return sessao
             await practice.concluir(d, sessao, perfil)
             return await capture.explicar(d, perfil, roteamento.palavra)
         case "pedido" | "fora_do_escopo":
@@ -45,6 +49,7 @@ async def rotear(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Sessao
                     roteamento.resposta,
                     entrada.palavra,
                     ja_viu_sinonimos=bool(sessao.sinonimos_mostrados),
+                    grupo=d.grupo_prefixo,
                 )
             )
             return sessao

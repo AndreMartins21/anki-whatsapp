@@ -100,6 +100,40 @@ Notas de operação:
   (Gemini de verdade, com `gcloud auth application-default login`); `make evals` mede a avaliação
   de frases; `make test-emulador` roda o contrato do `Repository` contra o emulador do Firestore.
 
+## Vários alunos (M14, ADR-0017)
+
+Cada número em `ALLOWED_NUMBERS` (mais o `ALLOWED_NUMBER`, que continua valendo e é o dono) conversa
+com o bot no privado e tem o próprio caderno: palavras, sessão, perfil e lembretes ficam em
+`espacos/{chat}` no Firestore, e um aluno nunca vê os dados de outro. `ALLOWED_GROUPS` autoriza
+grupos fixos. **Quem não está na lista** recebe só um aviso ("você não tem um plano", com o e-mail de
+`CONTACT_EMAIL`), no máximo uma vez por semana, e a IA nunca é chamada para essa pessoa.
+
+**Grupos (M15, ADR-0018):** o bot só trabalha num grupo depois que um **admin** (o dono ou alguém em
+`/admin add NUMERO`, comando só do dono, no privado) escrever `!activate` nele; `MAX_GROUPS` limita
+quantos. Um grupo em que o bot foi adicionado e ninguém ativou fica em silêncio, e o bot **sai dele
+depois de 24 h**. `/groups` (dono e admins, no privado) lista os grupos e `/groups off N` desativa um.
+No celular do bot, configure Privacidade → Grupos → "Meus contatos", para só quem o salvou poder
+adicioná-lo.
+
+**Dentro do grupo (M16, ADR-0019):** o bot só lê mensagens que começam com `!` (`GROUP_PREFIX`); o
+resto é a conversa da turma e ele não lê nem grava. `!add palavra`, `!list`, `!practice`, `!review`,
+`!reminder 3`, `!group` e `!help`; durante a prática, `!1`, `!2`, `!3` ou `!` + a frase. A revisão em grupo (M17, ADR-0020)
+marca **um aluno por card**, em rodízio, com menção real; só a resposta de quem foi marcado vale a nota, e
+sem resposta em 3 h o card passa ao próximo aluno (depois fecha). Testar sem WhatsApp:
+`make sim ARGS=--grupo` (linhas `ana: !add stall`; `~timeout` força o prazo).
+
+**Migrar o caderno de um usuário só** (roda **na sua máquina**, com `gcloud auth application-default
+login`, não na VM). A ordem importa, porque o merge faz o deploy e o bot antigo continua gravando na
+raiz até lá:
+
+```bash
+python -m scripts.migrar_multiusuario --projeto ID            # dry run: só mostra o que copiaria
+python -m scripts.migrar_multiusuario --projeto ID --executar # copia de verdade (idempotente)
+# merge do PR (deploy) e smoke test; depois, de novo, para trazer o que o bot antigo gravou:
+python -m scripts.migrar_multiusuario --projeto ID --executar
+python -m scripts.migrar_multiusuario --projeto ID --limpar-origem  # só com a cópia completa
+```
+
 ## Deploy contínuo (M11, ADR-0013)
 
 Depois do `infra/setup.sh` inicial, `infra/deploy.sh` também roda sozinho: todo merge na `main`
@@ -113,7 +147,7 @@ bash infra/setup_cicd.sh             # WIF pool/provider + conta de serviço voc
 ```
 
 O próprio script imprime, no fim, o que configurar no GitHub (Settings → Secrets and variables →
-Actions: `ALLOWED_NUMBER`/`BOT_NUMBER` como Secrets, o resto como Variables) e lembra de ativar a
+Actions: `ALLOWED_NUMBER`/`BOT_NUMBER` e, opcionais, `ALLOWED_NUMBERS`/`ALLOWED_GROUPS`/`OWNER_NUMBER` como Secrets, o resto como Variables) e lembra de ativar a
 branch protection da `main`.
 
 ## Segurança

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+from collections.abc import Sequence
 
 import httpx
 from pydantic import SecretStr
@@ -48,10 +49,15 @@ class WahaChannel:
     async def aclose(self) -> None:
         await self._cliente.aclose()
 
-    async def send_text(self, chat_id: str, text: str) -> None:
-        await self._post(
-            "/api/sendText", {"session": self._session, "chatId": chat_id, "text": text}
-        )
+    async def send_text(
+        self, chat_id: str, text: str, mentions: Sequence[str] | None = None
+    ) -> None:
+        """Com `mentions`, manda `"mentions": ["NUMERO@c.us"]` (o formato da doc do WAHA; o texto
+        precisa conter `@NUMERO`)."""
+        corpo: dict[str, object] = {"session": self._session, "chatId": chat_id, "text": text}
+        if mentions:
+            corpo["mentions"] = [f"{numero}@c.us" for numero in mentions]
+        await self._post("/api/sendText", corpo)
 
     async def send_file(
         self, chat_id: str, nome: str, conteudo: bytes, tipo: str, legenda: str = ""
@@ -82,6 +88,37 @@ class WahaChannel:
     async def typing(self, chat_id: str, on: bool) -> None:
         endpoint = "/api/startTyping" if on else "/api/stopTyping"
         await self._post(endpoint, {"session": self._session, "chatId": chat_id})
+
+    async def leave_group(self, chat_id: str) -> None:
+        """`POST /api/{session}/groups/{id}/leave` (GOWS suporta, conferido na doc)."""
+        await self._post(f"/api/{self._session}/groups/{chat_id}/leave", {})
+
+    async def group_participants(self, chat_id: str) -> list[str]:
+        """`GET /api/{session}/groups/{id}/participants/v2` -> [{"id": "...@c.us|@lid", "role"}].
+        LIDs viram número pelo endpoint de LIDs; os que ele não resolve ficam de fora."""
+        resposta = await self._get(f"/api/{self._session}/groups/{chat_id}/participants/v2")
+        numeros: list[str] = []
+        for participante in resposta.json():
+            identificador = str(participante["id"])
+            numero = (
+                await self.resolve_lid(identificador)
+                if identificador.endswith("@lid")
+                else identificador.split("@", 1)[0]
+            )
+            if numero:
+                numeros.append(numero)
+        return numeros
+
+    async def group_name(self, chat_id: str) -> str | None:
+        """`GET /api/{session}/groups/{id}`: o campo `subject`. O nome é um enfeite, então uma
+        falha (rede, 404, campo ausente) vira `None` em vez de derrubar quem chamou."""
+        try:
+            resposta = await self._get(f"/api/{self._session}/groups/{chat_id}")
+            assunto = resposta.json().get("subject")
+        except Exception:
+            logger.warning("não consegui ler o nome do grupo", exc_info=True)
+            return None
+        return str(assunto) if assunto else None
 
     async def session_status(self) -> str:
         resposta = await self._get(f"/api/sessions/{self._session}")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol
 
 
@@ -9,7 +10,12 @@ class Channel(Protocol):
     """Enviar texto e arquivo, marcar como lido, digitando. Implementações: WahaChannel, ConsoleChannel,
     FakeChannel — trocável no futuro por Cloud API ou Telegram sem tocar na lógica de negócio."""
 
-    async def send_text(self, chat_id: str, text: str) -> None: ...
+    async def send_text(
+        self, chat_id: str, text: str, mentions: Sequence[str] | None = None
+    ) -> None:
+        """`mentions`: números (só dígitos) a marcar num grupo. O `text` precisa conter `@numero`
+        de cada um (o WhatsApp mostra o nome no lugar)."""
+        ...
 
     async def send_file(
         self, chat_id: str, nome: str, conteudo: bytes, tipo: str, legenda: str = ""
@@ -20,6 +26,20 @@ class Channel(Protocol):
     async def send_seen(self, chat_id: str) -> None: ...
 
     async def typing(self, chat_id: str, on: bool) -> None: ...
+
+    async def leave_group(self, chat_id: str) -> None:
+        """Sai de um grupo (M15: o bot não fica em grupo que nenhum admin ativou)."""
+        ...
+
+    async def group_participants(self, chat_id: str) -> list[str]:
+        """Números (só dígitos) de quem está no grupo. Levanta se o canal falhar: quem chama cai
+        no cadastro de membros."""
+        ...
+
+    async def group_name(self, chat_id: str) -> str | None:
+        """O assunto do grupo, só para o dono reconhecê-lo em `/groups`. Nunca levanta: sem nome,
+        `None`."""
+        ...
 
 
 class ChannelComLid(Channel, Protocol):

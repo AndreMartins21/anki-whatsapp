@@ -13,17 +13,19 @@ from typing import Any, cast
 import pytest
 from fastapi.testclient import TestClient
 
+from app import messages
 from app.channel.fake import FakeChannel
 from app.config import Settings
 from app.flows.conversa import Conversa
 from app.flows.router import Router
-from app.main import app, get_channel, get_repository, get_router, get_settings
-from app.repo.memory import MemoryRepository
+from app.main import app, get_banco, get_channel, get_router, get_settings
+from app.repo.memory import MemoryBanco
 from app.services.fake_llm import FakeTutor
 from tests.helpers import explicacao_stall
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CHAT_ALLOWED = "5531999998888@c.us"
+CHAT_OUTRO_ALUNO = "5521977776666@c.us"
 
 
 async def _sem_espera(_: float) -> None:
@@ -46,6 +48,8 @@ def cliente(fake_channel: FakeChannel) -> Iterator[TestClient]:
     settings = Settings(
         _env_file=None,
         ALLOWED_NUMBER="5531999998888",
+        ALLOWED_NUMBERS="5521977776666",
+        ALLOWED_GROUPS="120363000000000099@g.us",
         BOT_NUMBER="5531988887777",
         WAHA_API_KEY="fake-local-key",
         GCP_PROJECT_ID="meu-projeto-local",
@@ -53,14 +57,16 @@ def cliente(fake_channel: FakeChannel) -> Iterator[TestClient]:
     )
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_channel] = lambda: fake_channel
-    repo = MemoryRepository()
+    banco = MemoryBanco()
     router = Router(
-        repo=repo,
+        banco=banco,
         tutor=FakeTutor(explicacoes=[explicacao_stall(), explicacao_stall()]),
-        conversa=Conversa(fake_channel, CHAT_ALLOWED, dormir=_sem_espera, atraso=lambda: 0.0),
+        criar_conversa=lambda chat_id: Conversa(
+            fake_channel, chat_id, dormir=_sem_espera, atraso=lambda: 0.0
+        ),
         nivel_padrao="B1-B2",
     )
-    app.dependency_overrides[get_repository] = lambda: repo
+    app.dependency_overrides[get_banco] = lambda: banco
     app.dependency_overrides[get_router] = lambda: router
     try:
         yield TestClient(app)
@@ -109,12 +115,16 @@ def test_midia_responde_que_so_entende_texto(
     assert "text" in texto.lower()
 
 
-def test_numero_nao_autorizado_e_ignorado(cliente: TestClient, fake_channel: FakeChannel) -> None:
+def test_numero_sem_plano_recebe_so_o_aviso_e_nada_e_processado(
+    cliente: TestClient, fake_channel: FakeChannel
+) -> None:
     resposta = cliente.post("/waha/webhook", json=_fixture("numero_nao_autorizado"))
 
     assert resposta.status_code == 200
     assert fake_channel.vistos == []
-    assert fake_channel.textos_enviados == []
+    ((chat, texto),) = fake_channel.textos_enviados
+    assert chat == "5511888887777@c.us"
+    assert "You don't have a plan" in texto
 
 
 def test_lid_resolvido_para_numero_permitido_e_processado(
@@ -268,3 +278,56 @@ def test_health_continua_respondendo_sem_dependencias(cliente: TestClient) -> No
 
     assert resposta.status_code == 200
     assert resposta.json() == {"ok": True}
+
+
+# --- M14: vários alunos, grupo não autorizado, aviso de erro só para quem escreveu -------------
+
+
+def _de_outro_aluno(nome: str = "texto") -> dict[str, Any]:
+    evento = _fixture(nome)
+    evento["payload"]["id"] = "true_5521977776666@c.us_OUTRO0001"
+    evento["payload"]["from"] = CHAT_OUTRO_ALUNO
+    return evento
+
+
+def test_segundo_aluno_da_lista_e_atendido_no_proprio_chat(
+    cliente: TestClient, fake_channel: FakeChannel
+) -> None:
+    resposta = cliente.post("/waha/webhook", json=_de_outro_aluno())
+
+    assert resposta.status_code == 200
+    assert fake_channel.vistos == [CHAT_OUTRO_ALUNO]
+    assert [chat for chat, _ in fake_channel.textos_enviados] == [CHAT_OUTRO_ALUNO]
+
+
+def test_grupo_nao_autorizado_tem_o_id_logado_uma_vez_por_processo(
+    cliente: TestClient, fake_channel: FakeChannel, caplog: pytest.LogCaptureFixture
+) -> None:
+    from app import main
+
+    main._GRUPOS_JA_LOGADOS.clear()
+    segunda = _fixture("grupo")
+    segunda["payload"]["id"] = "true_120363000000000000@g.us_GRUPO0002"
+
+    with caplog.at_level(logging.INFO):
+        cliente.post("/waha/webhook", json=_fixture("grupo"))
+        cliente.post("/waha/webhook", json=segunda)
+
+    avisos = [r.message for r in caplog.records if "120363000000000000@g.us" in r.message]
+    assert len(avisos) == 1
+    assert fake_channel.vistos == [] and fake_channel.textos_enviados == []
+    assert not any("mensagem de um grupo" in r.message for r in caplog.records)  # nunca o conteúdo
+
+
+def test_falha_ao_processar_avisa_so_o_chat_de_quem_escreveu(
+    cliente: TestClient, fake_channel: FakeChannel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def quebra(chat_id: str) -> None:
+        raise RuntimeError("falha simulada no send_seen")
+
+    monkeypatch.setattr(fake_channel, "send_seen", quebra)
+
+    resposta = cliente.post("/waha/webhook", json=_de_outro_aluno())
+
+    assert resposta.status_code == 200
+    assert fake_channel.textos_enviados == [(CHAT_OUTRO_ALUNO, messages.ERRO_INESPERADO)]

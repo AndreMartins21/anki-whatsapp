@@ -32,7 +32,7 @@ def _agendador(m: Montagem) -> Agendador:
     async def dormir(_: float) -> None:
         return None
 
-    return Agendador(router=m.router, repo=m.repo, agora=m.relogio.agora, fuso=UTC, dormir=dormir)
+    return Agendador(router=m.router, banco=m.banco, agora=m.relogio.agora, fuso=UTC, dormir=dormir)
 
 
 async def test_tick_nao_dispara_com_lembretes_desligados() -> None:

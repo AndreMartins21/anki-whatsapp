@@ -7,6 +7,7 @@ lógica de negócio (fora de `channel/`) nunca deve depender destes tipos direta
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -28,6 +29,26 @@ class MessagePayload(BaseModel):
     to: str | None = None
     body: str = ""
     has_media: bool = Field(default=False, alias="hasMedia")
+    # Em grupo, quem escreveu (o `from` é o grupo). Formato confirmado na doc do WAHA; se vem como
+    # @c.us ou @lid no GOWS só se vê no WhatsApp real (ver docs/noite/PENDENCIAS.md).
+    participant: str | None = None
+    # O WAHA não documenta o nome de quem escreveu nem os ids mencionados no payload de um grupo:
+    # lemos o que der (vários formatos, ver `nome_do_remetente`) e o resto vira `None`/vazio.
+    data: dict[str, Any] = Field(default_factory=dict, alias="_data")
+    mentioned_ids: list[str] = Field(default_factory=list, alias="mentionedIds")
+    notify_name: str | None = Field(default=None, alias="notifyName")
+
+    def nome_do_remetente(self) -> str | None:
+        """O nome que o WhatsApp informa (o "push name"), nunca o telefone. `None` se o payload
+        não trouxer nenhum dos formatos conhecidos (GOWS: `_data.Info.PushName`)."""
+        info = self.data.get("Info")
+        candidatos = [
+            self.notify_name,
+            self.data.get("pushName"),
+            self.data.get("notifyName"),
+            info.get("PushName") if isinstance(info, dict) else None,
+        ]
+        return next((c.strip() for c in candidatos if isinstance(c, str) and c.strip()), None)
 
     @field_validator("body", mode="before")
     @classmethod
@@ -39,6 +60,28 @@ class MessageEvent(BaseModel):
     event: Literal["message"]
     session: str
     payload: MessagePayload
+
+
+class GrupoDoEvento(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    subject: str | None = None
+
+
+class GroupJoinPayload(BaseModel):
+    """`group.v2.join`: o bot entrou (ou foi adicionado) num grupo. O payload não diz QUEM
+    adicionou (confirmado na doc do WAHA), então nada aqui autoriza o grupo."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    group: GrupoDoEvento
+
+
+class GroupJoinEvent(BaseModel):
+    event: Literal["group.v2.join"]
+    session: str
+    payload: GroupJoinPayload
 
 
 class SessionStatusPayload(BaseModel):
@@ -54,13 +97,17 @@ class SessionStatusEvent(BaseModel):
     payload: SessionStatusPayload
 
 
-def parse_evento(bruto: dict[str, Any]) -> MessageEvent | SessionStatusEvent | None:
+def parse_evento(
+    bruto: dict[str, Any],
+) -> MessageEvent | SessionStatusEvent | GroupJoinEvent | None:
     """Interpreta o corpo do webhook. `None` para eventos que não assinamos (seção 8.1)."""
     tipo = bruto.get("event")
     if tipo == "message":
         return MessageEvent.model_validate(bruto)
     if tipo == "session.status":
         return SessionStatusEvent.model_validate(bruto)
+    if tipo == "group.v2.join":
+        return GroupJoinEvent.model_validate(bruto)
     return None
 
 
@@ -95,3 +142,8 @@ def numero_e_permitido(numero_resolvido: str, allowed_number: str) -> bool:
         _variantes_com_e_sem_nono_digito(numero_resolvido)
         & _variantes_com_e_sem_nono_digito(allowed_number)
     )
+
+
+def numero_esta_na_lista(numero_resolvido: str, permitidos: Iterable[str]) -> bool:
+    """A allowlist do M14 (ADR-0017): o número bate com algum dos permitidos (nono dígito à parte)."""
+    return any(numero_e_permitido(numero_resolvido, permitido) for permitido in permitidos)

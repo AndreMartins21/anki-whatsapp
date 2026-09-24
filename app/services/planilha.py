@@ -199,19 +199,17 @@ class ExportadorExcel:
 
     def __init__(
         self,
-        repo: Repository,
         armazenamento: Armazenamento,
         agora: Callable[[], datetime] = agora_utc,
     ) -> None:
-        self._repo = repo
         self._armazenamento = armazenamento
         self._agora = agora
 
-    def exportar(self) -> ResultadoExportacao | None:
-        entradas = self._repo.listar_entradas()
+    def exportar(self, repo: Repository) -> ResultadoExportacao | None:
+        entradas = repo.listar_entradas()
         if not entradas:
             return None
-        conteudo = gerar_planilha([(e, self._repo.listar_frases(e.slug)) for e in entradas])
+        conteudo = gerar_planilha([(e, repo.listar_frases(e.slug)) for e in entradas])
         nome = f"exports/vocabot_{self._agora():%Y-%m-%d_%H%M}.xlsx"
         return ResultadoExportacao(
             nome=nome,

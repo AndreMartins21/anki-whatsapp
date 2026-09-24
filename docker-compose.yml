@@ -30,7 +30,7 @@ services:
       WHATSAPP_SWAGGER_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:?defina WAHA_DASHBOARD_PASSWORD}
       # Webhook pela rede interna do compose, só com os dois eventos que o bot usa.
       WHATSAPP_HOOK_URL: http://bot:8000/waha/webhook
-      WHATSAPP_HOOK_EVENTS: message,session.status
+      WHATSAPP_HOOK_EVENTS: message,session.status,group.v2.join
       WHATSAPP_HOOK_HMAC_KEY: ${WAHA_HOOK_HMAC_KEY:-}
       WAHA_LOG_FORMAT: JSON
     depends_on:

@@ -16,14 +16,16 @@ import pytest
 from app.domain.models import (
     Entry,
     Estado,
+    Membro,
     Profile,
+    Resposta,
     Sentence,
     SentidoSalvo,
     Sessao,
     Synonym,
 )
-from app.repo.base import EntradaJaExiste, Repository, resolver_slug
-from app.repo.memory import MemoryRepository
+from app.repo.base import Banco, EntradaJaExiste, Repository, resolver_slug
+from app.repo.memory import MemoryBanco
 
 T0 = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
 PROJETO_TESTE = "vocabot-teste"
@@ -50,10 +52,15 @@ def _entrada(
     )
 
 
+ALUNO_A = "5531999998888@c.us"
+ALUNO_B = "5511988887777@c.us"
+GRUPO = "120363000000000000@g.us"
+
+
 @pytest.fixture(params=["memory", "firestore"])
-def repo(request: pytest.FixtureRequest) -> Iterator[Repository]:
+def banco(request: pytest.FixtureRequest) -> Iterator[Banco]:
     if request.param == "memory":
-        yield MemoryRepository()
+        yield MemoryBanco()
         return
 
     host = os.environ.get("FIRESTORE_EMULATOR_HOST")
@@ -62,12 +69,18 @@ def repo(request: pytest.FixtureRequest) -> Iterator[Repository]:
 
     from google.cloud import firestore
 
-    from app.repo.firestore import FirestoreRepository
+    from app.repo.firestore import FirestoreBanco
 
     limpar = f"http://{host}/emulator/v1/projects/{PROJETO_TESTE}/databases/(default)/documents"
     httpx.delete(limpar)
-    yield FirestoreRepository(firestore.Client(project=PROJETO_TESTE))
+    yield FirestoreBanco(firestore.Client(project=PROJETO_TESTE))
     httpx.delete(limpar)
+
+
+@pytest.fixture
+def repo(banco: Banco) -> Repository:
+    """O caderno de um espaço (o do primeiro aluno): os testes de contrato antigos usam este."""
+    return banco.do_espaco(ALUNO_A)
 
 
 def test_perfil_ausente_e_none_e_depois_persiste(repo: Repository) -> None:
@@ -225,18 +238,18 @@ def test_apagar_entrada_remove_tambem_as_frases(repo: Repository) -> None:
     assert repo.apagar_entrada("stall") is False
 
 
-def test_mensagem_so_e_marcada_como_processada_uma_vez(repo: Repository) -> None:
-    assert repo.marcar_processada("true_5531@c.us_ABC", T0) is True
-    assert repo.marcar_processada("true_5531@c.us_ABC", T0) is False
-    assert repo.marcar_processada("true_5531@c.us_OUTRA", T0) is True
+def test_mensagem_so_e_marcada_como_processada_uma_vez(banco: Banco) -> None:
+    assert banco.marcar_processada("true_5531@c.us_ABC", T0) is True
+    assert banco.marcar_processada("true_5531@c.us_ABC", T0) is False
+    assert banco.marcar_processada("true_5531@c.us_OUTRA", T0) is True
 
 
-def test_cache_de_lid(repo: Repository) -> None:
-    assert repo.obter_numero_do_lid("257161284317237@lid") is None
+def test_cache_de_lid(banco: Banco) -> None:
+    assert banco.obter_numero_do_lid("257161284317237@lid") is None
 
-    repo.salvar_numero_do_lid("257161284317237@lid", "5531999998888")
+    banco.salvar_numero_do_lid("257161284317237@lid", "5531999998888")
 
-    assert repo.obter_numero_do_lid("257161284317237@lid") == "5531999998888"
+    assert banco.obter_numero_do_lid("257161284317237@lid") == "5531999998888"
 
 
 def test_resolver_slug_usa_a_palavra_quando_esta_livre(repo: Repository) -> None:
@@ -266,3 +279,345 @@ def test_resolver_slug_sufixa_quando_o_sentido_e_outro(repo: Repository) -> None
 
     assert resolver_slug(repo, "stall", "barraca") == "stall--s2"
     assert resolver_slug(repo, "stall", "baia") == "stall--s3"
+
+
+# --- M14: multiusuário por espaço (ADR-0017) --------------------------------------------------
+
+
+def test_espacos_sao_isolados_perfil_sessao_entradas_e_frases(banco: Banco) -> None:
+    a, b = banco.do_espaco(ALUNO_A), banco.do_espaco(ALUNO_B)
+    a.salvar_perfil(Profile(nivel="B2-C1", criado_em=T0))
+    a.salvar_sessao(Sessao(estado=Estado.AWAIT_ACTION))
+    a.criar_entrada(_entrada("stall"))
+    a.adicionar_frase("stall", Sentence(texto="It stalled.", autor="usuario", criado_em=T0))
+
+    assert b.obter_perfil() is None
+    assert b.obter_sessao().estado == Estado.IDLE
+    assert b.obter_entrada("stall") is None
+    assert b.listar_entradas() == []
+    assert b.listar_frases("stall") == []
+
+
+def test_mesmo_slug_pode_existir_em_espacos_diferentes(banco: Banco) -> None:
+    banco.do_espaco(ALUNO_A).criar_entrada(_entrada("stall", traducao="travar"))
+    banco.do_espaco(ALUNO_B).criar_entrada(_entrada("stall", traducao="enrolar"))
+
+    assert banco.do_espaco(ALUNO_A).obter_entrada("stall").sentido.traducao == "travar"  # type: ignore[union-attr]
+    assert banco.do_espaco(ALUNO_B).obter_entrada("stall").sentido.traducao == "enrolar"  # type: ignore[union-attr]
+
+
+def test_apagar_entrada_de_um_espaco_nao_mexe_no_outro(banco: Banco) -> None:
+    banco.do_espaco(ALUNO_A).criar_entrada(_entrada("stall"))
+    banco.do_espaco(ALUNO_B).criar_entrada(_entrada("stall"))
+
+    assert banco.do_espaco(ALUNO_A).apagar_entrada("stall") is True
+
+    assert banco.do_espaco(ALUNO_B).obter_entrada("stall") is not None
+
+
+def test_apagar_tudo_limpa_so_o_espaco_pedido(banco: Banco) -> None:
+    a, b = banco.do_espaco(ALUNO_A), banco.do_espaco(ALUNO_B)
+    for espaco in (a, b):
+        espaco.salvar_perfil(Profile(nivel="B1-B2", criado_em=T0))
+        espaco.salvar_sessao(Sessao(estado=Estado.AWAIT_ACTION))
+        espaco.criar_entrada(_entrada("stall"))
+        espaco.adicionar_frase("stall", Sentence(texto="x", autor="usuario", criado_em=T0))
+
+    a.apagar_tudo()
+
+    assert a.obter_perfil() is None
+    assert a.obter_sessao().estado == Estado.IDLE
+    assert a.listar_entradas() == []
+    assert a.listar_frases("stall") == []
+    assert b.obter_perfil() is not None
+    assert len(b.listar_entradas()) == 1
+    assert len(b.listar_frases("stall")) == 1
+
+
+def _lembretes(chat: str, proximo: datetime | None, por_dia: int = 3) -> Profile:
+    return Profile(nivel="B1-B2", chat_id=chat, lembretes_por_dia=por_dia, proximo_lembrete=proximo)
+
+
+def test_espacos_com_lembrete_devolve_so_os_vencidos(banco: Banco) -> None:
+    banco.do_espaco(ALUNO_A).salvar_perfil(_lembretes(ALUNO_A, T0 - timedelta(minutes=5)))
+    banco.do_espaco(ALUNO_B).salvar_perfil(_lembretes(ALUNO_B, T0 + timedelta(hours=1)))
+    banco.do_espaco(GRUPO).salvar_perfil(_lembretes(GRUPO, T0))
+
+    assert sorted(banco.listar_espacos_com_lembrete(T0)) == sorted([ALUNO_A, GRUPO])
+
+
+def test_espaco_com_lembrete_ligado_mas_sem_horario_ainda_conta_como_vencido(
+    banco: Banco,
+) -> None:
+    banco.do_espaco(ALUNO_A).salvar_perfil(_lembretes(ALUNO_A, None))
+
+    assert banco.listar_espacos_com_lembrete(T0) == [ALUNO_A]
+
+
+def test_espaco_sem_lembretes_ou_sem_destino_nunca_aparece(banco: Banco) -> None:
+    banco.do_espaco(ALUNO_A).salvar_perfil(_lembretes(ALUNO_A, None, por_dia=0))
+    banco.do_espaco(ALUNO_B).salvar_perfil(
+        Profile(nivel="B1-B2", chat_id=None, lembretes_por_dia=3)
+    )
+
+    assert banco.listar_espacos_com_lembrete(T0) == []
+
+
+def test_desligar_os_lembretes_tira_o_espaco_da_consulta(banco: Banco) -> None:
+    espaco = banco.do_espaco(ALUNO_A)
+    espaco.salvar_perfil(_lembretes(ALUNO_A, T0))
+    assert banco.listar_espacos_com_lembrete(T0) == [ALUNO_A]
+
+    espaco.salvar_perfil(_lembretes(ALUNO_A, T0, por_dia=0))
+
+    assert banco.listar_espacos_com_lembrete(T0) == []
+
+
+# --- M15: admins, grupos ativos e pendentes (ADR-0018) ----------------------------------------
+
+T1 = T0 + timedelta(hours=1)
+
+
+def test_admins_adicionar_listar_e_remover(banco: Banco) -> None:
+    assert banco.listar_admins() == []
+
+    assert banco.adicionar_admin("5531999998888", por="5511988887777", agora=T0) is True
+    assert banco.adicionar_admin("5521977776666", por="5511988887777", agora=T1) is True
+
+    assert banco.listar_admins() == ["5531999998888", "5521977776666"]  # na ordem em que entraram
+    assert banco.remover_admin("5531999998888") is True
+    assert banco.listar_admins() == ["5521977776666"]
+
+
+def test_adicionar_admin_repetido_nao_duplica_e_avisa(banco: Banco) -> None:
+    banco.adicionar_admin("5531999998888", por="5511988887777", agora=T0)
+
+    assert banco.adicionar_admin("5531999998888", por="5511988887777", agora=T1) is False
+    assert banco.listar_admins() == ["5531999998888"]
+
+
+def test_remover_admin_que_nao_existe_devolve_falso(banco: Banco) -> None:
+    assert banco.remover_admin("5531999998888") is False
+
+
+def test_grupo_comeca_inativo_e_ativar_desativar(banco: Banco) -> None:
+    assert banco.grupo_esta_ativo(GRUPO) is False
+
+    banco.ativar_grupo(GRUPO, nome="Turma A", por="5531999998888", agora=T0)
+
+    assert banco.grupo_esta_ativo(GRUPO) is True
+    (grupo,) = banco.listar_grupos_ativos()
+    assert (grupo.id, grupo.nome, grupo.ativado_por, grupo.ativado_em) == (
+        GRUPO,
+        "Turma A",
+        "5531999998888",
+        T0,
+    )
+    assert banco.desativar_grupo(GRUPO) is True
+    assert banco.grupo_esta_ativo(GRUPO) is False
+    assert banco.listar_grupos_ativos() == []
+
+
+def test_desativar_grupo_que_nao_esta_ativo_devolve_falso(banco: Banco) -> None:
+    assert banco.desativar_grupo(GRUPO) is False
+
+
+def test_desativar_grupo_mantem_o_caderno_da_turma(banco: Banco) -> None:
+    banco.ativar_grupo(GRUPO, nome=None, por="5531999998888", agora=T0)
+    banco.do_espaco(GRUPO).criar_entrada(_entrada("stall"))
+
+    banco.desativar_grupo(GRUPO)
+
+    assert banco.do_espaco(GRUPO).obter_entrada("stall") is not None
+
+
+def test_ativar_de_novo_um_grupo_desativado_volta_a_valer(banco: Banco) -> None:
+    banco.ativar_grupo(GRUPO, nome="A", por="5531999998888", agora=T0)
+    banco.desativar_grupo(GRUPO)
+
+    banco.ativar_grupo(GRUPO, nome="A", por="5531999998888", agora=T1)
+
+    assert banco.grupo_esta_ativo(GRUPO) is True
+    assert len(banco.listar_grupos_ativos()) == 1
+
+
+def test_grupo_ativado_com_perfil_nao_perde_o_espelho_dos_lembretes(banco: Banco) -> None:
+    """A ativação e o `salvar_perfil` escrevem no mesmo documento do espaço: um não apaga o outro."""
+    espaco = banco.do_espaco(GRUPO)
+    espaco.salvar_perfil(_lembretes(GRUPO, T0))
+    banco.ativar_grupo(GRUPO, nome=None, por="5531999998888", agora=T0)
+
+    assert banco.listar_espacos_com_lembrete(T0) == [GRUPO]
+    assert banco.grupo_esta_ativo(GRUPO) is True
+    espaco.salvar_perfil(_lembretes(GRUPO, T1))
+    assert banco.grupo_esta_ativo(GRUPO) is True
+
+
+def test_grupo_pendente_registra_uma_vez_e_guarda_o_primeiro_horario(banco: Banco) -> None:
+    assert banco.registrar_grupo_pendente(GRUPO, T0) is True
+    assert banco.registrar_grupo_pendente(GRUPO, T1) is False  # o relógio de 24h não reinicia
+
+    assert banco.listar_grupos_pendentes() == [(GRUPO, T0)]
+
+
+def test_ativar_tira_o_grupo_dos_pendentes(banco: Banco) -> None:
+    banco.registrar_grupo_pendente(GRUPO, T0)
+
+    banco.ativar_grupo(GRUPO, nome=None, por="5531999998888", agora=T1)
+
+    assert banco.listar_grupos_pendentes() == []
+
+
+def test_remover_grupo_pendente(banco: Banco) -> None:
+    banco.registrar_grupo_pendente(GRUPO, T0)
+
+    banco.remover_grupo_pendente(GRUPO)
+
+    assert banco.listar_grupos_pendentes() == []
+    banco.remover_grupo_pendente(GRUPO)  # remover de novo não é erro
+
+
+# --- M16/M17: membros da turma, respostas e autor das frases (ADR-0019, ADR-0020) -------------
+
+
+def test_membro_ausente_e_none_e_depois_persiste(repo: Repository) -> None:
+    assert repo.obter_membro("5531999998888") is None
+
+    repo.salvar_membro("5531999998888", Membro(papel="professor", nome="Ana", entrou_em=T0))
+
+    membro = repo.obter_membro("5531999998888")
+    assert membro is not None
+    assert (membro.papel, membro.nome, membro.entrou_em) == ("professor", "Ana", T0)
+    assert membro.marcado_em is None
+
+
+def test_listar_membros_devolve_numero_e_membro_em_ordem_de_entrada(repo: Repository) -> None:
+    repo.salvar_membro("5511988887777", Membro(nome="Bia", entrou_em=T1))
+    repo.salvar_membro("5531999998888", Membro(nome="Ana", entrou_em=T0))
+
+    assert [(n, m.nome) for n, m in repo.listar_membros()] == [
+        ("5531999998888", "Ana"),
+        ("5511988887777", "Bia"),
+    ]
+
+
+def test_salvar_membro_atualiza_sem_duplicar(repo: Repository) -> None:
+    repo.salvar_membro("5531999998888", Membro(nome=None, entrou_em=T0))
+    repo.salvar_membro("5531999998888", Membro(nome="Ana", entrou_em=T0, marcado_em=T1))
+
+    ((_, membro),) = repo.listar_membros()
+    assert (membro.nome, membro.marcado_em) == ("Ana", T1)
+
+
+def test_membros_sao_isolados_por_espaco(banco: Banco) -> None:
+    banco.do_espaco(GRUPO).salvar_membro("5531999998888", Membro(entrou_em=T0))
+
+    assert banco.do_espaco("120363000000000002@g.us").listar_membros() == []
+
+
+def test_respostas_registram_quem_respondeu_e_se_era_o_marcado(repo: Repository) -> None:
+    repo.registrar_resposta(
+        Resposta(
+            entry="stall", autor_id="5531999998888", marcado=True, qualidade="bom", criado_em=T0
+        )
+    )
+    repo.registrar_resposta(
+        Resposta(
+            entry="stall", autor_id="5511988887777", marcado=False, qualidade="facil", criado_em=T1
+        )
+    )
+
+    respostas = repo.listar_respostas()
+
+    assert [(r.autor_id, r.marcado, r.qualidade) for r in respostas] == [
+        ("5531999998888", True, "bom"),
+        ("5511988887777", False, "facil"),
+    ]
+
+
+def test_frase_guarda_o_autor_quando_veio_de_um_grupo(repo: Repository) -> None:
+    repo.criar_entrada(_entrada("stall"))
+    repo.adicionar_frase(
+        "stall",
+        Sentence(texto="It stalled.", autor="usuario", autor_id="5531999998888", criado_em=T0),
+    )
+    repo.adicionar_frase("stall", Sentence(texto="No author.", autor="usuario", criado_em=T1))
+
+    assert [f.autor_id for f in repo.listar_frases("stall")] == ["5531999998888", None]
+
+
+def test_apagar_tudo_leva_membros_e_respostas(repo: Repository) -> None:
+    repo.salvar_membro("5531999998888", Membro(entrou_em=T0))
+    repo.registrar_resposta(
+        Resposta(
+            entry="stall", autor_id="5531999998888", marcado=True, qualidade="bom", criado_em=T0
+        )
+    )
+
+    repo.apagar_tudo()
+
+    assert repo.listar_membros() == []
+    assert repo.listar_respostas() == []
+
+
+def test_desativar_o_grupo_tira_os_lembretes_dele_da_consulta_e_reativar_devolve(
+    banco: Banco,
+) -> None:
+    banco.ativar_grupo(GRUPO, nome=None, por="5531999998888", agora=T0)
+    banco.do_espaco(GRUPO).salvar_perfil(_lembretes(GRUPO, T0))
+    assert banco.listar_espacos_com_lembrete(T0) == [GRUPO]
+
+    banco.desativar_grupo(GRUPO)
+    assert banco.listar_espacos_com_lembrete(T0) == []
+
+    banco.ativar_grupo(GRUPO, nome=None, por="5531999998888", agora=T1)
+    assert banco.listar_espacos_com_lembrete(T1) == [GRUPO]
+
+
+def _revisao_marcada(quem: str, expira: datetime | None) -> Sessao:
+    return Sessao(estado=Estado.REVIEWING, marcado_id=quem, marcacao_expira_em=expira)
+
+
+def test_grupo_com_marcacao_vencida_aparece_na_consulta_de_timeout(banco: Banco) -> None:
+    banco.do_espaco(GRUPO).salvar_sessao(_revisao_marcada("5531999998888", T0))
+
+    assert banco.listar_grupos_com_timeout(T0) == [GRUPO]
+    assert banco.listar_grupos_com_timeout(T0 - timedelta(minutes=1)) == []
+
+
+def test_a_sessao_da_marcacao_persiste_os_campos_novos(repo: Repository) -> None:
+    repo.salvar_sessao(
+        Sessao(
+            estado=Estado.REVIEWING,
+            marcado_id="5531999998888",
+            marcacao_expira_em=T1,
+            marcacao_tentativas=1,
+        )
+    )
+
+    sessao = repo.obter_sessao()
+
+    assert (sessao.marcado_id, sessao.marcacao_expira_em, sessao.marcacao_tentativas) == (
+        "5531999998888",
+        T1,
+        1,
+    )
+
+
+def test_marcacao_respondida_ou_sessao_fechada_sai_da_consulta_de_timeout(banco: Banco) -> None:
+    espaco = banco.do_espaco(GRUPO)
+    espaco.salvar_sessao(_revisao_marcada("5531999998888", T0))
+    assert banco.listar_grupos_com_timeout(T0) == [GRUPO]
+
+    espaco.salvar_sessao(_revisao_marcada("5511988887777", T1))  # o card andou: novo prazo
+    assert banco.listar_grupos_com_timeout(T0) == []
+    assert banco.listar_grupos_com_timeout(T1) == [GRUPO]
+
+    espaco.salvar_sessao(Sessao())  # a sessão fechou
+    assert banco.listar_grupos_com_timeout(T1 + timedelta(days=1)) == []
+
+
+def test_espaco_privado_nunca_entra_na_consulta_de_timeout(banco: Banco) -> None:
+    banco.do_espaco(ALUNO_A).salvar_sessao(_revisao_marcada("5531999998888", T0))
+
+    assert banco.listar_grupos_com_timeout(T1) == []

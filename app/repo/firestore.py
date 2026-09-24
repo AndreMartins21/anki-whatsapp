@@ -1,59 +1,104 @@
-"""FirestoreRepository (ADR-0003): Cloud Firestore em modo nativo, esquema da seção 7.1.
+"""Firestore (ADR-0003, ADR-0017): Cloud Firestore em modo nativo, esquema da seção 7.1.
 
-    profile/me                          session/current
-    entries/{slug}                      entries/{slug}/sentences/{auto}
-    processed/{message_id}              lids/{lid}
+    espacos/{espaco_id}                               {tipo, criado_em, proximo_tick?}
+    espacos/{espaco_id}/profile/me                    espacos/{espaco_id}/session/current
+    espacos/{espaco_id}/entries/{slug}                espacos/{espaco_id}/entries/{slug}/sentences/{auto}
+    processed/{message_id}                            lids/{lid}
 
 `processed.expira_em` é o campo da política de TTL de 7 dias (criada no `infra/setup.sh`).
+`proximo_tick` espelha o perfil (ver `proximo_tick` em `repo/base.py`): a consulta dos lembretes
+usa só esse campo, então não exige índice composto e só lê os espaços que já venceram.
+
+Antes do M14 (multiusuário) `profile`, `session` e `entries` ficavam na raiz do banco.
+`FirestoreRepository(client)` ainda lê esse formato antigo: é a origem do script de migração.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from google.api_core.exceptions import AlreadyExists
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from app.domain.models import Entry, Profile, Sentence, Sessao, StatusEntrada
-from app.repo.base import PROCESSED_TTL, EntradaJaExiste
+from app.domain.models import (
+    Entry,
+    Estado,
+    Membro,
+    Profile,
+    Resposta,
+    Sentence,
+    Sessao,
+    StatusEntrada,
+)
+from app.repo.base import (
+    PROCESSED_TTL,
+    EntradaJaExiste,
+    GrupoAtivo,
+    Repository,
+    proximo_tick,
+    tipo_do_espaco,
+)
 
 
 class FirestoreRepository:
-    def __init__(self, client: firestore.Client) -> None:
-        self._db = client
+    """O caderno de um espaço. `raiz` é qualquer coisa com `.collection(...)`: o `Client` (formato
+    antigo, sem espaço) ou o documento `espacos/{id}` (e então `espaco` o aponta, para o espelho)."""
+
+    def __init__(self, raiz: Any, espaco: firestore.DocumentReference | None = None) -> None:
+        self._raiz = raiz
+        self._espaco = espaco
 
     def obter_perfil(self) -> Profile | None:
-        dados = self._db.collection("profile").document("me").get().to_dict()
+        dados = self._raiz.collection("profile").document("me").get().to_dict()
         return Profile.model_validate(dados) if dados else None
 
     def salvar_perfil(self, perfil: Profile) -> None:
-        self._db.collection("profile").document("me").set(perfil.model_dump())
+        self._raiz.collection("profile").document("me").set(perfil.model_dump())
+        if self._espaco is not None:
+            tick = proximo_tick(perfil)
+            self._espaco.set(
+                {
+                    "tipo": tipo_do_espaco(self._espaco.id),
+                    "criado_em": perfil.criado_em,
+                    "proximo_tick": tick if tick is not None else firestore.DELETE_FIELD,
+                },
+                merge=True,
+            )
 
     def obter_sessao(self) -> Sessao:
-        dados = self._db.collection("session").document("current").get().to_dict()
+        dados = self._raiz.collection("session").document("current").get().to_dict()
         return Sessao.model_validate(dados) if dados else Sessao()
 
     def salvar_sessao(self, sessao: Sessao) -> None:
-        self._db.collection("session").document("current").set(sessao.model_dump())
+        self._raiz.collection("session").document("current").set(sessao.model_dump())
+        if self._espaco is not None and tipo_do_espaco(self._espaco.id) == "grupo":
+            # Espelha o prazo da marcação (M17) para o agendador achar as vencidas com uma
+            # consulta só, sem ler os demais grupos.
+            prazo = sessao.marcacao_expira_em if sessao.estado == Estado.REVIEWING else None
+            self._espaco.set(
+                {"timeout_em": prazo if prazo is not None else firestore.DELETE_FIELD},
+                merge=True,
+            )
 
     def obter_entrada(self, slug: str) -> Entry | None:
-        dados = self._db.collection("entries").document(slug).get().to_dict()
+        dados = self._raiz.collection("entries").document(slug).get().to_dict()
         return Entry.model_validate(dados) if dados else None
 
     def criar_entrada(self, entrada: Entry) -> None:
         try:
-            self._db.collection("entries").document(entrada.slug).create(entrada.model_dump())
+            self._raiz.collection("entries").document(entrada.slug).create(entrada.model_dump())
         except AlreadyExists as erro:
             raise EntradaJaExiste(entrada.slug) from erro
 
     def salvar_entrada(self, entrada: Entry) -> None:
-        self._db.collection("entries").document(entrada.slug).set(entrada.model_dump())
+        self._raiz.collection("entries").document(entrada.slug).set(entrada.model_dump())
 
     def listar_entradas(self, status: StatusEntrada | None = None) -> list[Entry]:
         # Filtrar por status no servidor E ordenar por data exigiria um índice composto;
         # o volume é pequeno, então a ordenação é em Python (ADR-0003).
-        consulta = self._db.collection("entries")
+        consulta = self._raiz.collection("entries")
         if status is not None:
             documentos = consulta.where(filter=FieldFilter("status", "==", status)).stream()
         else:
@@ -63,7 +108,7 @@ class FirestoreRepository:
         return entradas
 
     def apagar_entrada(self, slug: str) -> bool:
-        documento = self._db.collection("entries").document(slug)
+        documento = self._raiz.collection("entries").document(slug)
         if not documento.get().exists:
             return False
         for frase in documento.collection("sentences").stream():
@@ -72,19 +117,73 @@ class FirestoreRepository:
         return True
 
     def adicionar_frase(self, slug: str, frase: Sentence) -> None:
-        self._db.collection("entries").document(slug).collection("sentences").add(
+        self._raiz.collection("entries").document(slug).collection("sentences").add(
             frase.model_dump()
         )
 
     def listar_frases(self, slug: str) -> list[Sentence]:
         documentos = (
-            self._db.collection("entries")
+            self._raiz.collection("entries")
             .document(slug)
             .collection("sentences")
             .order_by("criado_em")
             .stream()
         )
         return [Sentence.model_validate(d.to_dict()) for d in documentos]
+
+    def obter_membro(self, numero: str) -> Membro | None:
+        dados = self._raiz.collection("membros").document(numero).get().to_dict()
+        return Membro.model_validate(dados) if dados else None
+
+    def salvar_membro(self, numero: str, membro: Membro) -> None:
+        self._raiz.collection("membros").document(numero).set(membro.model_dump())
+
+    def listar_membros(self) -> list[tuple[str, Membro]]:
+        membros = [
+            (d.id, Membro.model_validate(dados))
+            for d in self._raiz.collection("membros").stream()
+            if (dados := d.to_dict())
+        ]
+        return sorted(membros, key=lambda par: (par[1].entrou_em, par[0]))
+
+    def registrar_resposta(self, resposta: Resposta) -> None:
+        self._raiz.collection("respostas").add(resposta.model_dump())
+
+    def listar_respostas(self) -> list[Resposta]:
+        documentos = self._raiz.collection("respostas").order_by("criado_em").stream()
+        return [Resposta.model_validate(d.to_dict()) for d in documentos]
+
+    def apagar_tudo(self) -> None:
+        for colecao in ("membros", "respostas"):
+            for documento in self._raiz.collection(colecao).stream():
+                documento.reference.delete()
+        for entrada in self._raiz.collection("entries").stream():
+            self.apagar_entrada(entrada.id)
+        self._raiz.collection("profile").document("me").delete()
+        self._raiz.collection("session").document("current").delete()
+        if self._espaco is not None:
+            self._espaco.delete()
+
+
+class FirestoreBanco:
+    def __init__(self, client: firestore.Client) -> None:
+        self._db = client
+
+    def do_espaco(self, espaco_id: str) -> Repository:
+        documento = self._db.collection("espacos").document(espaco_id)
+        return FirestoreRepository(documento, espaco=documento)
+
+    def listar_espacos_com_lembrete(self, agora: datetime) -> list[str]:
+        consulta = self._db.collection("espacos").where(
+            filter=FieldFilter("proximo_tick", "<=", agora)
+        )
+        return [d.id for d in consulta.stream()]
+
+    def listar_grupos_com_timeout(self, agora: datetime) -> list[str]:
+        consulta = self._db.collection("espacos").where(
+            filter=FieldFilter("timeout_em", "<=", agora)
+        )
+        return [d.id for d in consulta.stream()]
 
     def marcar_processada(self, message_id: str, agora: datetime) -> bool:
         documento = self._db.collection("processed").document(message_id.replace("/", "_"))
@@ -100,3 +199,81 @@ class FirestoreRepository:
 
     def salvar_numero_do_lid(self, lid: str, numero: str) -> None:
         self._db.collection("lids").document(lid).set({"numero": numero})
+
+    # --- Controle de acesso (M15, ADR-0018) -----------------------------------------------------
+
+    def listar_admins(self) -> list[str]:
+        documentos = self._db.collection("admins").order_by("adicionado_em").stream()
+        return [d.id for d in documentos]
+
+    def adicionar_admin(self, numero: str, *, por: str, agora: datetime) -> bool:
+        try:
+            self._db.collection("admins").document(numero).create(
+                {"adicionado_em": agora, "adicionado_por": por}
+            )
+        except AlreadyExists:
+            return False
+        return True
+
+    def remover_admin(self, numero: str) -> bool:
+        documento = self._db.collection("admins").document(numero)
+        if not documento.get().exists:
+            return False
+        documento.delete()
+        return True
+
+    def grupo_esta_ativo(self, grupo_id: str) -> bool:
+        dados = self._db.collection("espacos").document(grupo_id).get().to_dict()
+        return bool(dados and dados.get("ativo"))
+
+    def ativar_grupo(self, grupo_id: str, *, nome: str | None, por: str, agora: datetime) -> None:
+        self._db.collection("espacos").document(grupo_id).set(
+            {
+                "tipo": "grupo",
+                "ativo": True,
+                "nome": nome,
+                "ativado_por": por,
+                "ativado_em": agora,
+            },
+            merge=True,
+        )
+        self._db.collection("grupos_pendentes").document(grupo_id).delete()
+        # Reativar devolve os lembretes do grupo (a desativação os tirou da consulta do agendador).
+        perfil = self.do_espaco(grupo_id).obter_perfil()
+        tick = proximo_tick(perfil) if perfil else None
+        if tick is not None:
+            self._db.collection("espacos").document(grupo_id).set(
+                {"proximo_tick": tick}, merge=True
+            )
+
+    def desativar_grupo(self, grupo_id: str) -> bool:
+        if not self.grupo_esta_ativo(grupo_id):
+            return False
+        self._db.collection("espacos").document(grupo_id).set(
+            {"ativo": False, "proximo_tick": firestore.DELETE_FIELD}, merge=True
+        )
+        return True
+
+    def listar_grupos_ativos(self) -> list[GrupoAtivo]:
+        consulta = self._db.collection("espacos").where(filter=FieldFilter("ativo", "==", True))
+        grupos = [
+            GrupoAtivo(d.id, dados.get("nome"), dados["ativado_por"], dados["ativado_em"])
+            for d in consulta.stream()
+            if (dados := d.to_dict())
+        ]
+        return sorted(grupos, key=lambda g: (g.ativado_em, g.id))
+
+    def registrar_grupo_pendente(self, grupo_id: str, agora: datetime) -> bool:
+        try:
+            self._db.collection("grupos_pendentes").document(grupo_id).create({"visto_em": agora})
+        except AlreadyExists:
+            return False
+        return True
+
+    def listar_grupos_pendentes(self) -> list[tuple[str, datetime]]:
+        documentos = self._db.collection("grupos_pendentes").stream()
+        pendentes = [(d.id, dados["visto_em"]) for d in documentos if (dados := d.to_dict())]
+        return sorted(pendentes, key=lambda par: (par[1], par[0]))
+
+    def remover_grupo_pendente(self, grupo_id: str) -> None:
+        self._db.collection("grupos_pendentes").document(grupo_id).delete()

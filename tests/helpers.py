@@ -3,6 +3,7 @@ respostas de IA do ciclo "stall" (M9: interface em inglês, menu único)."""
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -13,14 +14,22 @@ from app.domain.models import (
     Explanation,
     Sense,
 )
+from app.domain.rodizio import Candidato
+from app.flows.base import Autor, ConfigGrupo, Participantes
 from app.flows.commands import Exportador, StatusDaSessao
 from app.flows.conversa import Conversa
 from app.flows.router import Router
-from app.repo.memory import MemoryRepository
+from app.repo.base import Repository
+from app.repo.memory import MemoryBanco
 from app.services.fake_llm import FakeTutor
 from app.services.letras import LyricsProvider
 
 CHAT = "5531999998888@c.us"
+GRUPO = "120363000000000001@g.us"
+DONO_NUMERO = "5531990000001"
+ANA = Autor("5531999998888", "Ana")
+BIA = Autor("5511988887777", "Bia")
+CAIO = Autor("5521977776666", "Caio")
 T0 = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
 
 S1 = Sense(
@@ -86,7 +95,8 @@ class Relogio:
 class Montagem:
     router: Router
     channel: FakeChannel
-    repo: MemoryRepository
+    banco: MemoryBanco
+    repo: Repository  # o caderno do aluno de `CHAT`
     tutor: FakeTutor
     relogio: Relogio
     conversa: Conversa
@@ -95,8 +105,15 @@ class Montagem:
     async def diz(self, texto: str) -> list[str]:
         """Manda `texto` como o aluno e devolve o que o bot respondeu (só os textos)."""
         antes = len(self.channel.textos_enviados)
-        await self.router.processar(texto)
+        await self.router.processar(texto, CHAT)
         return [t for _, t in self.channel.textos_enviados[antes:]]
+
+    async def diz_no_grupo(self, autor: Autor, texto: str, *, chat: str = GRUPO) -> list[str]:
+        """Manda `texto` (com o prefixo, se for o caso) como `autor` no grupo e devolve o que o
+        bot respondeu no grupo."""
+        antes = len(self.channel.textos_enviados)
+        await self.router.processar(texto, chat, autor)
+        return [t for c, t in self.channel.textos_enviados[antes:] if c == chat]
 
 
 def montar(
@@ -105,9 +122,15 @@ def montar(
     exportador: Exportador | None = None,
     status_da_sessao: StatusDaSessao | None = None,
     letras: LyricsProvider | None = None,
+    prefixo_do_grupo: str = "!",
+    grupo_limite: int = 5,
+    grupo_timeout: timedelta = timedelta(hours=3),
+    numero_do_bot: str | None = None,
+    sortear: Callable[[Sequence[Candidato]], Candidato] | None = None,
+    participantes: Participantes | None = None,
 ) -> Montagem:
     channel = FakeChannel()
-    repo = MemoryRepository()
+    banco = MemoryBanco()
     tutor = tutor or FakeTutor()
     relogio = Relogio()
     esperas: list[float] = []
@@ -115,15 +138,35 @@ def montar(
     async def dormir(segundos: float) -> None:
         esperas.append(segundos)
 
-    conversa = Conversa(channel, CHAT, dormir=dormir, atraso=lambda: 1.5)
+    def criar_conversa(chat_id: str) -> Conversa:
+        return Conversa(channel, chat_id, dormir=dormir, atraso=lambda: 1.5)
+
     router = Router(
-        repo=repo,
+        banco=banco,
         tutor=tutor,
-        conversa=conversa,
+        criar_conversa=criar_conversa,
         nivel_padrao="B1-B2",
         agora=relogio.agora,
         status_da_sessao=status_da_sessao,
         exportador=exportador,
         letras=letras,
+        prefixo_do_grupo=prefixo_do_grupo,
+        eh_dono=lambda numero: numero == DONO_NUMERO,
+        config_grupo=ConfigGrupo(
+            limite=grupo_limite,
+            timeout=grupo_timeout,
+            participantes=participantes or channel.group_participants,
+            numero_do_bot=numero_do_bot,
+            **({"sortear": sortear} if sortear else {}),
+        ),
     )
-    return Montagem(router, channel, repo, tutor, relogio, conversa, esperas)
+    return Montagem(
+        router,
+        channel,
+        banco,
+        banco.do_espaco(CHAT),
+        tutor,
+        relogio,
+        router.conversa_do(CHAT),
+        esperas,
+    )

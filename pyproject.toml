@@ -80,6 +80,7 @@ ignore = [
 "sim/tutor.py" = ["ARG002"]                 # implementa o Protocol Tutor: nem todo argumento é usado
 "app/services/fake_llm.py" = ["ARG002"]     # idem: FakeTutor implementa o Protocol Tutor
 "evals/**" = ["T20", "S101"]
+"scripts/**" = ["T20"]                       # scripts de linha de comando imprimem de propósito
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "sim", "evals"]

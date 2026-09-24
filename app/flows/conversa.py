@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 
 from app.channel.base import Channel
@@ -52,14 +52,14 @@ class Conversa:
         uma mensagem — também reseta o limite de mensagens seguidas (seção 5.6)."""
         self._seguidas = 0
 
-    async def enviar(self, texto: str) -> None:
+    async def enviar(self, texto: str, mentions: Sequence[str] | None = None) -> None:
         if self._seguidas >= self._max_seguidas:
             logger.warning(
                 "limite de %d mensagens sem resposta: envio descartado", self._max_seguidas
             )
             return
         await self._dormir(self._atraso())
-        await self._channel.send_text(self._chat_id, texto)
+        await self._channel.send_text(self._chat_id, texto, mentions)
         self._seguidas += 1
 
     async def enviar_arquivo(
