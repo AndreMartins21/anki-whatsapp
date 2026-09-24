@@ -115,12 +115,16 @@ def test_midia_responde_que_so_entende_texto(
     assert "text" in texto.lower()
 
 
-def test_numero_nao_autorizado_e_ignorado(cliente: TestClient, fake_channel: FakeChannel) -> None:
+def test_numero_sem_plano_recebe_so_o_aviso_e_nada_e_processado(
+    cliente: TestClient, fake_channel: FakeChannel
+) -> None:
     resposta = cliente.post("/waha/webhook", json=_fixture("numero_nao_autorizado"))
 
     assert resposta.status_code == 200
     assert fake_channel.vistos == []
-    assert fake_channel.textos_enviados == []
+    ((chat, texto),) = fake_channel.textos_enviados
+    assert chat == "5511888887777@c.us"
+    assert "You don't have a plan" in texto
 
 
 def test_lid_resolvido_para_numero_permitido_e_processado(
@@ -327,12 +331,3 @@ def test_falha_ao_processar_avisa_so_o_chat_de_quem_escreveu(
 
     assert resposta.status_code == 200
     assert fake_channel.textos_enviados == [(CHAT_OUTRO_ALUNO, messages.ERRO_INESPERADO)]
-
-
-def test_falha_de_remetente_nao_autorizado_nao_gera_aviso_nenhum(
-    cliente: TestClient, fake_channel: FakeChannel
-) -> None:
-    resposta = cliente.post("/waha/webhook", json=_fixture("numero_nao_autorizado"))
-
-    assert resposta.status_code == 200
-    assert fake_channel.textos_enviados == []

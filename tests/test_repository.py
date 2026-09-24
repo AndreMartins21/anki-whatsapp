@@ -369,3 +369,107 @@ def test_desligar_os_lembretes_tira_o_espaco_da_consulta(banco: Banco) -> None:
     espaco.salvar_perfil(_lembretes(ALUNO_A, T0, por_dia=0))
 
     assert banco.listar_espacos_com_lembrete(T0) == []
+
+
+# --- M15: admins, grupos ativos e pendentes (ADR-0018) ----------------------------------------
+
+T1 = T0 + timedelta(hours=1)
+
+
+def test_admins_adicionar_listar_e_remover(banco: Banco) -> None:
+    assert banco.listar_admins() == []
+
+    assert banco.adicionar_admin("5531999998888", por="5511988887777", agora=T0) is True
+    assert banco.adicionar_admin("5521977776666", por="5511988887777", agora=T1) is True
+
+    assert banco.listar_admins() == ["5531999998888", "5521977776666"]  # na ordem em que entraram
+    assert banco.remover_admin("5531999998888") is True
+    assert banco.listar_admins() == ["5521977776666"]
+
+
+def test_adicionar_admin_repetido_nao_duplica_e_avisa(banco: Banco) -> None:
+    banco.adicionar_admin("5531999998888", por="5511988887777", agora=T0)
+
+    assert banco.adicionar_admin("5531999998888", por="5511988887777", agora=T1) is False
+    assert banco.listar_admins() == ["5531999998888"]
+
+
+def test_remover_admin_que_nao_existe_devolve_falso(banco: Banco) -> None:
+    assert banco.remover_admin("5531999998888") is False
+
+
+def test_grupo_comeca_inativo_e_ativar_desativar(banco: Banco) -> None:
+    assert banco.grupo_esta_ativo(GRUPO) is False
+
+    banco.ativar_grupo(GRUPO, nome="Turma A", por="5531999998888", agora=T0)
+
+    assert banco.grupo_esta_ativo(GRUPO) is True
+    (grupo,) = banco.listar_grupos_ativos()
+    assert (grupo.id, grupo.nome, grupo.ativado_por, grupo.ativado_em) == (
+        GRUPO,
+        "Turma A",
+        "5531999998888",
+        T0,
+    )
+    assert banco.desativar_grupo(GRUPO) is True
+    assert banco.grupo_esta_ativo(GRUPO) is False
+    assert banco.listar_grupos_ativos() == []
+
+
+def test_desativar_grupo_que_nao_esta_ativo_devolve_falso(banco: Banco) -> None:
+    assert banco.desativar_grupo(GRUPO) is False
+
+
+def test_desativar_grupo_mantem_o_caderno_da_turma(banco: Banco) -> None:
+    banco.ativar_grupo(GRUPO, nome=None, por="5531999998888", agora=T0)
+    banco.do_espaco(GRUPO).criar_entrada(_entrada("stall"))
+
+    banco.desativar_grupo(GRUPO)
+
+    assert banco.do_espaco(GRUPO).obter_entrada("stall") is not None
+
+
+def test_ativar_de_novo_um_grupo_desativado_volta_a_valer(banco: Banco) -> None:
+    banco.ativar_grupo(GRUPO, nome="A", por="5531999998888", agora=T0)
+    banco.desativar_grupo(GRUPO)
+
+    banco.ativar_grupo(GRUPO, nome="A", por="5531999998888", agora=T1)
+
+    assert banco.grupo_esta_ativo(GRUPO) is True
+    assert len(banco.listar_grupos_ativos()) == 1
+
+
+def test_grupo_ativado_com_perfil_nao_perde_o_espelho_dos_lembretes(banco: Banco) -> None:
+    """A ativação e o `salvar_perfil` escrevem no mesmo documento do espaço: um não apaga o outro."""
+    espaco = banco.do_espaco(GRUPO)
+    espaco.salvar_perfil(_lembretes(GRUPO, T0))
+    banco.ativar_grupo(GRUPO, nome=None, por="5531999998888", agora=T0)
+
+    assert banco.listar_espacos_com_lembrete(T0) == [GRUPO]
+    assert banco.grupo_esta_ativo(GRUPO) is True
+    espaco.salvar_perfil(_lembretes(GRUPO, T1))
+    assert banco.grupo_esta_ativo(GRUPO) is True
+
+
+def test_grupo_pendente_registra_uma_vez_e_guarda_o_primeiro_horario(banco: Banco) -> None:
+    assert banco.registrar_grupo_pendente(GRUPO, T0) is True
+    assert banco.registrar_grupo_pendente(GRUPO, T1) is False  # o relógio de 24h não reinicia
+
+    assert banco.listar_grupos_pendentes() == [(GRUPO, T0)]
+
+
+def test_ativar_tira_o_grupo_dos_pendentes(banco: Banco) -> None:
+    banco.registrar_grupo_pendente(GRUPO, T0)
+
+    banco.ativar_grupo(GRUPO, nome=None, por="5531999998888", agora=T1)
+
+    assert banco.listar_grupos_pendentes() == []
+
+
+def test_remover_grupo_pendente(banco: Banco) -> None:
+    banco.registrar_grupo_pendente(GRUPO, T0)
+
+    banco.remover_grupo_pendente(GRUPO)
+
+    assert banco.listar_grupos_pendentes() == []
+    banco.remover_grupo_pendente(GRUPO)  # remover de novo não é erro

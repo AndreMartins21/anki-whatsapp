@@ -192,3 +192,43 @@ def test_grupos_permitidos_vazio_por_padrao_e_lista_quando_definido(
         "120363000000000001@g.us",
         "120363000000000002@g.us",
     ]
+
+
+# --- M15: limite de grupos e contato (ADR-0018) ------------------------------------------------
+
+
+def test_max_groups_padrao_e_configuravel(monkeypatch: pytest.MonkeyPatch) -> None:
+    _com_env(monkeypatch)
+    assert Settings(_env_file=None).max_groups == 10
+
+    monkeypatch.setenv("MAX_GROUPS", "3")
+
+    assert Settings(_env_file=None).max_groups == 3
+
+
+def test_max_groups_rejeita_valor_negativo(monkeypatch: pytest.MonkeyPatch) -> None:
+    _com_env(monkeypatch, MAX_GROUPS="-1")
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_contact_email_tem_padrao_e_vazio_volta_ao_padrao(monkeypatch: pytest.MonkeyPatch) -> None:
+    _com_env(monkeypatch)
+    padrao = Settings(_env_file=None).contact_email
+    assert "@" in padrao
+
+    monkeypatch.setenv("CONTACT_EMAIL", "ajuda@exemplo.com")
+    assert Settings(_env_file=None).contact_email == "ajuda@exemplo.com"
+
+    monkeypatch.setenv("CONTACT_EMAIL", "  ")
+    assert Settings(_env_file=None).contact_email == padrao
+
+
+def test_eh_dono_aceita_a_variacao_do_nono_digito(monkeypatch: pytest.MonkeyPatch) -> None:
+    _com_env(monkeypatch, OWNER_NUMBER="5531999998888")
+    settings = Settings(_env_file=None)
+
+    assert settings.eh_dono("5531999998888")
+    assert settings.eh_dono("553199998888")  # a conta registrada sem o 9
+    assert not settings.eh_dono("5511988887777")

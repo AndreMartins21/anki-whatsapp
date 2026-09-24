@@ -22,7 +22,7 @@ Ciclo principal:
 
 **M10:** o bot também faz revisão espaçada com lembretes agendados (seção 5.7) — deixou de ser fora de escopo.
 
-**M14:** o bot atende **vários alunos no privado**, cada um com o próprio caderno (o **espaço**, ADR-0017) — deixou de ser fora de escopo. Grupos são o M15 (`spec/plano-turmas.md`).
+**M14:** o bot atende **vários alunos no privado**, cada um com o próprio caderno (o **espaço**, ADR-0017) — deixou de ser fora de escopo. **M15:** controle de acesso — quem não tem plano só recebe um aviso, e grupos só entram por um admin (ADR-0018). Comandos de grupo são o M16 (`spec/plano-turmas.md`).
 
 Fora de escopo no MVP: áudio, painel web e conversa livre com IA sem relação a inglês.
 
@@ -72,6 +72,8 @@ A VM tem só 1 GB de RAM. Crie um **swap de 2 GB**, limite a memória dos contai
 | `ALLOWED_NUMBERS` | `.env.infra` (opcional) | Lista de números permitidos separados por vírgula, mesma comparação do nono dígito (seção 8.2). Cada número é um aluno, com o próprio caderno |
 | `ALLOWED_GROUPS` | `.env.infra` (opcional) | Lista de ids `@g.us` de grupos autorizados (o id de um grupo novo aparece uma vez no log) |
 | `OWNER_NUMBER` | `.env.infra` (opcional) | O dono do bot; padrão o primeiro número da lista (o `ALLOWED_NUMBER`, se definido) |
+| `MAX_GROUPS` | `.env.infra` (opcional) | Padrão `10`: teto de grupos ativados por admin (M15, ADR-0018); os de `ALLOWED_GROUPS` não contam |
+| `CONTACT_EMAIL` | `.env.infra` (opcional) | E-mail que o aviso "você não tem um plano" mostra a quem não está na lista (M15) |
 | `BOT_NUMBER` | `.env.infra` | Número Vivo do bot, só dígitos (informativo/logs) |
 | `WAHA_URL` | compose | `http://waha:3000` |
 | `WAHA_SESSION` | compose | `default` |
@@ -162,6 +164,10 @@ apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/pr
   (`app/domain/lembretes.py:proximo_a_exibir`). Os lembretes rodam todos os dias; não há escolha de
   dias da semana.
 - `/status` mostra o status da sessão do WAHA, o total de palavras e as pendentes.
+- **Comandos de acesso (M15, ADR-0018), escondidos do `/help`:** `/groups` (dono e admins) lista os grupos
+  ativos e os pendentes, com o nome e as horas que faltam para o bot sair, e `/groups off N` desativa o
+  grupo N da lista; `/admin`, `/admin add NUMERO` e `/admin remove NUMERO` (só o dono) gerenciam os
+  admins. Para quem não pode usá-los, valem como qualquer comando desconhecido.
 
 ### 5.3 Calibração pelo nível (B1-B2)
 
@@ -258,6 +264,13 @@ Send me another word or expression whenever you want.
 - Espere de 1 a 2 s (aleatório) antes de cada envio.
 - **Nunca** envie mensagem para um número fora da allowlist (`ALLOWED_NUMBER`/`ALLOWED_NUMBERS`, seção 8.2): só ao chat de quem escreveu.
 - Nunca mande mais de 3 mensagens seguidas sem uma resposta do usuário (o limite vale por espaço, M14).
+- **A IA nunca é chamada para quem não tem plano** (M15): número fora da lista só recebe o aviso "você
+  não tem um plano" (texto em inglês com a linha 🇧🇷, e o e-mail de `CONTACT_EMAIL`), no máximo uma
+  vez a cada 7 dias por número, e depois silêncio, sem `sendSeen`, sem ler nem gravar nada.
+- **Grupos só entram por um admin** (M15): o bot ativado num grupo por `!activate` de um admin (dono ou
+  `admins/`), até `MAX_GROUPS`. Grupo em que foi adicionado sem ativação fica pendente em silêncio e o
+  bot **sai dele depois de 24 h**, sem mandar mensagem. Configure no celular do bot: Privacidade →
+  Grupos → "Meus contatos".
 
 ### 5.7 Revisão espaçada e lembretes (M10, ADR-0011, ADR-0012)
 
@@ -495,6 +508,10 @@ entries/{slug}             { palavra, classe, cefr_estimado, sentido:{traducao,d
 entries/{slug}/sentences/{auto}  { texto, autor:"usuario"|"bot", veredito?, correcoes?, versao_natural?, explicacao?, criado_em }
                            # M12: versao_natural é a frase do aluno já corrigida pela IA (também nas revisões)
 processed/{message_id}     { criado_em, expira_em }     # deduplicação; política de TTL de 7 dias
+                           # M15: `processed/aviso_{sha256(numero)}` é a marca do aviso "sem plano" (1 por semana)
+admins/{numero}            { adicionado_em, adicionado_por }          # M15 (ADR-0018): os admins, além do dono
+grupos_pendentes/{grupo}   { visto_em }   # M15: grupo em que o bot está sem ativação; sai depois de 24h
+                           # espacos/{grupo} ganha, ao ativar: ativo, nome?, ativado_por, ativado_em
 lids/{lid}                 { numero }                   # cache LID -> número (seção 8.2), evita consultar o WAHA a cada mensagem
 ```
 - `slug`: minúsculas, `[^a-z0-9]+` → `-`. Se o mesmo slug surgir com outro sentido, use o sufixo `--s2`.
@@ -529,12 +546,12 @@ vida que apaga objetos após 7 dias.
 ## 8. Canal: WAHA
 
 ### 8.1 Recebimento (`app/main.py`)
-- O WAHA envia webhooks para `http://bot:8000/waha/webhook`, pela rede interna do compose; a porta do bot **não** é publicada. Assine só os eventos `message` e `session.status`.
+- O WAHA envia webhooks para `http://bot:8000/waha/webhook`, pela rede interna do compose; a porta do bot **não** é publicada. Assine só os eventos `message`, `session.status` e `group.v2.join` (M15: o bot foi adicionado a um grupo; o payload traz `group.id`/`group.subject` e **não** diz quem adicionou).
 - Se o WAHA suportar HMAC de webhook, configure e valide. Se não, confie na rede interna, que fica isolada.
 - Para cada evento `message`:
   1. **Ignore `fromMe == true`**, para o bot não responder a si mesmo e não entrar em loop.
   2. Ignore grupos (`@g.us`), status/broadcast e canais. Grupo não autorizado (fora de `ALLOWED_GROUPS`): o id vai ao log em INFO uma vez por processo, para o dono descobri-lo e autorizá-lo; nada mais sobre a mensagem é logado.
-  3. Aplique a allowlist (8.2).
+  3. Aplique a allowlist (8.2). Número fora da lista, no privado, recebe só o aviso de "sem plano" (no máximo 1 por semana) e a IA nunca é chamada; admin que não é aluno só usa `/groups`. Em `@g.us`, só `!activate`/`!deactivate` de um admin é tratado (M15); o resto é ignorado sem ler, gravar nem marcar como lido, e o grupo não ativado é registrado como pendente.
   4. Deduplique pelo `id` da mensagem.
   5. Faça `sendSeen` e despache ao roteador, com a lógica síncrona em threadpool. A conversa (IA, atrasos "humanos") roda em segundo plano, depois do 200 (M4, ADR-0006).
   6. **Sempre** devolva 200. Registre as exceções e mande ao usuário uma mensagem curta de erro.
@@ -570,6 +587,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, marcar como lido, digi
 | M12 | Comandos em inglês (apelidos PT escondidos), `/list` numerado e paginado, `/info`, `/profile`, sinônimos e frases corrigidas persistidos na entrada, `/export` em planilha Excel no lugar do arquivo do Anki (ADR-0014) | `make check` passa; `make test-emulador` valida `sinonimos` no Firestore real; `/export` no `sim` gera um `.xlsx` com as 3 abas |
 | M13 | Prática com letra de música (seção 5.8, ADR-0016): `/song nome [- artista]`, busca no LRCLIB atrás de `LyricsProvider`, escolha entre homônimas (`SONG_PICKING`), recusa de letra fora do inglês, verso a verso com `Tutor.song_line` (`SONG_PRACTICE`), oferta de salvar as expressões não entendidas (`SONG_SAVING`) | `make check` passa; ciclo completo de `/song` no `sim` (escolha, prática, `0`, salvar e a recusa em português); nenhuma letra real em testes, fixtures ou evals |
 | M14 | Multiusuário por espaço (ADR-0017, `spec/plano-turmas.md`): `espacos/{chat}/...`, `Banco` + `Repository`, `ALLOWED_NUMBERS`/`ALLOWED_GROUPS`/`OWNER_NUMBER`, trava e `Conversa` por espaço, agendador por espaço, `scripts.migrar_multiusuario` | Dois alunos no privado isolados (palavras, sessão, `/list`, `/export`, lembretes); migração com dry run, idempotente e `--limpar-origem` seguro; testes antigos do privado passam |
+| M15 | Controle de acesso (ADR-0018): admins no Firestore (`/admin`), grupo ativado só por `!activate` de um admin (`/groups`, `MAX_GROUPS`), grupo não ativado sai em 24 h (`group.v2.join`, `Channel.leave_group`), aviso "sem plano" a número fora da lista sem chamar a IA | Estranho recebe 1 aviso por semana e `FakeTutor.chamadas == []`; `!activate` de não admin não grava nem envia nada; limite respeitado; pendente sai em 24 h (relógio controlado) e ativado antes não sai |
 | M11 | Deploy contínuo via GitHub Actions (seção 10.9, ADR-0013): branch protection na `main` (PR + checks obrigatórios), job `deploy` automático no merge, autenticado por Workload Identity Federation | Push direto na `main` é bloqueado pelo GitHub; um PR com CI verde, ao ser mergeado, dispara o job `deploy` e o bot responde `/help` depois do smoke test |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
@@ -677,7 +695,8 @@ Action é visível a qualquer pessoa — nada sensível pode aparecer em log.
   `infra/deploy.sh` e depois `infra/smoke_test.sh` — se o smoke test falhar, o workflow fica
   vermelho.
 - **Configuração no GitHub** (Settings → Secrets and variables → Actions): `ALLOWED_NUMBER`,
-  `ALLOWED_NUMBERS`, `ALLOWED_GROUPS`, `OWNER_NUMBER` e `BOT_NUMBER` como **Secrets** (são telefone real, mascarados em log mesmo não sendo credencial);
+  `ALLOWED_NUMBERS`, `ALLOWED_GROUPS`, `OWNER_NUMBER` e `BOT_NUMBER` como **Secrets** (e `MAX_GROUPS`,
+  `CONTACT_EMAIL`, públicos, como Variables) (são telefone real, mascarados em log mesmo não sendo credencial);
   `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `LLM_PROVIDER`, `GEMINI_MODEL`, `GEMINI_MODEL_EVAL`,
   `USER_LEVEL`, `TIMEZONE` como **Variables**.
 - Decisão do usuário (2026-09-23): sem gate de aprovação manual entre o merge e o deploy — o CI é a

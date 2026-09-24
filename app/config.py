@@ -11,12 +11,15 @@ from __future__ import annotations
 import re
 from typing import Literal, Self
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.channel.parser import numero_e_permitido
 
 NivelUsuario = Literal["A2-B1", "B1-B2", "B2-C1"]
 ProvedorLLM = Literal["vertex_gemini", "anthropic"]
 AmbienteApp = Literal["local", "prod"]
+CONTATO_PADRAO = "smartins.bot@gmail.com"
 
 
 class Settings(BaseSettings):
@@ -34,6 +37,10 @@ class Settings(BaseSettings):
     allowed_numbers: str = ""
     allowed_groups: str = ""
     owner_number: str | None = None  # o dono do bot; padrão = o primeiro número permitido
+    # Controle de acesso (M15, ADR-0018): teto de grupos ativados por comando e o contato que o
+    # aviso "você não tem um plano" mostra.
+    max_groups: int = Field(default=10, ge=0)
+    contact_email: str = CONTATO_PADRAO
     bot_number: str
     user_level: NivelUsuario = "B1-B2"
     # Fuso do aluno, para distribuir os lembretes de revisão espaçada (seção 5.7, M10).
@@ -78,6 +85,13 @@ class Settings(BaseSettings):
             return None
         return valor
 
+    @field_validator("contact_email", mode="before")
+    @classmethod
+    def _contato_vazio_usa_o_padrao(cls, valor: object) -> object:
+        if isinstance(valor, str) and not valor.strip():
+            return CONTATO_PADRAO
+        return valor
+
     @model_validator(mode="after")
     def _ao_menos_um_numero(self) -> Self:
         if not self.numeros_permitidos:
@@ -102,3 +116,7 @@ class Settings(BaseSettings):
     @property
     def dono(self) -> str:
         return re.sub(r"\D", "", self.owner_number or "") or self.numeros_permitidos[0]
+
+    def eh_dono(self, numero: str) -> bool:
+        """Compara aceitando a variação do nono dígito (a conta pode estar registrada sem o 9)."""
+        return numero_e_permitido(numero, self.dono)

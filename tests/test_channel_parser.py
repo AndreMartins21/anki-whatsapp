@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.channel.parser import (
+    GroupJoinEvent,
     MessageEvent,
     SessionStatusEvent,
     deve_ignorar_chat,
@@ -89,3 +90,70 @@ def test_digitos_do_chat_id() -> None:
 )
 def test_numero_e_permitido(numero_resolvido: str, allowed_number: str, esperado: bool) -> None:
     assert numero_e_permitido(numero_resolvido, allowed_number) is esperado
+
+
+def test_mensagem_de_grupo_traz_o_participante_que_enviou() -> None:
+    bruto = {
+        "event": "message",
+        "session": "default",
+        "payload": {
+            "id": "false_120363000000000000@g.us_ABC_5531999998888@c.us",
+            "from": "120363000000000000@g.us",
+            "fromMe": False,
+            "participant": "5531999998888@c.us",
+            "body": "!activate",
+        },
+    }
+
+    evento = parse_evento(bruto)
+
+    assert isinstance(evento, MessageEvent)
+    assert evento.payload.participant == "5531999998888@c.us"
+
+
+def test_mensagem_privada_nao_tem_participante() -> None:
+    evento = parse_evento(
+        {
+            "event": "message",
+            "session": "default",
+            "payload": {"id": "x", "from": "5531999998888@c.us", "body": "oi"},
+        }
+    )
+
+    assert isinstance(evento, MessageEvent)
+    assert evento.payload.participant is None
+
+
+def test_parseia_evento_de_entrada_em_grupo() -> None:
+    bruto = {
+        "event": "group.v2.join",
+        "session": "default",
+        "payload": {
+            "group": {
+                "id": "120363000000000000@g.us",
+                "subject": "Turma A",
+                "participants": [{"id": "5531999998888@c.us", "role": "admin"}],
+            },
+            "timestamp": 789456123,
+            "_data": {},
+        },
+    }
+
+    evento = parse_evento(bruto)
+
+    assert isinstance(evento, GroupJoinEvent)
+    assert evento.payload.group.id == "120363000000000000@g.us"
+    assert evento.payload.group.subject == "Turma A"
+
+
+def test_evento_de_entrada_em_grupo_sem_assunto_e_valido() -> None:
+    evento = parse_evento(
+        {
+            "event": "group.v2.join",
+            "session": "default",
+            "payload": {"group": {"id": "120363000000000000@g.us"}},
+        }
+    )
+
+    assert isinstance(evento, GroupJoinEvent)
+    assert evento.payload.group.subject is None

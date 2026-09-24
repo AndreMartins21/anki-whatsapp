@@ -40,7 +40,7 @@ que exigem aprovação:
 8. Antes de dormir, o usuário libera as permissões que a noite usa (`make`, `uv`, `git` na branch
    `feat/turmas`, edições de arquivo, o Docker do emulador). Se `git push` ou `gh pr create` for negado,
    não pare: deixe tudo commitado na branch local e registre isso no relatório. Meta da noite: **M14 e
-   M15**; M16 e M17 só se sobrar tempo.
+   M15** (acesso); M16 (grupo) só se sobrar tempo, e M17 e M18 ficam para outra rodada.
    Ao terminar (ou parar), faça push da `feat/turmas`, abra um **PR em rascunho** (draft) e escreva
    `docs/noite/RELATORIO.md` (seção 7).
 9. Confira na documentação atual do WAHA (waha.devlike.pro), para o engine **GOWS**: o formato do
@@ -119,12 +119,55 @@ total (palavras, sessão, `/list`, `/export`, lembretes); testes da migração (
 nada, execução copia tudo, segunda execução não duplica, `--limpar-origem` recusa rodar com cópia
 incompleta); todos os testes antigos do fluxo privado passam.
 
-## 3. Marco M15 — Bot em grupo com prefixo `!` e comandos limitados
+## 2b. Marco M15 — Controle de acesso (grupos só por admins, aviso a quem não tem plano)
+
+Vem antes do grupo: sem isso qualquer pessoa que salve o número do bot cria grupos e ganha um
+assistente pessoal de graça. Decisões do usuário: admins ficam no Firestore e o dono os gerencia por
+comando no privado; grupo não ativado fica em silêncio e o bot sai dele depois de 24 h.
+
+**Entrega:**
+
+- **Papéis.** Dono (`OWNER_NUMBER`, sempre admin e aluno; único que gerencia admins). Admins:
+  `admins/{numero}` na raiz do Firestore. Alunos no privado: `ALLOWED_NUMBERS` (no MVP, só o dono).
+  `Banco`: `listar_admins`, `adicionar_admin`, `remover_admin`, `eh_admin` (nono dígito à parte).
+- **Grupo ativo** = está em `ALLOWED_GROUPS` (compat do M14; não conta no limite nem se desativa por
+  comando) ou tem `ativo: true` em `espacos/{grupo}`. `MAX_GROUPS` (padrão 10) limita os ativados
+  por comando. `grupos_pendentes/{grupo}` `{visto_em}` guarda os grupos em que o bot está sem ter sido
+  ativado.
+- **Ativar.** No grupo, um admin manda `!activate` (o remetente é o participante, com LID resolvido
+  pelo cache `lids/`); `!deactivate` desativa (os dados ficam). De não admin, os dois são silêncio
+  total. No privado, dono e admins têm `/groups` (ativos e pendentes, com o nome) e `/groups off N`;
+  só o dono tem `/admin`, `/admin add N`, `/admin remove N`. Nada disso aparece no `/help` de quem
+  não é admin; para os demais, é comando desconhecido.
+- **Grupo não ativado.** O evento `group.v2.join` do WAHA (o payload traz `group.id` e `group.subject`,
+  e **não diz quem adicionou**) registra o grupo como pendente; mensagem de grupo desconhecido também.
+  Enquanto pendente, nada é lido, gravado ou respondido, salvo um `!activate` de admin. O `Agendador`
+  sai dos pendentes há mais de 24 h (`POST /api/{session}/groups/{id}/leave`, novo
+  `Channel.leave_group`), sem mandar mensagem, e apaga o registro.
+- **Número sem plano no privado.** Antes de qualquer chamada ao `Router` e sem `sendSeen`: quem não
+  é aluno nem dono recebe `messages.SEM_PLANO` (inglês, ADR-0010, com o e-mail de `CONTACT_EMAIL`)
+  **no máximo uma vez a cada 7 dias** por número (marca em `processed/`, com hash do número), e as
+  demais mensagens são ignoradas. **A IA nunca é chamada** para esses números. Admin que não é aluno
+  só usa `/groups`; o resto recebe o aviso.
+- Config: `MAX_GROUPS`, `CONTACT_EMAIL`. Compose: assinar também `group.v2.join`. README: no
+  celular do bot, Privacidade → Grupos → "Meus contatos".
+- ADR-0018 "Acesso por admins e ativação de grupos". Alternativas: lista fixa `ADMIN_NUMBERS` (mudar
+  exige deploy), só o dono (todo grupo passa por ele), sair na hora avisando (mensagem não pedida),
+  ficar em silêncio para sempre (acumula grupos).
+
+**Critério de aceite:** `make check` e `make test-emulador` verdes; número fora da lista recebe o
+aviso uma vez, a segunda mensagem da semana não recebe nada, `FakeTutor.chamadas == []` e nenhum
+`sendSeen`; `!activate` de não admin não grava nem envia nada, de admin ativa, acima de `MAX_GROUPS`
+é recusado; `/admin add` por quem não é o dono é comando desconhecido; `group.v2.join` registra o
+pendente e o tick 24 h depois (relógio controlado) chama `leave_group` e apaga o registro, salvo se
+foi ativado antes; o privado do dono não muda.
+
+## 3. Marco M16 — Bot em grupo com prefixo `!` e comandos limitados
 
 **Entrega:**
 
 - Parser (`app/channel/parser.py`): mensagens de `@g.us` deixam de ser descartadas **se** o grupo
-  está em `ALLOWED_GROUPS`. O remetente real é o participante (confirmar o campo no payload do GOWS);
+  está **ativo** (`ALLOWED_GROUPS` ou ativado por admin, M15). O remetente real é o participante (confirmar o campo no payload do GOWS);
   resolva LID→número com o cache `lids/` existente.
 - **Filtro de prefixo antes de tudo:** em grupo, mensagem que não começa com o prefixo é descartada
   logo no webhook, antes da deduplicação e do `sendSeen`, sem gravar nada e sem logar o conteúdo.
@@ -135,7 +178,7 @@ incompleta); todos os testes antigos do fluxo privado passam.
 - **No grupo, o conjunto de comandos é fechado.** Depois de tirar o prefixo, só isto é aceito:
   - `!list [página]` — palavras do caderno da turma, mesma regra do `/list` (mais novas primeiro, 20
     por página, número fixo por palavra dentro do grupo).
-  - `!review` — começa a sessão de revisão em grupo na hora (M16).
+  - `!review` — começa a sessão de revisão em grupo na hora (M17).
   - `!add palavra ou expressão` (com contexto opcional: `!add stall | the talks stalled`) — é a
     **única** forma de trazer uma palavra nova para o grupo: manda o card e entra em `AWAIT_ACTION`.
   - `!practice palavra ou número` — retoma uma palavra do caderno da turma, como o `/practice`.
@@ -152,7 +195,7 @@ incompleta); todos os testes antigos do fluxo privado passam.
   - em `AWAIT_ACTION`: `!1`, `!2`, `!3` e `!` + texto (frase de prática ou pedido, via `Tutor.route`,
     como no privado, **exceto** que um `nova_palavra` do roteamento (`app/flows/freeform.py`) no grupo
     responde com a dica de `!add` e não abre palavra nenhuma);
-  - em `REVIEWING` (M16): `!` + resposta, e `!0`/`!stop` para sair.
+  - em `REVIEWING` (M17): `!` + resposta, e `!0`/`!stop` para sair.
   - Fora dessas atividades, `!` + texto livre não é processado.
 - Qualquer outra coisa com `!` no grupo (comando do privado, palavra sem `!add`, texto fora de
   atividade) recebe uma resposta curta com a lista de comandos do grupo, **sem chamar a IA**. Como toda
@@ -172,7 +215,7 @@ incompleta); todos os testes antigos do fluxo privado passam.
   prefixo, de qualquer participante, conta como resposta.
 - Simulador: `python -m sim --grupo` simula um grupo com vários participantes. Cada linha digitada é
   `nome: mensagem` (ex.: `ana: !add stall`); linhas sem prefixo aparecem como ignoradas.
-- ADR-0018 "Bot em grupo com prefixo `!` e comandos limitados". Alternativas a registrar:
+- ADR-0019 "Bot em grupo com prefixo `!` e comandos limitados". Alternativas a registrar:
   - desenho híbrido (captura no grupo, prática no privado) — descartado pelo usuário, porque a
     discussão entre os alunos no grupo é o objetivo;
   - resposta citando a mensagem do bot — mais difícil de explicar aos alunos que um prefixo;
@@ -187,7 +230,7 @@ autorizado, participante LID e mídia em grupo; testes de cada comando do grupo,
 recusado no grupo, de `!` + texto fora de atividade (sem chamar a IA) e de `!teacher` por quem não
 pode; ciclo "stall" completo no `sim --grupo` com dois alunos (`!add`, `!2`, frase com `!`, `!3`).
 
-## 4. Marco M16 — Revisão em grupo com menção e rodízio
+## 4. Marco M17 — Revisão em grupo com menção e rodízio
 
 **Entrega:**
 
@@ -215,7 +258,7 @@ pode; ciclo "stall" completo no `sim --grupo` com dois alunos (`!add`, `!2`, fra
   foi marcado; o rodízio distribui as palavras entre os alunos com o tempo. Documente essa limitação
   no ADR.
 - `!reminder` no grupo configura os lembretes do grupo, com a mesma lógica do privado.
-- ADR-0019 "Revisão em grupo com menção em rodízio". Alternativas a registrar: sorteio puro (pode
+- ADR-0020 "Revisão em grupo com menção em rodízio". Alternativas a registrar: sorteio puro (pode
   repetir a mesma pessoa), qualquer um responde (quem é mais rápido responde sempre) e agendamento por
   aluno dentro do grupo (complexo demais para o piloto).
 
@@ -223,7 +266,7 @@ pode; ciclo "stall" completo no `sim --grupo` com dois alunos (`!add`, `!2`, fra
 excluídos, sem repetição seguida), da resposta de não marcado (feedback sem nota), do timeout com
 relógio controlado e das menções no `FakeChannel`; sessão de revisão completa no `sim --grupo`.
 
-## 5. Marco M17 (só se sobrar tempo) — Preparação do piloto
+## 5. Marco M18 (só se sobrar tempo) — Preparação do piloto
 
 - `/privacy` (e `!privacy` no grupo, escondido do `!help`): texto curto em inglês em `messages.py`
   dizendo o que é guardado (palavras, frases com prefixo, autor), onde (Google Cloud), que conversa sem

@@ -187,3 +187,40 @@ async def test_send_file_nao_tenta_de_novo_para_nao_duplicar_o_arquivo() -> None
     await canal.aclose()
 
     assert chamadas == 1
+
+
+async def test_leave_group_usa_o_endpoint_de_sair_do_grupo() -> None:
+    vistos: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        vistos.append((request.method, request.url.path))
+        return httpx.Response(200, json={})
+
+    canal = _canal(httpx.MockTransport(handler))
+    await canal.leave_group("120363000000000000@g.us")
+    await canal.aclose()
+
+    assert vistos == [("POST", "/api/default/groups/120363000000000000@g.us/leave")]
+
+
+async def test_group_name_le_o_assunto_do_grupo() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/api/default/groups/120363000000000000@g.us"
+        return httpx.Response(200, json={"id": "120363000000000000@g.us", "subject": "Turma A"})
+
+    canal = _canal(httpx.MockTransport(handler))
+    nome = await canal.group_name("120363000000000000@g.us")
+    await canal.aclose()
+
+    assert nome == "Turma A"
+
+
+async def test_group_name_devolve_none_quando_falha_ou_nao_ha_assunto() -> None:
+    respostas = iter([httpx.Response(404, json={}), httpx.Response(200, json={"id": "x@g.us"})])
+
+    canal = _canal(httpx.MockTransport(lambda _: next(respostas)))
+
+    assert await canal.group_name("1@g.us") is None  # o nome é só um enfeite: nunca levanta
+    assert await canal.group_name("2@g.us") is None
+    await canal.aclose()

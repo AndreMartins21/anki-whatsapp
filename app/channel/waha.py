@@ -83,6 +83,21 @@ class WahaChannel:
         endpoint = "/api/startTyping" if on else "/api/stopTyping"
         await self._post(endpoint, {"session": self._session, "chatId": chat_id})
 
+    async def leave_group(self, chat_id: str) -> None:
+        """`POST /api/{session}/groups/{id}/leave` (GOWS suporta, conferido na doc)."""
+        await self._post(f"/api/{self._session}/groups/{chat_id}/leave", {})
+
+    async def group_name(self, chat_id: str) -> str | None:
+        """`GET /api/{session}/groups/{id}`: o campo `subject`. O nome é um enfeite, então uma
+        falha (rede, 404, campo ausente) vira `None` em vez de derrubar quem chamou."""
+        try:
+            resposta = await self._get(f"/api/{self._session}/groups/{chat_id}")
+            assunto = resposta.json().get("subject")
+        except Exception:
+            logger.warning("não consegui ler o nome do grupo", exc_info=True)
+            return None
+        return str(assunto) if assunto else None
+
     async def session_status(self) -> str:
         resposta = await self._get(f"/api/sessions/{self._session}")
         status = resposta.json()["status"]

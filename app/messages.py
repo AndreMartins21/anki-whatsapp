@@ -504,3 +504,74 @@ def song_salvas(palavras: Sequence[str]) -> str:
         f"✅ Saved to your dictionary: {', '.join(palavras)}. They're in /pending — practice "
         "them whenever you want."
     )
+
+
+# --- Controle de acesso (M15, ADR-0018) -------------------------------------------------------
+
+
+def sem_plano(email: str) -> str:
+    """Para quem não está na lista e escreve no privado (no máximo uma vez a cada 7 dias)."""
+    return (
+        "You don't have a plan with this bot yet. To use it, email "
+        f"{email} asking for access.\n"
+        f"🇧🇷 Você não possui um plano com o nosso bot. Para usá-lo, contate {email} "
+        "solicitando acesso."
+    )
+
+
+GRUPO_ATIVADO = "✅ I'm active in this group now. Send !help to see what I can do."
+GRUPO_JA_ATIVO = "I'm already active in this group. 🙂"
+GRUPO_DESATIVADO = "OK, I'll stay quiet in this group from now on. Your words are still saved."
+
+
+def grupo_limite(maximo: int) -> str:
+    return (
+        f"I can be active in up to {maximo} groups at a time, and that limit is reached. "
+        "Turn one off first (/groups in a private chat)."
+    )
+
+
+ADMIN_USO = "Use /admin add 5531999998888 or /admin remove 5531999998888 (digits only, with country and area code)."
+ADMIN_JA_E_ADMIN = "That number is already an admin."
+ADMIN_NAO_E_ADMIN = "That number isn't an admin."
+ADMIN_E_O_DONO = "That's the owner — the owner is always an admin."
+ADMIN_ADICIONADO = "✅ Added as an admin. They can activate me in a group with !activate."
+ADMIN_REMOVIDO = "✅ Removed. Groups they already activated stay active."
+
+
+def admin_lista(numeros: Sequence[str]) -> str:
+    linhas = [f"👑 *Admins* ({len(numeros) + 1})", "• you (owner)"]
+    linhas += [f"• {n}" for n in numeros]
+    linhas.append("Add one with /admin add 5531999998888.")
+    return "\n".join(linhas)
+
+
+GRUPOS_USO = "Use /groups to see the groups, or /groups off 1 to turn one off."
+GRUPO_NAO_EXISTE = "There's no active group with that number. Use /groups to see them."
+
+
+def grupo_desligado(nome: str | None) -> str:
+    return f"✅ Turned off: {nome or 'that group'}. Its words are still saved."
+
+
+def grupos(
+    ativos: Sequence[str | None],
+    fixos: Sequence[str | None],
+    pendentes: Sequence[tuple[str | None, int]],
+    maximo: int,
+) -> str:
+    """`ativos`: nomes dos grupos ativados por comando (numerados); `fixos`: os de ALLOWED_GROUPS;
+    `pendentes`: (nome, horas até eu sair) dos grupos em que ainda ninguém digitou !activate."""
+    if not ativos and not fixos and not pendentes:
+        return "I'm not in any group yet. Add me to one and send !activate there."
+    linhas: list[str] = []
+    if ativos or fixos:
+        linhas.append(f"🏫 *Active groups* ({len(ativos)}/{maximo})")
+        linhas += [f"{i}. {nome or '(no name)'}" for i, nome in enumerate(ativos, start=1)]
+        linhas += [f"• {nome or '(no name)'} (fixed in the config)" for nome in fixos]
+    if pendentes:
+        linhas.append("⏳ *Waiting for a !activate* (I leave when the time runs out)")
+        linhas += [f"• {nome or '(no name)'} — {horas}h left" for nome, horas in pendentes]
+    if ativos:
+        linhas.append("Turn one off with /groups off 1.")
+    return "\n".join(linhas)

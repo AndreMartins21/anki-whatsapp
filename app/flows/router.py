@@ -78,6 +78,14 @@ class Router:
             letras=self._letras,
         )
 
+    async def responder_avulso(self, chat_id: str, texto: str) -> None:
+        """Uma resposta fixa (sem IA e sem mexer na sessão), com o mesmo ritmo humano e o mesmo
+        limite de mensagens seguidas das demais: usado pelos comandos de admin (M15)."""
+        async with self._trava(chat_id):
+            conversa = self.conversa_do(chat_id)
+            conversa.usuario_falou()
+            await conversa.enviar(texto)
+
     async def midia_nao_suportada(self, chat_id: str) -> None:
         async with self._trava(chat_id):
             conversa = self.conversa_do(chat_id)

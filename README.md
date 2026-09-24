@@ -105,7 +105,15 @@ Notas de operação:
 Cada número em `ALLOWED_NUMBERS` (mais o `ALLOWED_NUMBER`, que continua valendo e é o dono) conversa
 com o bot no privado e tem o próprio caderno: palavras, sessão, perfil e lembretes ficam em
 `espacos/{chat}` no Firestore, e um aluno nunca vê os dados de outro. `ALLOWED_GROUPS` autoriza
-grupos (o id de um grupo novo aparece uma vez no log em INFO); o bot só passa a responder neles no M15.
+grupos fixos. **Quem não está na lista** recebe só um aviso ("você não tem um plano", com o e-mail de
+`CONTACT_EMAIL`), no máximo uma vez por semana, e a IA nunca é chamada para essa pessoa.
+
+**Grupos (M15, ADR-0018):** o bot só trabalha num grupo depois que um **admin** (o dono ou alguém em
+`/admin add NUMERO`, comando só do dono, no privado) escrever `!activate` nele; `MAX_GROUPS` limita
+quantos. Um grupo em que o bot foi adicionado e ninguém ativou fica em silêncio, e o bot **sai dele
+depois de 24 h**. `/groups` (dono e admins, no privado) lista os grupos e `/groups off N` desativa um.
+No celular do bot, configure Privacidade → Grupos → "Meus contatos", para só quem o salvou poder
+adicioná-lo. Os comandos dentro do grupo chegam no M16.
 
 **Migrar o caderno de um usuário só** (roda **na sua máquina**, com `gcloud auth application-default
 login`, não na VM). A ordem importa, porque o merge faz o deploy e o bot antigo continua gravando na

@@ -21,6 +21,15 @@ class Channel(Protocol):
 
     async def typing(self, chat_id: str, on: bool) -> None: ...
 
+    async def leave_group(self, chat_id: str) -> None:
+        """Sai de um grupo (M15: o bot não fica em grupo que nenhum admin ativou)."""
+        ...
+
+    async def group_name(self, chat_id: str) -> str | None:
+        """O assunto do grupo, só para o dono reconhecê-lo em `/groups`. Nunca levanta: sem nome,
+        `None`."""
+        ...
+
 
 class ChannelComLid(Channel, Protocol):
     """Extensão específica do WAHA: resolver @lid para número de telefone (seção 8.2).

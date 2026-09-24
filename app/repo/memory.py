@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.domain.models import Entry, Profile, Sentence, Sessao, StatusEntrada
-from app.repo.base import EntradaJaExiste, Repository, proximo_tick
+from app.repo.base import EntradaJaExiste, GrupoAtivo, Repository, proximo_tick
 
 
 class MemoryRepository:
@@ -75,6 +75,9 @@ class MemoryBanco:
         self._espacos: dict[str, MemoryRepository] = {}
         self._processadas: set[str] = set()
         self._lids: dict[str, str] = {}
+        self._admins: dict[str, datetime] = {}
+        self._grupos_ativos: dict[str, GrupoAtivo] = {}
+        self._pendentes: dict[str, datetime] = {}
 
     def do_espaco(self, espaco_id: str) -> Repository:
         return self._espacos.setdefault(espaco_id, MemoryRepository())
@@ -99,3 +102,40 @@ class MemoryBanco:
 
     def salvar_numero_do_lid(self, lid: str, numero: str) -> None:
         self._lids[lid] = numero
+
+    def listar_admins(self) -> list[str]:
+        return [n for n, _ in sorted(self._admins.items(), key=lambda par: par[1])]
+
+    def adicionar_admin(self, numero: str, *, por: str, agora: datetime) -> bool:  # noqa: ARG002
+        if numero in self._admins:
+            return False
+        self._admins[numero] = agora
+        return True
+
+    def remover_admin(self, numero: str) -> bool:
+        return self._admins.pop(numero, None) is not None
+
+    def grupo_esta_ativo(self, grupo_id: str) -> bool:
+        return grupo_id in self._grupos_ativos
+
+    def ativar_grupo(self, grupo_id: str, *, nome: str | None, por: str, agora: datetime) -> None:
+        self._grupos_ativos[grupo_id] = GrupoAtivo(grupo_id, nome, por, agora)
+        self._pendentes.pop(grupo_id, None)
+
+    def desativar_grupo(self, grupo_id: str) -> bool:
+        return self._grupos_ativos.pop(grupo_id, None) is not None
+
+    def listar_grupos_ativos(self) -> list[GrupoAtivo]:
+        return sorted(self._grupos_ativos.values(), key=lambda g: (g.ativado_em, g.id))
+
+    def registrar_grupo_pendente(self, grupo_id: str, agora: datetime) -> bool:
+        if grupo_id in self._pendentes:
+            return False
+        self._pendentes[grupo_id] = agora
+        return True
+
+    def listar_grupos_pendentes(self) -> list[tuple[str, datetime]]:
+        return sorted(self._pendentes.items(), key=lambda par: (par[1], par[0]))
+
+    def remover_grupo_pendente(self, grupo_id: str) -> None:
+        self._pendentes.pop(grupo_id, None)

@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 from app.domain.lembretes import proximo_horario
 from app.domain.models import Estado, Profile
 from app.flows import review
+from app.flows.admin import PRAZO_GRUPO_PENDENTE
 from app.flows.base import bloq
 from app.flows.router import Router
 from app.repo.base import Banco, Repository
@@ -28,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 INTERVALO_PADRAO_SEGUNDOS = 60
 LIMITE_DE_ATRASO = timedelta(hours=2)
+# Se o `leave` continua falhando (o bot já foi removido do grupo), para de tentar depois disto.
+DESISTIR_DE_SAIR_APOS = timedelta(hours=72)
 
 
 class Agendador:
@@ -40,6 +43,7 @@ class Agendador:
         fuso: ZoneInfo,
         dormir: Callable[[float], Awaitable[None]] = asyncio.sleep,
         intervalo_segundos: float = INTERVALO_PADRAO_SEGUNDOS,
+        sair_do_grupo: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self._router = router
         self._banco = banco
@@ -47,6 +51,7 @@ class Agendador:
         self._fuso = fuso
         self._dormir = dormir
         self._intervalo = intervalo_segundos
+        self._sair_do_grupo = sair_do_grupo
         self._parar = False
 
     def parar(self) -> None:
@@ -69,6 +74,10 @@ class Agendador:
                 await self._tick_espaco(espaco_id)
             except Exception:  # um espaço com problema não pode calar os outros
                 logger.exception("falha no lembrete de um espaço; os demais seguem")
+        try:
+            await self._sair_de_grupos_pendentes()
+        except Exception:  # o Firestore falhando aqui não pode calar os lembretes do próximo tick
+            logger.exception("falha ao sair de grupos pendentes")
 
     async def _tick_espaco(self, espaco_id: str) -> None:
         repo = self._banco.do_espaco(espaco_id)
@@ -119,3 +128,24 @@ class Agendador:
             repo.salvar_perfil,
             perfil.model_copy(update={"proximo_lembrete": novo.astimezone(UTC)}),
         )
+
+    async def _sair_de_grupos_pendentes(self) -> None:
+        """M15 (ADR-0018): o bot não fica em grupo que nenhum admin ativou em 24 h. Sai em
+        silêncio e apaga o registro; se a saída falha, tenta de novo no próximo tick, até desistir
+        (o bot pode já ter sido removido do grupo)."""
+        if self._sair_do_grupo is None:
+            return
+        agora = self._agora()
+        for grupo_id, visto_em in await bloq(self._banco.listar_grupos_pendentes):
+            idade = agora - visto_em
+            if idade <= PRAZO_GRUPO_PENDENTE:
+                continue
+            try:
+                await self._sair_do_grupo(grupo_id)
+            except Exception:
+                if idade <= DESISTIR_DE_SAIR_APOS:
+                    logger.warning("não consegui sair de um grupo pendente; tento de novo")
+                    continue
+                logger.warning("desisti de sair de um grupo pendente (falha por muito tempo)")
+            await bloq(self._banco.remover_grupo_pendente, grupo_id)
+            logger.info("saí de um grupo que ninguém ativou em 24 h")

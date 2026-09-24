@@ -10,6 +10,7 @@ cliente do Firestore também é síncrono.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
@@ -66,6 +67,14 @@ class Repository(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class GrupoAtivo:
+    id: str
+    nome: str | None
+    ativado_por: str  # número (só dígitos) do admin que ativou
+    ativado_em: datetime
+
+
 class Banco(Protocol):
     def do_espaco(self, espaco_id: str) -> Repository:
         """O caderno do espaço (`NUMERO@c.us` no privado, `...@g.us` no grupo). Nada é lido nem
@@ -84,6 +93,41 @@ class Banco(Protocol):
     def obter_numero_do_lid(self, lid: str) -> str | None: ...
 
     def salvar_numero_do_lid(self, lid: str, numero: str) -> None: ...
+
+    # --- Controle de acesso (M15, ADR-0018) -------------------------------------------------
+
+    def listar_admins(self) -> list[str]:
+        """Números (só dígitos) dos admins, na ordem em que entraram."""
+        ...
+
+    def adicionar_admin(self, numero: str, *, por: str, agora: datetime) -> bool:
+        """`False` se já era admin (não duplica)."""
+        ...
+
+    def remover_admin(self, numero: str) -> bool: ...
+
+    def grupo_esta_ativo(self, grupo_id: str) -> bool:
+        """Só o que foi ativado por admin; quem confere `ALLOWED_GROUPS` é o webhook."""
+        ...
+
+    def ativar_grupo(self, grupo_id: str, *, nome: str | None, por: str, agora: datetime) -> None:
+        """Ativa (ou reativa) e tira o grupo dos pendentes. O caderno da turma não é tocado."""
+        ...
+
+    def desativar_grupo(self, grupo_id: str) -> bool:
+        """`False` se não estava ativo. Os dados do espaço ficam."""
+        ...
+
+    def listar_grupos_ativos(self) -> list[GrupoAtivo]: ...
+
+    def registrar_grupo_pendente(self, grupo_id: str, agora: datetime) -> bool:
+        """Grupo em que o bot está sem ter sido ativado. `True` só na primeira vez: o horário
+        guardado é o do primeiro encontro, então o prazo de 24h para sair não reinicia."""
+        ...
+
+    def listar_grupos_pendentes(self) -> list[tuple[str, datetime]]: ...
+
+    def remover_grupo_pendente(self, grupo_id: str) -> None: ...
 
 
 def tipo_do_espaco(espaco_id: str) -> str:

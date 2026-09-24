@@ -36,6 +36,12 @@ class ConsoleChannel:
     async def send_seen(self, chat_id: str) -> None:  # noqa: ARG002
         return None
 
+    async def leave_group(self, chat_id: str) -> None:  # noqa: ARG002
+        self._saida("  (o bot saiu do grupo)")
+
+    async def group_name(self, chat_id: str) -> str | None:  # noqa: ARG002
+        return None
+
     async def typing(self, chat_id: str, on: bool) -> None:  # noqa: ARG002
         if on:
             self._saida("  … digitando")

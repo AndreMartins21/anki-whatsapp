@@ -29,6 +29,9 @@ class MessagePayload(BaseModel):
     to: str | None = None
     body: str = ""
     has_media: bool = Field(default=False, alias="hasMedia")
+    # Em grupo, quem escreveu (o `from` é o grupo). Formato confirmado na doc do WAHA; se vem como
+    # @c.us ou @lid no GOWS só se vê no WhatsApp real (ver docs/noite/PENDENCIAS.md).
+    participant: str | None = None
 
     @field_validator("body", mode="before")
     @classmethod
@@ -40,6 +43,28 @@ class MessageEvent(BaseModel):
     event: Literal["message"]
     session: str
     payload: MessagePayload
+
+
+class GrupoDoEvento(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    subject: str | None = None
+
+
+class GroupJoinPayload(BaseModel):
+    """`group.v2.join`: o bot entrou (ou foi adicionado) num grupo. O payload não diz QUEM
+    adicionou (confirmado na doc do WAHA), então nada aqui autoriza o grupo."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    group: GrupoDoEvento
+
+
+class GroupJoinEvent(BaseModel):
+    event: Literal["group.v2.join"]
+    session: str
+    payload: GroupJoinPayload
 
 
 class SessionStatusPayload(BaseModel):
@@ -55,13 +80,17 @@ class SessionStatusEvent(BaseModel):
     payload: SessionStatusPayload
 
 
-def parse_evento(bruto: dict[str, Any]) -> MessageEvent | SessionStatusEvent | None:
+def parse_evento(
+    bruto: dict[str, Any],
+) -> MessageEvent | SessionStatusEvent | GroupJoinEvent | None:
     """Interpreta o corpo do webhook. `None` para eventos que não assinamos (seção 8.1)."""
     tipo = bruto.get("event")
     if tipo == "message":
         return MessageEvent.model_validate(bruto)
     if tipo == "session.status":
         return SessionStatusEvent.model_validate(bruto)
+    if tipo == "group.v2.join":
+        return GroupJoinEvent.model_validate(bruto)
     return None
 
 

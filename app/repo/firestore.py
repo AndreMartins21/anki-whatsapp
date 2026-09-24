@@ -26,6 +26,7 @@ from app.domain.models import Entry, Profile, Sentence, Sessao, StatusEntrada
 from app.repo.base import (
     PROCESSED_TTL,
     EntradaJaExiste,
+    GrupoAtivo,
     Repository,
     proximo_tick,
     tipo_do_espaco,
@@ -150,3 +151,72 @@ class FirestoreBanco:
 
     def salvar_numero_do_lid(self, lid: str, numero: str) -> None:
         self._db.collection("lids").document(lid).set({"numero": numero})
+
+    # --- Controle de acesso (M15, ADR-0018) -----------------------------------------------------
+
+    def listar_admins(self) -> list[str]:
+        documentos = self._db.collection("admins").order_by("adicionado_em").stream()
+        return [d.id for d in documentos]
+
+    def adicionar_admin(self, numero: str, *, por: str, agora: datetime) -> bool:
+        try:
+            self._db.collection("admins").document(numero).create(
+                {"adicionado_em": agora, "adicionado_por": por}
+            )
+        except AlreadyExists:
+            return False
+        return True
+
+    def remover_admin(self, numero: str) -> bool:
+        documento = self._db.collection("admins").document(numero)
+        if not documento.get().exists:
+            return False
+        documento.delete()
+        return True
+
+    def grupo_esta_ativo(self, grupo_id: str) -> bool:
+        dados = self._db.collection("espacos").document(grupo_id).get().to_dict()
+        return bool(dados and dados.get("ativo"))
+
+    def ativar_grupo(self, grupo_id: str, *, nome: str | None, por: str, agora: datetime) -> None:
+        self._db.collection("espacos").document(grupo_id).set(
+            {
+                "tipo": "grupo",
+                "ativo": True,
+                "nome": nome,
+                "ativado_por": por,
+                "ativado_em": agora,
+            },
+            merge=True,
+        )
+        self._db.collection("grupos_pendentes").document(grupo_id).delete()
+
+    def desativar_grupo(self, grupo_id: str) -> bool:
+        if not self.grupo_esta_ativo(grupo_id):
+            return False
+        self._db.collection("espacos").document(grupo_id).set({"ativo": False}, merge=True)
+        return True
+
+    def listar_grupos_ativos(self) -> list[GrupoAtivo]:
+        consulta = self._db.collection("espacos").where(filter=FieldFilter("ativo", "==", True))
+        grupos = [
+            GrupoAtivo(d.id, dados.get("nome"), dados["ativado_por"], dados["ativado_em"])
+            for d in consulta.stream()
+            if (dados := d.to_dict())
+        ]
+        return sorted(grupos, key=lambda g: (g.ativado_em, g.id))
+
+    def registrar_grupo_pendente(self, grupo_id: str, agora: datetime) -> bool:
+        try:
+            self._db.collection("grupos_pendentes").document(grupo_id).create({"visto_em": agora})
+        except AlreadyExists:
+            return False
+        return True
+
+    def listar_grupos_pendentes(self) -> list[tuple[str, datetime]]:
+        documentos = self._db.collection("grupos_pendentes").stream()
+        pendentes = [(d.id, dados["visto_em"]) for d in documentos if (dados := d.to_dict())]
+        return sorted(pendentes, key=lambda par: (par[1], par[0]))
+
+    def remover_grupo_pendente(self, grupo_id: str) -> None:
+        self._db.collection("grupos_pendentes").document(grupo_id).delete()

@@ -28,6 +28,7 @@ from starlette.concurrency import run_in_threadpool
 from app import messages
 from app.channel.base import ChannelComLid
 from app.channel.parser import (
+    GroupJoinEvent,
     MessageEvent,
     MessagePayload,
     SessionStatusEvent,
@@ -40,6 +41,7 @@ from app.channel.parser import (
 from app.channel.waha import WahaChannel
 from app.config import Settings
 from app.domain.models import agora_utc
+from app.flows import admin
 from app.flows.conversa import Conversa
 from app.flows.router import Router
 from app.logging_config import configurar_logs, id_curto
@@ -105,7 +107,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # M10: lembretes de revisão espaçada (seção 5.7, ADR-0012) — laço em segundo plano, um
     # minuto por vez; só dispara com um chat_id real já aprendido de uma mensagem recebida.
     agendador = Agendador(
-        router=router, banco=banco, agora=agora_utc, fuso=ZoneInfo(settings.timezone)
+        router=router,
+        banco=banco,
+        agora=agora_utc,
+        fuso=ZoneInfo(settings.timezone),
+        sair_do_grupo=canal.leave_group,
     )
     app.state.agendador = agendador
     tarefa_do_agendador = asyncio.create_task(agendador.rodar())
@@ -177,6 +183,13 @@ async def waha_webhook(
         _tratar_status_sessao(evento)
         return {"ok": True}
 
+    if isinstance(evento, GroupJoinEvent):
+        try:
+            await _tratar_entrada_em_grupo(evento, settings, channel, banco)
+        except Exception:
+            logger.exception("falha ao registrar a entrada em um grupo")
+        return {"ok": True}
+
     if isinstance(evento, MessageEvent):
         try:
             await _tratar_mensagem(evento.payload, settings, channel, banco, router, tarefas)
@@ -211,24 +224,41 @@ async def _tratar_mensagem(
         logger.debug("mensagem própria ignorada: %s", id_curto(payload.id))
         return
 
+    if payload.from_.endswith("@g.us"):
+        await _tratar_mensagem_de_grupo(payload, settings, channel, banco)
+        return
+
     if deve_ignorar_chat(payload.from_):
-        _registrar_chat_ignorado(payload.from_, settings)
+        logger.info("mensagem de status/canal ignorada")
         return
 
     numero_resolvido = await _numero_do_remetente(payload.from_, channel, banco)
     if numero_resolvido is None:
         logger.warning("LID não resolvido: o WAHA não achou o telefone do remetente; ignorada")
         return
-    if not numero_esta_na_lista(numero_resolvido, settings.numeros_permitidos):
-        logger.warning("mensagem de número não autorizado ignorada")
-        return
+
+    acesso = _acesso(settings, channel, banco)
+    aluno = numero_esta_na_lista(numero_resolvido, settings.numeros_permitidos) or settings.eh_dono(
+        numero_resolvido
+    )
+    e_admin = await run_in_threadpool(admin.eh_admin, acesso, numero_resolvido)
 
     # Responde ao número REAL do remetente (o que o WhatsApp informa). Ele passou pela allowlist,
     # mas pode diferir do número do .env no nono dígito: a conta pode estar registrada sem o 9, e
     # enviar para o número do .env dá "no LID found" no WAHA.
     chat_destino = f"{numero_resolvido}@c.us"
+
+    if not aluno and not e_admin:
+        # Sem plano: a IA nunca é chamada, nada é lido nem gravado, sem `sendSeen`. Só o aviso
+        # (no máximo um por semana, ADR-0018) e depois silêncio.
+        if payload.has_media or payload.body.strip():
+            await _avisar_sem_plano(acesso, numero_resolvido, chat_destino)
+        return
+
     try:
-        await _despachar(payload, channel, banco, router, tarefas, chat_destino)
+        await _despachar(
+            payload, channel, banco, router, tarefas, chat_destino, acesso, numero_resolvido, aluno
+        )
     except Exception:
         # Quem escreveu já está autorizado: o aviso vai só ao próprio chat, nunca a outro aluno.
         logger.exception("falha ao processar mensagem")
@@ -243,6 +273,9 @@ async def _despachar(
     router: Router,
     tarefas: BackgroundTasks,
     chat_destino: str,
+    acesso: admin.Acesso,
+    numero: str,
+    aluno: bool,
 ) -> None:
     if not payload.has_media and not payload.body.strip():
         # Sem texto nem mídia: o WAHA não conseguiu decifrar (ou é um tipo que não tratamos).
@@ -254,14 +287,29 @@ async def _despachar(
         return
 
     await channel.send_seen(chat_destino)
-    tarefas.add_task(_responder, router, payload, channel, chat_destino)
+    tarefas.add_task(_responder, router, payload, channel, chat_destino, acesso, numero, aluno)
 
 
 async def _responder(
-    router: Router, payload: MessagePayload, channel: ChannelComLid, chat_destino: str
+    router: Router,
+    payload: MessagePayload,
+    channel: ChannelComLid,
+    chat_destino: str,
+    acesso: admin.Acesso,
+    numero: str,
+    aluno: bool,
 ) -> None:
     """Roda depois do 200. É a fronteira do sistema: nada que aconteça aqui pode escapar."""
     try:
+        if not payload.has_media and admin.eh_comando_de_admin(payload.body):
+            resposta = await admin.comando_privado(acesso, payload.body, numero)
+            if resposta is not None:
+                await router.responder_avulso(chat_destino, resposta)
+                return
+        if not aluno:
+            # Um admin que não é aluno só usa os comandos de admin: o resto é "sem plano".
+            await _avisar_sem_plano(acesso, numero, chat_destino)
+            return
         if payload.has_media:
             await router.midia_nao_suportada(chat_destino)
         else:
@@ -272,18 +320,93 @@ async def _responder(
             await channel.send_text(chat_destino, messages.ERRO_INESPERADO)
 
 
-_GRUPOS_JA_LOGADOS: set[str] = set()
+def _acesso(settings: Settings, channel: ChannelComLid, banco: Banco) -> admin.Acesso:
+    return admin.Acesso(
+        banco=banco,
+        canal=channel,
+        eh_dono=settings.eh_dono,
+        grupos_fixos=settings.grupos_permitidos,
+        max_grupos=settings.max_groups,
+        agora=agora_utc,
+        contato=settings.contact_email,
+    )
 
 
-def _registrar_chat_ignorado(chat_id: str, settings: Settings) -> None:
-    """Grupo que o dono ainda não autorizou: o id vai ao log UMA vez por processo, para ele
-    descobrir e pôr em ALLOWED_GROUPS. Nada mais sobre a mensagem é logado."""
-    if chat_id.endswith("@g.us") and chat_id not in settings.grupos_permitidos:
-        if chat_id not in _GRUPOS_JA_LOGADOS:
-            _GRUPOS_JA_LOGADOS.add(chat_id)
-            logger.info("mensagem de grupo não autorizado ignorada (grupo %s)", chat_id)
+async def _avisar_sem_plano(acesso: admin.Acesso, numero: str, chat_destino: str) -> None:
+    """O aviso "você não tem um plano", no máximo uma vez por semana por número: a marca vive em
+    `processed/`, então a TTL de 7 dias a expira sozinha."""
+    if not await run_in_threadpool(
+        acesso.banco.marcar_processada, _chave_do_aviso(numero), agora_utc()
+    ):
         return
-    logger.info("mensagem de grupo/status/canal ignorada")
+    logger.info("mensagem de número sem plano: aviso enviado")
+    with contextlib.suppress(Exception):
+        await acesso.canal.send_text(chat_destino, messages.sem_plano(acesso.contato))
+
+
+def _chave_do_aviso(numero: str) -> str:
+    """A marca do aviso vive em `processed/` (TTL de 7 dias) sem guardar o telefone em claro."""
+    return "aviso_" + hashlib.sha256(numero.encode()).hexdigest()[:32]
+
+
+_GRUPOS_JA_LOGADOS: set[str] = set()
+_PENDENTES_JA_REGISTRADOS: set[str] = set()
+
+
+def _logar_grupo_uma_vez(grupo_id: str) -> None:
+    """Grupo que ainda ninguém ativou: o id vai ao log UMA vez por processo, para o dono
+    reconhecê-lo. Nada mais sobre a mensagem é logado."""
+    if grupo_id not in _GRUPOS_JA_LOGADOS:
+        _GRUPOS_JA_LOGADOS.add(grupo_id)
+        logger.info(
+            "bot em grupo não ativado (grupo %s): ignorando tudo até um admin ativar", grupo_id
+        )
+
+
+async def _registrar_pendente(banco: Banco, grupo_id: str) -> None:
+    """Guarda o grupo como pendente (o agendador sai dele depois de 24 h). Uma ida ao banco por
+    grupo por processo: um grupo barulhento não gera uma escrita por mensagem."""
+    if grupo_id in _PENDENTES_JA_REGISTRADOS:
+        return
+    await run_in_threadpool(banco.registrar_grupo_pendente, grupo_id, agora_utc())
+    _PENDENTES_JA_REGISTRADOS.add(grupo_id)
+
+
+async def _tratar_entrada_em_grupo(
+    evento: GroupJoinEvent, settings: Settings, channel: ChannelComLid, banco: Banco
+) -> None:
+    grupo_id = evento.payload.group.id
+    if await run_in_threadpool(admin.grupo_autorizado, _acesso(settings, channel, banco), grupo_id):
+        return
+    _logar_grupo_uma_vez(grupo_id)
+    await _registrar_pendente(banco, grupo_id)
+
+
+async def _tratar_mensagem_de_grupo(
+    payload: MessagePayload, settings: Settings, channel: ChannelComLid, banco: Banco
+) -> None:
+    """M15: em grupo o bot só reage a `!activate`/`!deactivate` de um admin. O filtro vem antes de
+    tudo (deduplicação, `sendSeen`): o resto é conversa entre pessoas, que o bot não lê nem grava."""
+    grupo_id = payload.from_
+    acesso = _acesso(settings, channel, banco)
+    if not await run_in_threadpool(admin.grupo_autorizado, acesso, grupo_id):
+        _logar_grupo_uma_vez(grupo_id)
+        await _registrar_pendente(banco, grupo_id)
+
+    comando = None if payload.has_media else admin.eh_comando_de_ativacao(payload.body)
+    if comando is None:
+        return  # o processamento dos comandos do grupo chega no M16
+    if payload.participant is None:
+        logger.info("comando de grupo sem participante: ignorado")
+        return
+    numero = await _numero_do_remetente(payload.participant, channel, banco)
+    if numero is None or not await run_in_threadpool(admin.eh_admin, acesso, numero):
+        return  # quem não é admin não recebe nada: o bot não revela que existe
+    if not await run_in_threadpool(banco.marcar_processada, payload.id, agora_utc()):
+        logger.info("mensagem duplicada ignorada: %s", id_curto(payload.id))
+        return
+    await channel.send_seen(grupo_id)
+    await admin.tratar_ativacao_no_grupo(acesso, comando, grupo_id, numero)
 
 
 async def _numero_do_remetente(chat_id: str, channel: ChannelComLid, banco: Banco) -> str | None:

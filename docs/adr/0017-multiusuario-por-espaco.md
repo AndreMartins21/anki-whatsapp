@@ -8,7 +8,7 @@
 O bot nasceu para um usuário só: `profile/me`, `session/current` e `entries/` na raiz do Firestore,
 um `ALLOWED_NUMBER`, uma `asyncio.Lock` global (ADR-0006) e um agendador que lia um único perfil
 (ADR-0012). O piloto num cursinho de inglês precisa de vários alunos, cada um com as próprias
-palavras, sessão, perfil e lembretes, e depois de grupos (ADR-0018). O texto voltado ao usuário e o
+palavras, sessão, perfil e lembretes, e depois de grupos (ADR-0019). O texto voltado ao usuário e o
 comportamento do privado não podem mudar.
 
 ## Decisão
