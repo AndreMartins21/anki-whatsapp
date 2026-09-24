@@ -22,7 +22,7 @@ from google.api_core.exceptions import AlreadyExists
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from app.domain.models import Entry, Profile, Sentence, Sessao, StatusEntrada
+from app.domain.models import Entry, Membro, Profile, Resposta, Sentence, Sessao, StatusEntrada
 from app.repo.base import (
     PROCESSED_TTL,
     EntradaJaExiste,
@@ -114,7 +114,32 @@ class FirestoreRepository:
         )
         return [Sentence.model_validate(d.to_dict()) for d in documentos]
 
+    def obter_membro(self, numero: str) -> Membro | None:
+        dados = self._raiz.collection("membros").document(numero).get().to_dict()
+        return Membro.model_validate(dados) if dados else None
+
+    def salvar_membro(self, numero: str, membro: Membro) -> None:
+        self._raiz.collection("membros").document(numero).set(membro.model_dump())
+
+    def listar_membros(self) -> list[tuple[str, Membro]]:
+        membros = [
+            (d.id, Membro.model_validate(dados))
+            for d in self._raiz.collection("membros").stream()
+            if (dados := d.to_dict())
+        ]
+        return sorted(membros, key=lambda par: (par[1].entrou_em, par[0]))
+
+    def registrar_resposta(self, resposta: Resposta) -> None:
+        self._raiz.collection("respostas").add(resposta.model_dump())
+
+    def listar_respostas(self) -> list[Resposta]:
+        documentos = self._raiz.collection("respostas").order_by("criado_em").stream()
+        return [Resposta.model_validate(d.to_dict()) for d in documentos]
+
     def apagar_tudo(self) -> None:
+        for colecao in ("membros", "respostas"):
+            for documento in self._raiz.collection(colecao).stream():
+                documento.reference.delete()
         for entrada in self._raiz.collection("entries").stream():
             self.apagar_entrada(entrada.id)
         self._raiz.collection("profile").document("me").delete()
@@ -190,11 +215,20 @@ class FirestoreBanco:
             merge=True,
         )
         self._db.collection("grupos_pendentes").document(grupo_id).delete()
+        # Reativar devolve os lembretes do grupo (a desativação os tirou da consulta do agendador).
+        perfil = self.do_espaco(grupo_id).obter_perfil()
+        tick = proximo_tick(perfil) if perfil else None
+        if tick is not None:
+            self._db.collection("espacos").document(grupo_id).set(
+                {"proximo_tick": tick}, merge=True
+            )
 
     def desativar_grupo(self, grupo_id: str) -> bool:
         if not self.grupo_esta_ativo(grupo_id):
             return False
-        self._db.collection("espacos").document(grupo_id).set({"ativo": False}, merge=True)
+        self._db.collection("espacos").document(grupo_id).set(
+            {"ativo": False, "proximo_tick": firestore.DELETE_FIELD}, merge=True
+        )
         return True
 
     def listar_grupos_ativos(self) -> list[GrupoAtivo]:

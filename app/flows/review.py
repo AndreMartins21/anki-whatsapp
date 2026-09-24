@@ -84,6 +84,7 @@ async def responder(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Ses
             Sentence(
                 texto=texto,
                 autor="usuario",
+                autor_id=d.autor_id,
                 versao_natural=revisao.correcao or None,
                 criado_em=agora,
             ),
@@ -119,7 +120,7 @@ async def _mostrar_proxima(
         if entrada is None:
             continue
         indice = min(len(feitas) + 1, total)
-        card = messages.card_de_revisao(indice, total, entrada.palavra)
+        card = messages.card_de_revisao(indice, total, entrada.palavra, grupo=d.grupo_prefixo)
         await d.conversa.enviar(f"{feedback}\n\n{card}" if feedback else card)
         return Sessao(
             estado=Estado.REVIEWING,

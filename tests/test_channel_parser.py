@@ -157,3 +157,46 @@ def test_evento_de_entrada_em_grupo_sem_assunto_e_valido() -> None:
 
     assert isinstance(evento, GroupJoinEvent)
     assert evento.payload.group.subject is None
+
+
+def _mensagem(**extras: object) -> MessageEvent:
+    evento = parse_evento(
+        {
+            "event": "message",
+            "session": "default",
+            "payload": {
+                "id": "x",
+                "from": "120363000000000000@g.us",
+                "participant": "5531999998888@c.us",
+                "body": "!add stall",
+                **extras,
+            },
+        }
+    )
+    assert isinstance(evento, MessageEvent)
+    return evento
+
+
+@pytest.mark.parametrize(
+    "extras",
+    [
+        {"_data": {"pushName": "Ana"}},
+        {"_data": {"notifyName": "Ana"}},
+        {"_data": {"Info": {"PushName": "Ana"}}},
+        {"notifyName": "Ana"},
+    ],
+)
+def test_nome_do_remetente_vem_do_payload_em_varios_formatos(extras: dict[str, object]) -> None:
+    assert _mensagem(**extras).payload.nome_do_remetente() == "Ana"
+
+
+def test_sem_nome_no_payload_o_nome_e_none_e_nunca_o_telefone() -> None:
+    assert _mensagem(_data={}).payload.nome_do_remetente() is None
+    assert _mensagem().payload.nome_do_remetente() is None
+
+
+def test_ids_mencionados_sao_lidos_quando_o_payload_traz() -> None:
+    evento = _mensagem(mentionedIds=["5511988887777@c.us", "999@lid"])
+
+    assert evento.payload.mentioned_ids == ["5511988887777@c.us", "999@lid"]
+    assert _mensagem().payload.mentioned_ids == []

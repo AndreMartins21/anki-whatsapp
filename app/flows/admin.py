@@ -27,7 +27,6 @@ from app.repo.base import Banco
 logger = logging.getLogger(__name__)
 
 PRAZO_GRUPO_PENDENTE = timedelta(hours=24)
-PREFIXO_GRUPO = "!"  # o prefixo configurável do grupo chega no M16
 _MIN_DIGITOS = 10
 
 
@@ -40,6 +39,7 @@ class Acesso:
     max_grupos: int
     agora: Callable[[], datetime]
     contato: str  # o e-mail que o aviso "sem plano" mostra
+    prefixo: str = "!"  # GROUP_PREFIX
 
 
 class Resultado(StrEnum):
@@ -67,13 +67,13 @@ def grupo_autorizado(a: Acesso, grupo_id: str) -> bool:
 # --- No grupo: !activate / !deactivate --------------------------------------------------------
 
 
-def eh_comando_de_ativacao(texto: str) -> str | None:
+def eh_comando_de_ativacao(texto: str, prefixo: str = "!") -> str | None:
     """`activate` ou `deactivate` se o texto for exatamente esse comando com o prefixo do grupo;
     qualquer outra coisa (inclusive `!activate` no meio de uma frase) é conversa e devolve None."""
     partes = texto.strip().split()
-    if not partes or not partes[0].startswith(PREFIXO_GRUPO):
+    if not partes or not partes[0].startswith(prefixo):
         return None
-    comando = normalizar(partes[0][len(PREFIXO_GRUPO) :])
+    comando = normalizar(partes[0][len(prefixo) :])
     return comando if comando in {"activate", "deactivate"} else None
 
 
@@ -96,11 +96,12 @@ def desativar_grupo(a: Acesso, grupo_id: str, numero: str) -> Resultado:
     return Resultado.NAO_ESTAVA_ATIVO  # inclusive um grupo fixo: esse só sai da configuração
 
 
-_RESPOSTA_DO_GRUPO = {
-    Resultado.ATIVADO: messages.GRUPO_ATIVADO,
-    Resultado.JA_ATIVO: messages.GRUPO_JA_ATIVO,
-    Resultado.DESATIVADO: messages.GRUPO_DESATIVADO,
-}
+def _resposta_do_grupo(a: Acesso, resultado: Resultado) -> str | None:
+    return {
+        Resultado.ATIVADO: messages.grupo_ativado(a.prefixo),
+        Resultado.JA_ATIVO: messages.GRUPO_JA_ATIVO,
+        Resultado.DESATIVADO: messages.GRUPO_DESATIVADO,
+    }.get(resultado)
 
 
 async def tratar_ativacao_no_grupo(a: Acesso, comando: str, grupo_id: str, numero: str) -> None:
@@ -115,7 +116,7 @@ async def tratar_ativacao_no_grupo(a: Acesso, comando: str, grupo_id: str, numer
 
     if resultado is Resultado.LIMITE:
         await a.canal.send_text(grupo_id, messages.grupo_limite(a.max_grupos))
-    elif (texto := _RESPOSTA_DO_GRUPO.get(resultado)) is not None:
+    elif (texto := _resposta_do_grupo(a, resultado)) is not None:
         await a.canal.send_text(grupo_id, texto)
     elif resultado is Resultado.NAO_ADMIN:
         logger.info("!%s de quem não é admin ignorado", comando)
@@ -124,22 +125,27 @@ async def tratar_ativacao_no_grupo(a: Acesso, comando: str, grupo_id: str, numer
 # --- No privado: /groups e /admin -------------------------------------------------------------
 
 
-def _comando_privado(texto: str) -> tuple[str, list[str]] | None:
+def _comando_privado(texto: str, prefixo: str = "!") -> tuple[str, list[str]] | None:
     partes = texto.strip().split()
-    if not partes or partes[0][:1] not in {"/", PREFIXO_GRUPO}:
+    if not partes:
         return None
-    comando = normalizar(partes[0][1:])
+    for inicio in ("/", prefixo):
+        if partes[0].startswith(inicio):
+            comando = normalizar(partes[0][len(inicio) :])
+            break
+    else:
+        return None
     return (comando, partes[1:]) if comando in {"groups", "grupos", "admin"} else None
 
 
-def eh_comando_de_admin(texto: str) -> bool:
-    return _comando_privado(texto) is not None
+def eh_comando_de_admin(texto: str, prefixo: str = "!") -> bool:
+    return _comando_privado(texto, prefixo) is not None
 
 
 async def comando_privado(a: Acesso, texto: str, numero: str) -> str | None:
     """A resposta a `/groups` ou `/admin`, ou `None` se o texto não é um desses comandos OU quem
     escreveu não pode usá-lo (então o chamador trata como um texto qualquer)."""
-    achado = _comando_privado(texto)
+    achado = _comando_privado(texto, a.prefixo)
     if achado is None:
         return None
     comando, argumentos = achado
@@ -165,7 +171,7 @@ def _admin(a: Acesso, argumentos: list[str], dono: str) -> str:
         if numero_esta_na_lista(alvo, a.banco.listar_admins()):
             return messages.ADMIN_JA_E_ADMIN
         a.banco.adicionar_admin(alvo, por=dono, agora=a.agora())
-        return messages.ADMIN_ADICIONADO
+        return messages.admin_adicionado(a.prefixo)
     existente = next((n for n in a.banco.listar_admins() if numero_esta_na_lista(alvo, [n])), None)
     if existente is None or not a.banco.remover_admin(existente):
         return messages.ADMIN_NAO_E_ADMIN
@@ -201,4 +207,5 @@ async def _grupos(a: Acesso, argumentos: list[str]) -> str:
             for grupo_id, visto in pendentes
         ],
         a.max_grupos,
+        a.prefixo,
     )

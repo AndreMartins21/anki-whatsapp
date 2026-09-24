@@ -54,6 +54,7 @@ async def gerar_exemplos(
             entrada.sentido.traducao,
             frases,
             ja_viu_sinonimos=bool(sessao.sinonimos_mostrados),
+            grupo=d.grupo_prefixo,
         )
     )
     return sessao
@@ -72,6 +73,7 @@ async def avaliar_frase(d: Deps, sessao: Sessao, frase: str, avaliacao: Evaluati
             correcoes=avaliacao.correcoes,
             versao_natural=avaliacao.versao_natural,
             explicacao=avaliacao.explicacao,
+            autor_id=d.autor_id,
             criado_em=agora,
         ),
     )
@@ -86,6 +88,7 @@ async def avaliar_frase(d: Deps, sessao: Sessao, frase: str, avaliacao: Evaluati
             entrada.sentido.traducao,
             entrada.palavra,
             ja_viu_sinonimos=bool(sessao.sinonimos_mostrados),
+            grupo=d.grupo_prefixo,
         )
     )
     return sessao
@@ -104,10 +107,10 @@ async def concluir(d: Deps, sessao: Sessao, perfil: Profile) -> Sessao:
             entrada.model_copy(update={"status": status, "atualizado_em": d.agora()}),
         )
     sugestoes = await expansion.sugestoes(d, entrada, perfil)
-    texto = messages.salvo(entrada.palavra, sugestoes)
+    texto = messages.salvo(entrada.palavra, sugestoes, p=d.p)
     if not perfil.avisou_lembretes:
         # M10: dica de uma linha, só na primeira vez que o aluno salva uma palavra.
-        texto += messages.DICA_DE_LEMBRETES
+        texto += messages.dica_de_lembretes(d.cmd_lembretes)
         await bloq(d.repo.salvar_perfil, perfil.model_copy(update={"avisou_lembretes": True}))
     await d.conversa.enviar(texto)
     return d.sessao_vazia()

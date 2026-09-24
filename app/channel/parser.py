@@ -32,6 +32,23 @@ class MessagePayload(BaseModel):
     # Em grupo, quem escreveu (o `from` é o grupo). Formato confirmado na doc do WAHA; se vem como
     # @c.us ou @lid no GOWS só se vê no WhatsApp real (ver docs/noite/PENDENCIAS.md).
     participant: str | None = None
+    # O WAHA não documenta o nome de quem escreveu nem os ids mencionados no payload de um grupo:
+    # lemos o que der (vários formatos, ver `nome_do_remetente`) e o resto vira `None`/vazio.
+    data: dict[str, Any] = Field(default_factory=dict, alias="_data")
+    mentioned_ids: list[str] = Field(default_factory=list, alias="mentionedIds")
+    notify_name: str | None = Field(default=None, alias="notifyName")
+
+    def nome_do_remetente(self) -> str | None:
+        """O nome que o WhatsApp informa (o "push name"), nunca o telefone. `None` se o payload
+        não trouxer nenhum dos formatos conhecidos (GOWS: `_data.Info.PushName`)."""
+        info = self.data.get("Info")
+        candidatos = [
+            self.notify_name,
+            self.data.get("pushName"),
+            self.data.get("notifyName"),
+            info.get("PushName") if isinstance(info, dict) else None,
+        ]
+        return next((c.strip() for c in candidatos if isinstance(c, str) and c.strip()), None)
 
     @field_validator("body", mode="before")
     @classmethod

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.domain.models import Entry, Profile, Sentence, Sessao, StatusEntrada
+from app.domain.models import Entry, Membro, Profile, Resposta, Sentence, Sessao, StatusEntrada
 from app.repo.base import EntradaJaExiste, GrupoAtivo, Repository, proximo_tick
 
 
@@ -21,6 +21,8 @@ class MemoryRepository:
         self._sessao: Sessao | None = None
         self._entradas: dict[str, Entry] = {}
         self._frases: dict[str, list[Sentence]] = {}
+        self._membros: dict[str, Membro] = {}
+        self._respostas: list[Resposta] = []
 
     def obter_perfil(self) -> Profile | None:
         return self._perfil.model_copy(deep=True) if self._perfil else None
@@ -63,11 +65,30 @@ class MemoryRepository:
         frases = sorted(self._frases.get(slug, []), key=lambda f: f.criado_em)
         return [f.model_copy(deep=True) for f in frases]
 
+    def obter_membro(self, numero: str) -> Membro | None:
+        membro = self._membros.get(numero)
+        return membro.model_copy(deep=True) if membro else None
+
+    def salvar_membro(self, numero: str, membro: Membro) -> None:
+        self._membros[numero] = membro.model_copy(deep=True)
+
+    def listar_membros(self) -> list[tuple[str, Membro]]:
+        ordenados = sorted(self._membros.items(), key=lambda par: (par[1].entrou_em, par[0]))
+        return [(n, m.model_copy(deep=True)) for n, m in ordenados]
+
+    def registrar_resposta(self, resposta: Resposta) -> None:
+        self._respostas.append(resposta.model_copy(deep=True))
+
+    def listar_respostas(self) -> list[Resposta]:
+        return [r.model_copy(deep=True) for r in sorted(self._respostas, key=lambda r: r.criado_em)]
+
     def apagar_tudo(self) -> None:
         self._perfil = None
         self._sessao = None
         self._entradas.clear()
         self._frases.clear()
+        self._membros.clear()
+        self._respostas.clear()
 
 
 class MemoryBanco:
@@ -78,6 +99,7 @@ class MemoryBanco:
         self._admins: dict[str, datetime] = {}
         self._grupos_ativos: dict[str, GrupoAtivo] = {}
         self._pendentes: dict[str, datetime] = {}
+        self._grupos_sem_lembrete: set[str] = set()  # desativados: o agendador os ignora
 
     def do_espaco(self, espaco_id: str) -> Repository:
         return self._espacos.setdefault(espaco_id, MemoryRepository())
@@ -85,6 +107,8 @@ class MemoryBanco:
     def listar_espacos_com_lembrete(self, agora: datetime) -> list[str]:
         vencidos: list[str] = []
         for espaco_id, repo in self._espacos.items():
+            if espaco_id in self._grupos_sem_lembrete:
+                continue
             perfil = repo.obter_perfil()
             tick = proximo_tick(perfil) if perfil else None
             if tick is not None and tick <= agora:
@@ -121,9 +145,13 @@ class MemoryBanco:
     def ativar_grupo(self, grupo_id: str, *, nome: str | None, por: str, agora: datetime) -> None:
         self._grupos_ativos[grupo_id] = GrupoAtivo(grupo_id, nome, por, agora)
         self._pendentes.pop(grupo_id, None)
+        self._grupos_sem_lembrete.discard(grupo_id)
 
     def desativar_grupo(self, grupo_id: str) -> bool:
-        return self._grupos_ativos.pop(grupo_id, None) is not None
+        if self._grupos_ativos.pop(grupo_id, None) is None:
+            return False
+        self._grupos_sem_lembrete.add(grupo_id)
+        return True
 
     def listar_grupos_ativos(self) -> list[GrupoAtivo]:
         return sorted(self._grupos_ativos.values(), key=lambda g: (g.ativado_em, g.id))

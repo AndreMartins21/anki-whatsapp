@@ -27,3 +27,21 @@ Formato: o que estava ambíguo, o que foi escolhido, por quê.
   frente aos 50 mil/dia da cota grátis.
 - **Recusa acima do limite** avisa no grupo (`grupo_limite`) para o admin entender por que o bot não
   responde; um não admin nunca recebe nada.
+
+## M16 — Grupo com prefixo
+
+- **Nome e menções no payload do WAHA.** A doc não documenta o nome de quem escreveu nem os ids
+  mencionados. Leio vários formatos (`_data.pushName`, `notifyName`, `_data.Info.PushName`;
+  `mentionedIds`), e o que faltar vira "Student N" / número escrito no texto (`!teacher 5531...`
+  sempre funciona). **Validar no WhatsApp real.** Se a menção vier como `@<LID>` digitado no texto, não
+  resolvo (só o campo `mentionedIds`).
+- **`!` só vale com letra ou número logo depois** (`!!!`, `! `, `!` são conversa): evita o bot
+  responder a exclamações. O plano só dizia "começa com o prefixo".
+- **Frase de prática que começa com nome de comando** (`!list of things...`) é lida como comando (custo
+  de manter o conjunto de comandos pequeno; está no ADR-0019).
+- **Sem `!level` no grupo:** o nível é o `USER_LEVEL` padrão. Dá para acrescentar depois.
+- **`!add` com outra palavra aberta** salva a anterior antes (igual ao privado com palavra nova).
+- **Quem nunca mandou `!`** não aparece no `!group` (o endpoint de participantes só devolve ids; o
+  M17 usa a lista de participantes só para a revisão).
+- **Grupo desativado** para de receber lembretes (espelho `proximo_tick` limpo + conferência do
+  agendador); reativar os devolve.

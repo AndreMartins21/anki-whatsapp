@@ -99,6 +99,7 @@ jobs:
           TIMEZONE: ${{ vars.TIMEZONE }}
           MAX_GROUPS: ${{ vars.MAX_GROUPS }}
           CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+          GROUP_PREFIX: ${{ vars.GROUP_PREFIX }}
           ALLOWED_NUMBER: ${{ secrets.ALLOWED_NUMBER }}
           ALLOWED_NUMBERS: ${{ secrets.ALLOWED_NUMBERS }}
           ALLOWED_GROUPS: ${{ secrets.ALLOWED_GROUPS }}

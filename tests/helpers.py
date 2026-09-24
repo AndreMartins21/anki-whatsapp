@@ -13,6 +13,7 @@ from app.domain.models import (
     Explanation,
     Sense,
 )
+from app.flows.base import Autor
 from app.flows.commands import Exportador, StatusDaSessao
 from app.flows.conversa import Conversa
 from app.flows.router import Router
@@ -22,6 +23,11 @@ from app.services.fake_llm import FakeTutor
 from app.services.letras import LyricsProvider
 
 CHAT = "5531999998888@c.us"
+GRUPO = "120363000000000001@g.us"
+DONO_NUMERO = "5531990000001"
+ANA = Autor("5531999998888", "Ana")
+BIA = Autor("5511988887777", "Bia")
+CAIO = Autor("5521977776666", "Caio")
 T0 = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
 
 S1 = Sense(
@@ -100,6 +106,13 @@ class Montagem:
         await self.router.processar(texto, CHAT)
         return [t for _, t in self.channel.textos_enviados[antes:]]
 
+    async def diz_no_grupo(self, autor: Autor, texto: str, *, chat: str = GRUPO) -> list[str]:
+        """Manda `texto` (com o prefixo, se for o caso) como `autor` no grupo e devolve o que o
+        bot respondeu no grupo."""
+        antes = len(self.channel.textos_enviados)
+        await self.router.processar(texto, chat, autor)
+        return [t for c, t in self.channel.textos_enviados[antes:] if c == chat]
+
 
 def montar(
     *,
@@ -107,6 +120,7 @@ def montar(
     exportador: Exportador | None = None,
     status_da_sessao: StatusDaSessao | None = None,
     letras: LyricsProvider | None = None,
+    prefixo_do_grupo: str = "!",
 ) -> Montagem:
     channel = FakeChannel()
     banco = MemoryBanco()
@@ -129,6 +143,8 @@ def montar(
         status_da_sessao=status_da_sessao,
         exportador=exportador,
         letras=letras,
+        prefixo_do_grupo=prefixo_do_grupo,
+        eh_dono=lambda numero: numero == DONO_NUMERO,
     )
     return Montagem(
         router,

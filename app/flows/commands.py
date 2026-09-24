@@ -69,7 +69,7 @@ async def executar(
     if comando in _AJUDA:
         await conversa.enviar(messages.AJUDA)
     elif comando in _LISTA:
-        await _listar(d, argumento)
+        await listar(d, argumento)
     elif comando in _INFO:
         await _info(d, argumento)
     elif comando in _PERFIL:
@@ -80,7 +80,7 @@ async def executar(
             messages.pendentes(pendentes) if pendentes else messages.SEM_PENDENTES
         )
     elif comando in _PRATICAR:
-        return await _praticar(d, sessao, perfil, argumento)
+        return await praticar(d, sessao, perfil, argumento)
     elif comando in _EXPORTAR:
         await _exportar(d, exportador)
     elif comando in _APAGAR:
@@ -99,9 +99,9 @@ async def executar(
     elif comando in _STATUS:
         await _status(d, status_da_sessao)
     elif comando in _LEMBRETES:
-        await _lembretes(d, perfil, argumento)
+        await lembretes(d, perfil, argumento)
     elif comando in _REVISAR:
-        return await _revisar(d, sessao)
+        return await revisar(d, sessao)
     elif comando in _MUSICA:
         if not argumento:
             await conversa.enviar(messages.SONG_USO)
@@ -125,19 +125,19 @@ def _achar_entrada(repo: Repository, palavra: str) -> Entry | None:
     return next((e for e in repo.listar_entradas() if normalizar(e.palavra) == alvo), None)
 
 
-async def _listar(d: Deps, argumento: str) -> None:
+async def listar(d: Deps, argumento: str) -> None:
     """`/list` mostra a página 1; `/list 2`, a página 2 (20 palavras por página)."""
     entradas = await bloq(d.repo.listar_entradas)
     if not entradas:
-        await d.conversa.enviar(messages.SEM_ENTRADAS)
+        await d.conversa.enviar(messages.sem_entradas(d.p))
         return
     paginas = -(-len(entradas) // TAMANHO_DA_PAGINA)
     if argumento and not argumento.isdigit():
-        await d.conversa.enviar(messages.PAGINA_INVALIDA)
+        await d.conversa.enviar(messages.pagina_invalida(d.p))
         return
     numero = int(argumento) if argumento else 1
     if not 1 <= numero <= paginas:
-        await d.conversa.enviar(messages.PAGINA_INVALIDA)
+        await d.conversa.enviar(messages.pagina_invalida(d.p))
         return
     # Das mais novas para as mais antigas; o número de cada palavra é fixo (1 = a mais antiga),
     # então `/info 7` e `/delete 7` continuam apontando para a mesma palavra quando entram novas.
@@ -145,7 +145,9 @@ async def _listar(d: Deps, argumento: str) -> None:
     inicio = (numero - 1) * TAMANHO_DA_PAGINA
     fatia = [(n, e) for n, e in numeradas[inicio : inicio + TAMANHO_DA_PAGINA]]
     await d.conversa.enviar(
-        messages.lista(fatia, total=len(entradas), numero=numero, paginas=paginas)
+        messages.lista(
+            fatia, total=len(entradas), numero=numero, paginas=paginas, p=d.p, grupo=d.em_grupo
+        )
     )
 
 
@@ -179,11 +181,11 @@ async def _perfil(d: Deps, perfil: Profile) -> None:
     )
 
 
-async def _praticar(d: Deps, sessao: Sessao, perfil: Profile, palavra: str) -> Sessao:
+async def praticar(d: Deps, sessao: Sessao, perfil: Profile, palavra: str) -> Sessao:
     if palavra:
         entrada = await bloq(_achar_entrada, d.repo, palavra)
         if entrada is None:
-            await d.conversa.enviar(messages.palavra_nao_encontrada(palavra))
+            await d.conversa.enviar(messages.palavra_nao_encontrada(palavra, d.p, grupo=d.em_grupo))
             return sessao
     else:
         pendentes = await bloq(d.repo.listar_entradas, "nova")
@@ -256,12 +258,14 @@ async def _status(d: Deps, status_da_sessao: StatusDaSessao | None) -> None:
     await d.conversa.enviar(messages.status(sessao_waha, len(entradas), pendentes))
 
 
-async def _lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
+async def lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
     """`/reminders` mostra o estado atual; `/reminders off` desliga; `/reminders 3` ou
     `/reminders 3 9h-22h` liga/muda (seção 5.7, M10)."""
     if not argumento:
         proximo = proximo_a_exibir(perfil, d.agora(), d.fuso)
-        await d.conversa.enviar(messages.lembretes_atuais(perfil, proximo, d.agora()))
+        await d.conversa.enviar(
+            messages.lembretes_atuais(perfil, proximo, d.agora(), d.cmd_lembretes)
+        )
         return
     if normalizar(argumento) in _DESLIGAR:
         if perfil.lembretes_por_dia != 0:
@@ -271,7 +275,7 @@ async def _lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
         return
     analisado = parse_lembretes(argumento)
     if analisado is None:
-        await d.conversa.enviar(messages.LEMBRETES_INVALIDOS)
+        await d.conversa.enviar(messages.lembretes_invalidos(d.cmd_lembretes))
         return
     quantidade, inicio, fim = analisado
     novo = perfil.model_copy(
@@ -287,7 +291,7 @@ async def _lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
     await d.conversa.enviar(messages.lembretes_alterados(novo, proximo, d.agora()))
 
 
-async def _revisar(d: Deps, sessao: Sessao) -> Sessao:
+async def revisar(d: Deps, sessao: Sessao) -> Sessao:
     """`/review` começa a sessão de revisão na hora, em vez de esperar o próximo lembrete."""
     entradas = await bloq(d.repo.listar_entradas)
     if not review.montar_fila(entradas, d.agora()):

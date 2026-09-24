@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # aviso "você não tem um plano" mostra.
     max_groups: int = Field(default=10, ge=0)
     contact_email: str = CONTATO_PADRAO
+    # Em grupo o bot só reage a mensagens que começam com isto (M16, ADR-0019). Não pode ser a barra
+    # (o prefixo do privado), letra ou número (colidiria com o texto normal).
+    group_prefix: str = "!"
     bot_number: str
     user_level: NivelUsuario = "B1-B2"
     # Fuso do aluno, para distribuir os lembretes de revisão espaçada (seção 5.7, M10).
@@ -83,6 +86,19 @@ class Settings(BaseSettings):
         """`CHAVE=` no .env chega como texto vazio; para opcionais isso significa "não definido"."""
         if isinstance(valor, str) and not valor.strip():
             return None
+        return valor
+
+    @field_validator("group_prefix", mode="before")
+    @classmethod
+    def _prefixo_vazio_usa_o_padrao(cls, valor: object) -> object:
+        return "!" if isinstance(valor, str) and not valor.strip() else valor
+
+    @field_validator("group_prefix")
+    @classmethod
+    def _prefixo_valido(cls, valor: str) -> str:
+        valor = valor.strip()
+        if not 1 <= len(valor) <= 2 or valor == "/" or any(c.isalnum() for c in valor):
+            raise ValueError("GROUP_PREFIX: 1 ou 2 símbolos, sem letras, números nem a barra")
         return valor
 
     @field_validator("contact_email", mode="before")

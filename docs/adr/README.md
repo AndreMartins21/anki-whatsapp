@@ -28,6 +28,7 @@ operacional: numeração, status e o índice.
 | [0016](0016-letras-de-musica-via-lrclib.md) | Letras de música via LRCLIB, atrás de uma interface, com o risco de direito autoral aceito para uso pessoal | Aceito | 2026-09-24 |
 | [0017](0017-multiusuario-por-espaco.md) | Multiusuário por espaço | Aceito | 2026-09-24 |
 | [0018](0018-acesso-por-admins-e-ativacao-de-grupos.md) | Acesso por admins e ativação de grupos | Aceito | 2026-09-24 |
+| [0019](0019-bot-em-grupo-com-prefixo-e-comandos-limitados.md) | Bot em grupo com prefixo `!` e comandos limitados | Aceito | 2026-09-24 |
 
 ## Quando escrever um
 

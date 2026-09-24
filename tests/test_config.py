@@ -232,3 +232,31 @@ def test_eh_dono_aceita_a_variacao_do_nono_digito(monkeypatch: pytest.MonkeyPatc
     assert settings.eh_dono("5531999998888")
     assert settings.eh_dono("553199998888")  # a conta registrada sem o 9
     assert not settings.eh_dono("5511988887777")
+
+
+# --- M16: prefixo do grupo (ADR-0019) ----------------------------------------------------------
+
+
+def test_group_prefix_padrao_e_exclamacao(monkeypatch: pytest.MonkeyPatch) -> None:
+    _com_env(monkeypatch)
+
+    assert Settings(_env_file=None).group_prefix == "!"
+
+
+def test_group_prefix_configuravel_e_vazio_volta_ao_padrao(monkeypatch: pytest.MonkeyPatch) -> None:
+    _com_env(monkeypatch, GROUP_PREFIX="#")
+    assert Settings(_env_file=None).group_prefix == "#"
+
+    monkeypatch.setenv("GROUP_PREFIX", "  ")
+    assert Settings(_env_file=None).group_prefix == "!"
+
+
+@pytest.mark.parametrize("invalido", ["/", "a", "1", "!!!!", "ab"])
+def test_group_prefix_rejeita_barra_letra_numero_e_o_grande_demais(
+    monkeypatch: pytest.MonkeyPatch, invalido: str
+) -> None:
+    """A barra é o prefixo do privado; letra ou número colidiria com o texto normal."""
+    _com_env(monkeypatch, GROUP_PREFIX=invalido)
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

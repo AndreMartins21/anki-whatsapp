@@ -14,7 +14,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
-from app.domain.models import Entry, Profile, Sentence, Sessao, StatusEntrada, slugify
+from app.domain.models import (
+    Entry,
+    Membro,
+    Profile,
+    Resposta,
+    Sentence,
+    Sessao,
+    StatusEntrada,
+    slugify,
+)
 
 PROCESSED_TTL = timedelta(days=7)
 # Espaço com lembretes ligados e ainda sem próximo horário: "vencido desde sempre", para o
@@ -62,8 +71,22 @@ class Repository(Protocol):
         """Em ordem de criação."""
         ...
 
+    def obter_membro(self, numero: str) -> Membro | None: ...
+
+    def salvar_membro(self, numero: str, membro: Membro) -> None: ...
+
+    def listar_membros(self) -> list[tuple[str, Membro]]:
+        """(número, membro), em ordem de entrada. Só grupos têm membros."""
+        ...
+
+    def registrar_resposta(self, resposta: Resposta) -> None: ...
+
+    def listar_respostas(self) -> list[Resposta]:
+        """Em ordem de criação."""
+        ...
+
     def apagar_tudo(self) -> None:
-        """Apaga o espaço inteiro: perfil, sessão, entradas e frases."""
+        """Apaga o espaço inteiro: perfil, sessão, entradas, frases, membros e respostas."""
         ...
 
 

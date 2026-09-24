@@ -44,6 +44,7 @@ class Agendador:
         dormir: Callable[[float], Awaitable[None]] = asyncio.sleep,
         intervalo_segundos: float = INTERVALO_PADRAO_SEGUNDOS,
         sair_do_grupo: Callable[[str], Awaitable[None]] | None = None,
+        grupo_autorizado: Callable[[str], bool] | None = None,
     ) -> None:
         self._router = router
         self._banco = banco
@@ -52,6 +53,8 @@ class Agendador:
         self._dormir = dormir
         self._intervalo = intervalo_segundos
         self._sair_do_grupo = sair_do_grupo
+        # M16: grupo desativado por um admin não recebe lembrete (None = não confere).
+        self._grupo_autorizado = grupo_autorizado
         self._parar = False
 
     def parar(self) -> None:
@@ -80,6 +83,12 @@ class Agendador:
             logger.exception("falha ao sair de grupos pendentes")
 
     async def _tick_espaco(self, espaco_id: str) -> None:
+        if (
+            espaco_id.endswith("@g.us")
+            and self._grupo_autorizado is not None
+            and not await bloq(self._grupo_autorizado, espaco_id)
+        ):
+            return
         repo = self._banco.do_espaco(espaco_id)
         perfil = await bloq(repo.obter_perfil)
         if perfil is None or perfil.lembretes_por_dia == 0 or perfil.chat_id is None:

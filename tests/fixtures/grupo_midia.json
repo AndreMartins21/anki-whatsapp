@@ -1,0 +1,17 @@
+{
+  "event": "message",
+  "session": "default",
+  "payload": {
+    "id": "false_120363000000000099@g.us_MIDIA0001_5531999998888@c.us",
+    "timestamp": 1758331800,
+    "from": "120363000000000099@g.us",
+    "fromMe": false,
+    "participant": "5531999998888@c.us",
+    "to": "5531988887777@c.us",
+    "body": "",
+    "hasMedia": true,
+    "ack": 1,
+    "vCards": [],
+    "_data": {}
+  }
+}

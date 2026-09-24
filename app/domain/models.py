@@ -251,6 +251,33 @@ class Sentence(BaseModel):
     correcoes: list[str] | None = None
     versao_natural: str | None = None
     explicacao: str | None = None
+    # M16: em grupo, o número (só dígitos) de quem escreveu a frase; no privado fica vazio.
+    autor_id: str | None = None
+    criado_em: datetime = Field(default_factory=agora_utc)
+
+
+Papel = Literal["aluno", "professor"]
+
+
+class Membro(BaseModel):
+    """Documento de `espacos/{grupo}/membros/{numero}` (M16, ADR-0019). Entra como `aluno` na
+    primeira mensagem com prefixo; `!teacher` e `!student` mudam o papel. `marcado_em` é a última
+    vez que a revisão em grupo o marcou (M17, o rodízio)."""
+
+    papel: Papel = "aluno"
+    nome: str | None = None  # o que o WhatsApp informa no payload; nunca o telefone
+    entrou_em: datetime = Field(default_factory=agora_utc)
+    marcado_em: datetime | None = None
+
+
+class Resposta(BaseModel):
+    """Documento de `espacos/{grupo}/respostas/{auto}` (M17): quem respondeu a uma revisão do
+    grupo. Não entra no agendamento; alimenta o `!group` e as métricas do piloto."""
+
+    entry: str
+    autor_id: str
+    marcado: bool
+    qualidade: Literal["de_novo", "dificil", "bom", "facil"]
     criado_em: datetime = Field(default_factory=agora_utc)
 
 
@@ -346,6 +373,11 @@ class Sessao(BaseModel):
     musica_versos: list[str] = Field(default_factory=list)
     musica_indice: int = 0
     musica_expressoes: list[ExpressaoDaMusica] = Field(default_factory=list)
+    # Revisão em grupo (M17, ADR-0020): quem está marcado para o card atual, até quando, e quantas
+    # vezes o card já foi repassado a outro aluno por falta de resposta (no máximo uma).
+    marcado_id: str | None = None
+    marcacao_expira_em: datetime | None = None
+    marcacao_tentativas: int = 0
 
 
 def slugify(palavra: str) -> str:

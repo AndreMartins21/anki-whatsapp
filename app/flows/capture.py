@@ -62,6 +62,7 @@ async def _comecar_pratica(
             sentido,
             entrada.nota,
             sentido.exemplo,
+            grupo=d.grupo_prefixo,
         )
     )
     return d.sessao_vazia().model_copy(

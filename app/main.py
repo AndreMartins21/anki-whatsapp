@@ -41,7 +41,8 @@ from app.channel.parser import (
 from app.channel.waha import WahaChannel
 from app.config import Settings
 from app.domain.models import agora_utc
-from app.flows import admin
+from app.flows import admin, grupo
+from app.flows.base import Autor
 from app.flows.conversa import Conversa
 from app.flows.router import Router
 from app.logging_config import configurar_logs, id_curto
@@ -99,6 +100,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         nivel_padrao=settings.user_level,
         status_da_sessao=canal.session_status,
         exportador=ExportadorExcel(_criar_armazenamento(settings)),
+        prefixo_do_grupo=settings.group_prefix,
+        eh_dono=settings.eh_dono,
         fuso=ZoneInfo(settings.timezone),
         letras=letras,
     )
@@ -112,6 +115,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         agora=agora_utc,
         fuso=ZoneInfo(settings.timezone),
         sair_do_grupo=canal.leave_group,
+        grupo_autorizado=lambda grupo_id: admin.grupo_autorizado(
+            _acesso(settings, canal, banco), grupo_id
+        ),
     )
     app.state.agendador = agendador
     tarefa_do_agendador = asyncio.create_task(agendador.rodar())
@@ -225,7 +231,7 @@ async def _tratar_mensagem(
         return
 
     if payload.from_.endswith("@g.us"):
-        await _tratar_mensagem_de_grupo(payload, settings, channel, banco)
+        await _tratar_mensagem_de_grupo(payload, settings, channel, banco, router, tarefas)
         return
 
     if deve_ignorar_chat(payload.from_):
@@ -329,6 +335,7 @@ def _acesso(settings: Settings, channel: ChannelComLid, banco: Banco) -> admin.A
         max_grupos=settings.max_groups,
         agora=agora_utc,
         contato=settings.contact_email,
+        prefixo=settings.group_prefix,
     )
 
 
@@ -383,30 +390,75 @@ async def _tratar_entrada_em_grupo(
 
 
 async def _tratar_mensagem_de_grupo(
-    payload: MessagePayload, settings: Settings, channel: ChannelComLid, banco: Banco
+    payload: MessagePayload,
+    settings: Settings,
+    channel: ChannelComLid,
+    banco: Banco,
+    router: Router,
+    tarefas: BackgroundTasks,
 ) -> None:
-    """M15: em grupo o bot só reage a `!activate`/`!deactivate` de um admin. O filtro vem antes de
-    tudo (deduplicação, `sendSeen`): o resto é conversa entre pessoas, que o bot não lê nem grava."""
+    """Em grupo o bot só lê mensagens com o prefixo (M16). O filtro vem antes de tudo
+    (deduplicação, `sendSeen`): o resto é conversa entre pessoas, que ele não lê nem grava. Grupo
+    não ativado só reage a `!activate` de um admin (M15)."""
     grupo_id = payload.from_
     acesso = _acesso(settings, channel, banco)
-    if not await run_in_threadpool(admin.grupo_autorizado, acesso, grupo_id):
+    autorizado = await run_in_threadpool(admin.grupo_autorizado, acesso, grupo_id)
+    if not autorizado:
         _logar_grupo_uma_vez(grupo_id)
         await _registrar_pendente(banco, grupo_id)
 
-    comando = None if payload.has_media else admin.eh_comando_de_ativacao(payload.body)
-    if comando is None:
-        return  # o processamento dos comandos do grupo chega no M16
+    if payload.has_media or grupo.sem_prefixo(payload.body, settings.group_prefix) is None:
+        return  # mídia e conversa: ignoradas em silêncio
+    comando = admin.eh_comando_de_ativacao(payload.body, settings.group_prefix)
+    if not autorizado and comando is None:
+        return
     if payload.participant is None:
-        logger.info("comando de grupo sem participante: ignorado")
+        logger.info("mensagem de grupo sem participante: ignorada")
         return
     numero = await _numero_do_remetente(payload.participant, channel, banco)
-    if numero is None or not await run_in_threadpool(admin.eh_admin, acesso, numero):
-        return  # quem não é admin não recebe nada: o bot não revela que existe
+    if numero is None:
+        return
+    if comando is not None and not await run_in_threadpool(admin.eh_admin, acesso, numero):
+        return  # `!activate` de quem não é admin: o bot não revela que existe
     if not await run_in_threadpool(banco.marcar_processada, payload.id, agora_utc()):
         logger.info("mensagem duplicada ignorada: %s", id_curto(payload.id))
         return
     await channel.send_seen(grupo_id)
-    await admin.tratar_ativacao_no_grupo(acesso, comando, grupo_id, numero)
+
+    if comando is not None:
+        await admin.tratar_ativacao_no_grupo(acesso, comando, grupo_id, numero)
+        return
+    autor = Autor(
+        numero=numero,
+        nome=payload.nome_do_remetente(),
+        mencionados=await _numeros_mencionados(payload, channel, banco),
+    )
+    tarefas.add_task(_responder_no_grupo, router, channel, grupo_id, payload.body, autor)
+
+
+async def _numeros_mencionados(
+    payload: MessagePayload, channel: ChannelComLid, banco: Banco
+) -> tuple[str, ...]:
+    """Os números das menções que o payload trouxer (o WAHA não documenta o campo: pode vir
+    vazio). LIDs são resolvidos pelo cache `lids/`."""
+    numeros: list[str] = []
+    for mencionado in payload.mentioned_ids:
+        numero = await _numero_do_remetente(mencionado, channel, banco)
+        if numero:
+            numeros.append(numero)
+    return tuple(numeros)
+
+
+async def _responder_no_grupo(
+    router: Router, channel: ChannelComLid, grupo_id: str, texto: str, autor: Autor
+) -> None:
+    """Roda depois do 200, como `_responder`: nada que aconteça aqui pode escapar."""
+    try:
+        await router.processar(texto, grupo_id, autor)
+    except Exception:
+        logger.exception("falha ao processar mensagem de grupo")
+        with contextlib.suppress(Exception):
+            await channel.send_text(grupo_id, messages.ERRO_INESPERADO)
 
 
 async def _numero_do_remetente(chat_id: str, channel: ChannelComLid, banco: Banco) -> str | None:

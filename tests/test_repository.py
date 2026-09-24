@@ -16,7 +16,9 @@ import pytest
 from app.domain.models import (
     Entry,
     Estado,
+    Membro,
     Profile,
+    Resposta,
     Sentence,
     SentidoSalvo,
     Sessao,
@@ -473,3 +475,100 @@ def test_remover_grupo_pendente(banco: Banco) -> None:
 
     assert banco.listar_grupos_pendentes() == []
     banco.remover_grupo_pendente(GRUPO)  # remover de novo não é erro
+
+
+# --- M16/M17: membros da turma, respostas e autor das frases (ADR-0019, ADR-0020) -------------
+
+
+def test_membro_ausente_e_none_e_depois_persiste(repo: Repository) -> None:
+    assert repo.obter_membro("5531999998888") is None
+
+    repo.salvar_membro("5531999998888", Membro(papel="professor", nome="Ana", entrou_em=T0))
+
+    membro = repo.obter_membro("5531999998888")
+    assert membro is not None
+    assert (membro.papel, membro.nome, membro.entrou_em) == ("professor", "Ana", T0)
+    assert membro.marcado_em is None
+
+
+def test_listar_membros_devolve_numero_e_membro_em_ordem_de_entrada(repo: Repository) -> None:
+    repo.salvar_membro("5511988887777", Membro(nome="Bia", entrou_em=T1))
+    repo.salvar_membro("5531999998888", Membro(nome="Ana", entrou_em=T0))
+
+    assert [(n, m.nome) for n, m in repo.listar_membros()] == [
+        ("5531999998888", "Ana"),
+        ("5511988887777", "Bia"),
+    ]
+
+
+def test_salvar_membro_atualiza_sem_duplicar(repo: Repository) -> None:
+    repo.salvar_membro("5531999998888", Membro(nome=None, entrou_em=T0))
+    repo.salvar_membro("5531999998888", Membro(nome="Ana", entrou_em=T0, marcado_em=T1))
+
+    ((_, membro),) = repo.listar_membros()
+    assert (membro.nome, membro.marcado_em) == ("Ana", T1)
+
+
+def test_membros_sao_isolados_por_espaco(banco: Banco) -> None:
+    banco.do_espaco(GRUPO).salvar_membro("5531999998888", Membro(entrou_em=T0))
+
+    assert banco.do_espaco("120363000000000002@g.us").listar_membros() == []
+
+
+def test_respostas_registram_quem_respondeu_e_se_era_o_marcado(repo: Repository) -> None:
+    repo.registrar_resposta(
+        Resposta(
+            entry="stall", autor_id="5531999998888", marcado=True, qualidade="bom", criado_em=T0
+        )
+    )
+    repo.registrar_resposta(
+        Resposta(
+            entry="stall", autor_id="5511988887777", marcado=False, qualidade="facil", criado_em=T1
+        )
+    )
+
+    respostas = repo.listar_respostas()
+
+    assert [(r.autor_id, r.marcado, r.qualidade) for r in respostas] == [
+        ("5531999998888", True, "bom"),
+        ("5511988887777", False, "facil"),
+    ]
+
+
+def test_frase_guarda_o_autor_quando_veio_de_um_grupo(repo: Repository) -> None:
+    repo.criar_entrada(_entrada("stall"))
+    repo.adicionar_frase(
+        "stall",
+        Sentence(texto="It stalled.", autor="usuario", autor_id="5531999998888", criado_em=T0),
+    )
+    repo.adicionar_frase("stall", Sentence(texto="No author.", autor="usuario", criado_em=T1))
+
+    assert [f.autor_id for f in repo.listar_frases("stall")] == ["5531999998888", None]
+
+
+def test_apagar_tudo_leva_membros_e_respostas(repo: Repository) -> None:
+    repo.salvar_membro("5531999998888", Membro(entrou_em=T0))
+    repo.registrar_resposta(
+        Resposta(
+            entry="stall", autor_id="5531999998888", marcado=True, qualidade="bom", criado_em=T0
+        )
+    )
+
+    repo.apagar_tudo()
+
+    assert repo.listar_membros() == []
+    assert repo.listar_respostas() == []
+
+
+def test_desativar_o_grupo_tira_os_lembretes_dele_da_consulta_e_reativar_devolve(
+    banco: Banco,
+) -> None:
+    banco.ativar_grupo(GRUPO, nome=None, por="5531999998888", agora=T0)
+    banco.do_espaco(GRUPO).salvar_perfil(_lembretes(GRUPO, T0))
+    assert banco.listar_espacos_com_lembrete(T0) == [GRUPO]
+
+    banco.desativar_grupo(GRUPO)
+    assert banco.listar_espacos_com_lembrete(T0) == []
+
+    banco.ativar_grupo(GRUPO, nome=None, por="5531999998888", agora=T1)
+    assert banco.listar_espacos_com_lembrete(T1) == [GRUPO]

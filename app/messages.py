@@ -40,6 +40,17 @@ SEM_EXPORTAVEIS = "There's nothing to export yet. Send me an English word to get
 USO_DO_INFO = "Tell me which word: /info 3 (the number from /list) or /info stall."
 PAGINA_INVALIDA = "That page doesn't exist. Use /list to see the first one."
 
+
+def pagina_invalida(p: str = "/") -> str:
+    return f"That page doesn't exist. Use {p}list to see the first one."
+
+
+def sem_entradas(p: str = "/") -> str:
+    if p == "/":
+        return SEM_ENTRADAS
+    return f"The class doesn't have any saved words yet. Add one with {p}add stall."
+
+
 _MAX_FRASES_NO_INFO = 5
 _MAX_EXEMPLOS_NO_INFO = 3
 _NUMEROS = {1: "1️⃣", 2: "2️⃣", 3: "3️⃣", 4: "4️⃣", 5: "5️⃣"}
@@ -79,20 +90,28 @@ def _linha_de_opcoes(opcoes: Sequence[str]) -> str:
     return "  ·  ".join(f"{_NUMEROS[i]} {texto}" for i, texto in enumerate(opcoes, start=1))
 
 
-def _lista_de_opcoes(opcoes: Sequence[str]) -> str:
+def _lista_de_opcoes(opcoes: Sequence[str], grupo: str | None = None) -> str:
+    if grupo is not None:  # no grupo, cada opção se responde com o prefixo: !1, !2, !3
+        return "\n".join(
+            f"{_NUMEROS[i]} {grupo}{i} — {texto}" for i, texto in enumerate(opcoes, start=1)
+        )
     return "\n".join(f"{_NUMEROS[i]} {texto}" for i, texto in enumerate(opcoes, start=1))
 
 
 # ---- menu único (M9) -------------------------------------------------------------------------
 
 
-def convite(palavra: str) -> str:
+def convite(palavra: str, grupo: str | None = None) -> str:
+    if grupo is not None:
+        return f"Now, write a sentence using *{palavra}* (start it with {grupo}), or type:"
     return f"Now, you can write one or more sentences using *{palavra}*, or type:"
 
 
-def menu_acoes(palavra: str, *, ja_viu_sinonimos: bool = False) -> str:
+def menu_acoes(palavra: str, *, ja_viu_sinonimos: bool = False, grupo: str | None = None) -> str:
+    """`grupo` é o prefixo do grupo (M16); `None` no privado, que segue exatamente como era."""
     opcao_2 = "See more synonyms" if ja_viu_sinonimos else "Check synonyms"
-    return convite(palavra) + "\n" + _lista_de_opcoes(["See more examples", opcao_2, "Just save"])
+    opcoes = ["See more examples", opcao_2, "Just save"]
+    return convite(palavra, grupo) + "\n" + _lista_de_opcoes(opcoes, grupo)
 
 
 # ---- respostas dos fluxos ------------------------------------------------------------------
@@ -111,17 +130,27 @@ def explicacao(
     exemplo: str,
     *,
     ja_viu_sinonimos: bool = False,
+    grupo: str | None = None,
 ) -> str:
     linhas = [_titulo(palavra, classe, cefr), f"🇧🇷 {sentido.traducao}", f"📖 {sentido.definicao}"]
     if dica:
         linhas.append(f"💡 {dica}")
     if exemplo:
         linhas.append(f'"{sem_marcas(exemplo)}"')
-    return "\n".join(linhas) + "\n\n" + menu_acoes(palavra, ja_viu_sinonimos=ja_viu_sinonimos)
+    return (
+        "\n".join(linhas)
+        + "\n\n"
+        + menu_acoes(palavra, ja_viu_sinonimos=ja_viu_sinonimos, grupo=grupo)
+    )
 
 
 def avaliacao(
-    ev: Evaluation, traducao_do_sentido: str, palavra: str, *, ja_viu_sinonimos: bool = False
+    ev: Evaluation,
+    traducao_do_sentido: str,
+    palavra: str,
+    *,
+    ja_viu_sinonimos: bool = False,
+    grupo: str | None = None,
 ) -> str:
     cabecalho = _CABECALHO_VEREDITO[ev.veredito]
     if not ev.sentido_correto:
@@ -134,22 +163,29 @@ def avaliacao(
     linhas.append(f"💬 {ev.explicacao}")
     corpo = "\n".join(linhas)
     return f"{corpo}\n\nWant to try another sentence?\n" + menu_acoes(
-        palavra, ja_viu_sinonimos=ja_viu_sinonimos
+        palavra, ja_viu_sinonimos=ja_viu_sinonimos, grupo=grupo
     )
 
 
 def exemplos(
-    palavra: str, traducao: str, frases: Sequence[str], *, ja_viu_sinonimos: bool = False
+    palavra: str,
+    traducao: str,
+    frases: Sequence[str],
+    *,
+    ja_viu_sinonimos: bool = False,
+    grupo: str | None = None,
 ) -> str:
     numeradas = "\n".join(f"{i}. {sem_marcas(f)}" for i, f in enumerate(frases, start=1))
     return (
         f"📝 *Examples with {palavra}* ({traducao})\n{numeradas}\n\n"
         "Want to try a sentence of your own?\n"
-        + menu_acoes(palavra, ja_viu_sinonimos=ja_viu_sinonimos)
+        + menu_acoes(palavra, ja_viu_sinonimos=ja_viu_sinonimos, grupo=grupo)
     )
 
 
-def sinonimos(palavra: str, traducao: str, itens: Sequence[Synonym]) -> str:
+def sinonimos(
+    palavra: str, traducao: str, itens: Sequence[Synonym], *, grupo: str | None = None
+) -> str:
     linhas: list[str] = []
     for s in itens:
         linhas.append(f"*{s.expressao}* = {s.significado}")
@@ -157,24 +193,30 @@ def sinonimos(palavra: str, traducao: str, itens: Sequence[Synonym]) -> str:
     corpo = "\n".join(linhas)
     return (
         f"🔄 *Synonyms for {palavra}* ({traducao})\n{corpo}\n\n"
-        f"Want to try a sentence with *{palavra}*?\n" + menu_acoes(palavra, ja_viu_sinonimos=True)
+        f"Want to try a sentence with *{palavra}*?\n"
+        + menu_acoes(palavra, ja_viu_sinonimos=True, grupo=grupo)
     )
 
 
-def salvo(palavra: str, sugestoes: Sequence[Expansion] = ()) -> str:
+def salvo(palavra: str, sugestoes: Sequence[Expansion] = (), *, p: str = "/") -> str:
     linhas = [
         f"✅ Saved: *{palavra}*.",
-        f"Practice it any time with /practice {palavra}, or see everything with /list.",
+        f"Practice it any time with {p}practice {palavra}, or see everything with {p}list.",
     ]
     if sugestoes:
         itens = ", ".join(f"*{e.expressao}*" for e in sugestoes)
         linhas.append(f"You might like these too: {itens}.")
-    linhas.append("Send me another word or expression whenever you want.")
+    if p == "/":
+        linhas.append("Send me another word or expression whenever you want.")
+    else:  # no grupo, palavra nova entra só por !add
+        linhas.append(f"Add another one whenever you want: {p}add word.")
     return "\n".join(linhas)
 
 
-def resposta_livre(resposta: str, palavra: str, *, ja_viu_sinonimos: bool = False) -> str:
-    return f"{resposta}\n\n" + menu_acoes(palavra, ja_viu_sinonimos=ja_viu_sinonimos)
+def resposta_livre(
+    resposta: str, palavra: str, *, ja_viu_sinonimos: bool = False, grupo: str | None = None
+) -> str:
+    return f"{resposta}\n\n" + menu_acoes(palavra, ja_viu_sinonimos=ja_viu_sinonimos, grupo=grupo)
 
 
 def entrada_invalida(motivo: str | None) -> str:
@@ -189,15 +231,28 @@ def _linha_de_entrada(e: Entry) -> str:
     return f"{e.palavra}: {e.sentido.traducao}"
 
 
-def lista(pagina: Sequence[tuple[int, Entry]], *, total: int, numero: int, paginas: int) -> str:
+def lista(
+    pagina: Sequence[tuple[int, Entry]],
+    *,
+    total: int,
+    numero: int,
+    paginas: int,
+    p: str = "/",
+    grupo: bool = False,
+) -> str:
     """Uma página da lista, das mais novas para as mais antigas. Cada palavra leva o seu número
-    fixo (1 = a mais antiga), o mesmo que `/info`, `/practice` e `/delete` aceitam."""
+    fixo (1 = a mais antiga), o mesmo que `/info`, `/practice` e `/delete` aceitam. No grupo
+    (M16) o título é da turma e a dica é de `!practice` (não há `!info` na turma)."""
     corpo = "\n".join(f"{n}. {_linha_de_entrada(e)}" for n, e in pagina)
-    texto = (
-        f"📚 *Your words* ({total}) — newest first\n{corpo}\n\n💡 /info {pagina[0][0]} for details"
+    titulo = "The class's words" if grupo else "Your words"
+    dica = (
+        f"{p}practice {pagina[0][0]} to practice one"
+        if grupo
+        else f"{p}info {pagina[0][0]} for details"
     )
+    texto = f"📚 *{titulo}* ({total}) — newest first\n{corpo}\n\n💡 {dica}"
     if paginas > 1:
-        proxima = f" — /list {numero + 1} for more" if numero < paginas else ""
+        proxima = f" — {p}list {numero + 1} for more" if numero < paginas else ""
         texto += f"\nPage {numero}/{paginas}{proxima}"
     return texto
 
@@ -283,8 +338,9 @@ def perfil_do_aluno(
     )
 
 
-def palavra_nao_encontrada(palavra: str) -> str:
-    return f'I couldn\'t find "{palavra}" in your words. Use /list to see what you have.'
+def palavra_nao_encontrada(palavra: str, p: str = "/", *, grupo: bool = False) -> str:
+    de_quem = "the class's words" if grupo else "your words"
+    return f'I couldn\'t find "{palavra}" in {de_quem}. Use {p}list to see what there is.'
 
 
 def apagada(palavra: str) -> str:
@@ -339,6 +395,18 @@ LEMBRETES_INVALIDOS = (
     "/reminders 3 9h-22h (your own window), or /reminders off."
 )
 
+
+def dica_de_lembretes(cmd: str = "/reminders") -> str:
+    return f"\n\n💡 Want daily practice reminders? Send {cmd} 3"
+
+
+def lembretes_invalidos(cmd: str = "/reminders") -> str:
+    return (
+        f"I couldn't understand that. Try {cmd} 3 (3 times a day, 9h-21h) or "
+        f"{cmd} 3 9h-22h (your own window), or {cmd} off."
+    )
+
+
 _QUALIDADE_EMOJI: dict[str, str] = {
     "de_novo": "❌",
     "dificil": "🤔",
@@ -352,7 +420,14 @@ def hora_da_pratica(total: int) -> str:
     return f"⏰ *Practice time* — {total} {palavra} to review."
 
 
-def card_de_revisao(indice: int, total: int, palavra: str) -> str:
+def card_de_revisao(indice: int, total: int, palavra: str, *, grupo: str | None = None) -> str:
+    if grupo is not None:
+        return (
+            f"🔁 {indice}/{total} · *{palavra}*\n"
+            f"Explain it in English in your own words, or write a sentence using it "
+            f"(start with {grupo}).\n"
+            f"_Type {grupo}0 to leave the practice._"
+        )
     return (
         f"🔁 {indice}/{total} · *{palavra}*\n"
         "Explain it in English in your own words, or write a sentence using it.\n"
@@ -385,18 +460,20 @@ def _proximo(proximo: datetime | None, agora: datetime | None) -> str:
 
 
 def lembretes_atuais(
-    perfil: Profile, proximo: datetime | None = None, agora: datetime | None = None
+    perfil: Profile,
+    proximo: datetime | None = None,
+    agora: datetime | None = None,
+    cmd: str = "/reminders",
 ) -> str:
     if perfil.lembretes_por_dia == 0:
         return (
-            "Reminders are off. Turn them on with /reminders 3 (or /reminders 3 9h-22h for "
-            "your own window)."
+            f"Reminders are off. Turn them on with {cmd} 3 (or {cmd} 3 9h-22h for your own window)."
         )
     vezes = "once a day" if perfil.lembretes_por_dia == 1 else f"{perfil.lembretes_por_dia}x a day"
     return (
         f"Reminders: {vezes}, between {perfil.janela_inicio}h and {perfil.janela_fim}h."
         f"{_proximo(proximo, agora)} "
-        "Change with /reminders N or turn off with /reminders off."
+        f"Change with {cmd} N or turn off with {cmd} off."
     )
 
 
@@ -519,7 +596,11 @@ def sem_plano(email: str) -> str:
     )
 
 
-GRUPO_ATIVADO = "✅ I'm active in this group now. Send !help to see what I can do."
+def grupo_ativado(p: str = "!") -> str:
+    return f"✅ I'm active in this group now. Send {p}help to see what I can do."
+
+
+GRUPO_ATIVADO = grupo_ativado()
 GRUPO_JA_ATIVO = "I'm already active in this group. 🙂"
 GRUPO_DESATIVADO = "OK, I'll stay quiet in this group from now on. Your words are still saved."
 
@@ -535,7 +616,13 @@ ADMIN_USO = "Use /admin add 5531999998888 or /admin remove 5531999998888 (digits
 ADMIN_JA_E_ADMIN = "That number is already an admin."
 ADMIN_NAO_E_ADMIN = "That number isn't an admin."
 ADMIN_E_O_DONO = "That's the owner — the owner is always an admin."
-ADMIN_ADICIONADO = "✅ Added as an admin. They can activate me in a group with !activate."
+
+
+def admin_adicionado(p: str = "!") -> str:
+    return f"✅ Added as an admin. They can activate me in a group with {p}activate."
+
+
+ADMIN_ADICIONADO = admin_adicionado()
 ADMIN_REMOVIDO = "✅ Removed. Groups they already activated stay active."
 
 
@@ -559,19 +646,89 @@ def grupos(
     fixos: Sequence[str | None],
     pendentes: Sequence[tuple[str | None, int]],
     maximo: int,
+    p: str = "!",
 ) -> str:
     """`ativos`: nomes dos grupos ativados por comando (numerados); `fixos`: os de ALLOWED_GROUPS;
     `pendentes`: (nome, horas até eu sair) dos grupos em que ainda ninguém digitou !activate."""
     if not ativos and not fixos and not pendentes:
-        return "I'm not in any group yet. Add me to one and send !activate there."
+        return f"I'm not in any group yet. Add me to one and send {p}activate there."
     linhas: list[str] = []
     if ativos or fixos:
         linhas.append(f"🏫 *Active groups* ({len(ativos)}/{maximo})")
         linhas += [f"{i}. {nome or '(no name)'}" for i, nome in enumerate(ativos, start=1)]
         linhas += [f"• {nome or '(no name)'} (fixed in the config)" for nome in fixos]
     if pendentes:
-        linhas.append("⏳ *Waiting for a !activate* (I leave when the time runs out)")
+        linhas.append(f"⏳ *Waiting for a {p}activate* (I leave when the time runs out)")
         linhas += [f"• {nome or '(no name)'} — {horas}h left" for nome, horas in pendentes]
     if ativos:
         linhas.append("Turn one off with /groups off 1.")
+    return "\n".join(linhas)
+
+
+# --- Grupo (M16, ADR-0019) ---------------------------------------------------------------------
+
+
+def ajuda_do_grupo(p: str = "!") -> str:
+    """Só os comandos do grupo: nunca cita os do privado."""
+    return (
+        "*How I work in this group* 🏫\n"
+        f"I only read messages that start with {p}. The rest is your chat, and I don't read it.\n\n"
+        "*Commands*\n"
+        f"{p}add word — add a word or expression (with context: {p}add stall | the talks stalled)\n"
+        f"{p}list [page] — the class's words, numbered\n"
+        f"{p}practice [word or number] — practice one (no word: the oldest pending one)\n"
+        f"{p}review — start a review round right now\n"
+        f"{p}reminder 3 9h-22h — daily practice reminders (or {p}reminder off)\n"
+        f"{p}group — the class, its words and reminders\n\n"
+        f"While practicing, pick an option with {p}1, {p}2 or {p}3, and start a sentence with {p} "
+        "to try it."
+    )
+
+
+def grupo_add_uso(p: str = "!") -> str:
+    return (
+        f"Tell me which word: {p}add stall — or with the sentence where you saw it: "
+        f"{p}add stall | the talks stalled."
+    )
+
+
+def nova_palavra_no_grupo(p: str = "!") -> str:
+    return f"To add a new word to the class, use {p}add word (for example {p}add stall)."
+
+
+def papel_alterado(nome: str | None, papel: str) -> str:
+    quem = nome or "That person"
+    return f"✅ {quem} is now a {'teacher' if papel == 'professor' else 'student'}."
+
+
+def papel_uso(comando: str, p: str = "!") -> str:
+    return f"Tell me who: {p}{comando} 5531999998888 (digits only, with country and area code)."
+
+
+def grupo_perfil(
+    *,
+    nivel: str,
+    total: int,
+    praticadas: int,
+    para_revisar: int,
+    lembretes: str,
+    membros: Sequence[tuple[str, str, int]],
+) -> str:
+    """`!group`: a turma. `membros` é (nome, papel, respostas na revisão); só nomes, nunca
+    telefones, e sem menção (não notifica ninguém)."""
+    linhas = [
+        "*Your class* 🏫",
+        f"🎯 Level: {nivel}",
+        f"📚 Words: {total} ({praticadas} practiced, {total - praticadas} pending)",
+        f"🔁 Due for review: {para_revisar}",
+        f"⏰ Reminders: {lembretes}",
+    ]
+    if membros:
+        linhas.append(f"👥 *Members* ({len(membros)})")
+        for nome, papel, respostas in membros:
+            rotulo = "teacher" if papel == "professor" else "student"
+            extra = f" · {respostas} review answers" if respostas else ""
+            linhas.append(f"• {nome} ({rotulo}){extra}")
+    else:
+        linhas.append("👥 Nobody has used me here yet.")
     return "\n".join(linhas)

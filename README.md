@@ -113,7 +113,12 @@ grupos fixos. **Quem não está na lista** recebe só um aviso ("você não tem 
 quantos. Um grupo em que o bot foi adicionado e ninguém ativou fica em silêncio, e o bot **sai dele
 depois de 24 h**. `/groups` (dono e admins, no privado) lista os grupos e `/groups off N` desativa um.
 No celular do bot, configure Privacidade → Grupos → "Meus contatos", para só quem o salvou poder
-adicioná-lo. Os comandos dentro do grupo chegam no M16.
+adicioná-lo.
+
+**Dentro do grupo (M16, ADR-0019):** o bot só lê mensagens que começam com `!` (`GROUP_PREFIX`); o
+resto é a conversa da turma e ele não lê nem grava. `!add palavra`, `!list`, `!practice`, `!review`,
+`!reminder 3`, `!group` e `!help`; durante a prática, `!1`, `!2`, `!3` ou `!` + a frase. Testar sem
+WhatsApp: `make sim ARGS=--grupo` (linhas `ana: !add stall`).
 
 **Migrar o caderno de um usuário só** (roda **na sua máquina**, com `gcloud auth application-default
 login`, não na VM). A ordem importa, porque o merge faz o deploy e o bot antigo continua gravando na

@@ -94,3 +94,68 @@ def test_ciclo_de_musica_no_terminal(tmp_path: Path) -> None:
     assert "you went through 2 of 6 lines" in tela
     assert "Saved to your dictionary" in tela
     assert "aren't in English" in tela
+
+
+# --- M16: `python -m sim --grupo` --------------------------------------------------------------
+
+
+def test_ciclo_stall_no_grupo_com_dois_alunos(tmp_path: Path) -> None:
+    codigo, tela = _executar(
+        [
+            "ana: !add stall | the talks stalled",
+            "bia: !1",  # see more examples
+            "ana: !The negotiations stalled after the first meeting.",
+            "bia: !3",  # just save
+            "ana: !list",
+            "sair",
+        ],
+        tmp_path,
+        "--grupo",
+    )
+
+    assert codigo == 0
+    assert "*stall* (verb) — B2" in tela
+    assert "!1 — See more examples" in tela
+    assert "📝 *Examples with stall*" in tela
+    assert "✅ *Perfect!*" in tela
+    assert "✅ Saved: *stall*." in tela
+    assert "The class's words" in tela and "1. stall: travar, emperrar" in tela
+
+
+def test_no_grupo_linha_sem_prefixo_e_ignorada_e_nao_chega_ao_bot(tmp_path: Path) -> None:
+    _, tela = _executar(
+        ["ana: gente, alguém entendeu a aula?", "bia: !help", "sair"], tmp_path, "--grupo"
+    )
+
+    assert "(ignorado: sem prefixo, o bot não lê)" in tela
+    assert tela.count("How I work in this group") == 1  # só o `!help` da Bia foi respondido
+
+
+def test_no_grupo_linha_fora_do_formato_explica_o_uso(tmp_path: Path) -> None:
+    _, tela = _executar(["!add stall", ": !help", "sair"], tmp_path, "--grupo")
+
+    assert tela.count("(use `nome: mensagem`)") == 2
+
+
+def test_no_grupo_o_dono_promove_um_professor_e_o_group_mostra_os_papeis(tmp_path: Path) -> None:
+    _, tela = _executar(
+        [
+            "bia: !help",
+            f"dono: !teacher {'5531990000001'}",
+            "ana: !group",
+            "sair",
+        ],
+        tmp_path,
+        "--grupo",
+        "--professor",
+        "carla",
+    )
+
+    assert "• carla (teacher)" in tela
+    assert "• bia (student)" in tela
+
+
+def test_o_simulador_de_um_usuario_continua_igual(tmp_path: Path) -> None:
+    _, tela = _executar(["stall", "sair"], tmp_path)
+
+    assert "Simulador do vocabot" in tela and "grupo>" not in tela

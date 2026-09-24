@@ -22,7 +22,7 @@ Ciclo principal:
 
 **M10:** o bot também faz revisão espaçada com lembretes agendados (seção 5.7) — deixou de ser fora de escopo.
 
-**M14:** o bot atende **vários alunos no privado**, cada um com o próprio caderno (o **espaço**, ADR-0017) — deixou de ser fora de escopo. **M15:** controle de acesso — quem não tem plano só recebe um aviso, e grupos só entram por um admin (ADR-0018). Comandos de grupo são o M16 (`spec/plano-turmas.md`).
+**M14:** o bot atende **vários alunos no privado**, cada um com o próprio caderno (o **espaço**, ADR-0017) — deixou de ser fora de escopo. **M15:** controle de acesso — quem não tem plano só recebe um aviso, e grupos só entram por um admin (ADR-0018). Os comandos de grupo (`!add`, `!list`...) são o M16 e a revisão em grupo o M17 (`spec/plano-turmas.md`).
 
 Fora de escopo no MVP: áudio, painel web e conversa livre com IA sem relação a inglês.
 
@@ -73,6 +73,7 @@ A VM tem só 1 GB de RAM. Crie um **swap de 2 GB**, limite a memória dos contai
 | `ALLOWED_GROUPS` | `.env.infra` (opcional) | Lista de ids `@g.us` de grupos autorizados (o id de um grupo novo aparece uma vez no log) |
 | `OWNER_NUMBER` | `.env.infra` (opcional) | O dono do bot; padrão o primeiro número da lista (o `ALLOWED_NUMBER`, se definido) |
 | `MAX_GROUPS` | `.env.infra` (opcional) | Padrão `10`: teto de grupos ativados por admin (M15, ADR-0018); os de `ALLOWED_GROUPS` não contam |
+| `GROUP_PREFIX` | `.env.infra` (opcional) | Padrão `!`: em grupo o bot só lê mensagens que começam com isto (M16, ADR-0019); 1 ou 2 símbolos, sem letras, números nem a barra |
 | `CONTACT_EMAIL` | `.env.infra` (opcional) | E-mail que o aviso "você não tem um plano" mostra a quem não está na lista (M15) |
 | `BOT_NUMBER` | `.env.infra` | Número Vivo do bot, só dígitos (informativo/logs) |
 | `WAHA_URL` | compose | `http://waha:3000` |
@@ -168,6 +169,31 @@ apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/pr
   ativos e os pendentes, com o nome e as horas que faltam para o bot sair, e `/groups off N` desativa o
   grupo N da lista; `/admin`, `/admin add NUMERO` e `/admin remove NUMERO` (só o dono) gerenciam os
   admins. Para quem não pode usá-los, valem como qualquer comando desconhecido.
+
+### 5.2b Grupos de turma (M16, ADR-0019)
+
+Em grupo ativo (5.6, ADR-0018) o bot **só lê mensagens que começam com o prefixo** (`GROUP_PREFIX`,
+padrão `!`, com uma letra ou número logo depois); o resto é conversa entre pessoas e não é lido,
+gravado nem marcado como lido (o filtro vem antes da deduplicação e do `sendSeen`). Mídia é ignorada.
+
+- **Comandos (conjunto fechado):** `!add palavra [| contexto]` (a **única** forma de trazer uma palavra
+  nova), `!list [página]` (palavras da turma, mesma regra do `/list`), `!practice [palavra|número]`,
+  `!review`, `!reminder [N [INICIOh-FIMh] | off]` (aceita `!reminders`), `!group` (nível, palavras,
+  vencidas, lembretes e os membros com o papel, só nomes e sem menção) e `!help` (só os comandos do
+  grupo). `!teacher`/`!student` (um professor da turma ou o dono) mudam o papel, escondidos do `!help`;
+  os alvos vêm das menções do payload ou do número escrito no texto.
+- **Dentro de uma atividade:** `!1`, `!2`, `!3` e `!texto` são as respostas, pela mesma máquina de
+  estados do privado; na revisão, `!texto` responde e `!0`/`!stop` sai. Um `nova_palavra` do roteamento
+  só devolve a dica de `!add`.
+- **Fora de atividade**, qualquer outra coisa com o prefixo, inclusive comando do privado (`!export`,
+  `!level`...), recebe a ajuda do grupo, **sem chamar a IA**. Com a barra, a mensagem nem é lida.
+- Os textos que citam comandos usam o prefixo do espaço e, no grupo, só citam comandos do grupo.
+- `espacos/{grupo}/membros/{numero}` guarda `{papel: aluno|professor, nome}` (quem manda a primeira
+  mensagem com prefixo entra como aluno); `sentences.autor_id` guarda quem escreveu a frase.
+- No privado nada muda; o prefixo do grupo é aceito como apelido escondido da barra (`!list` vale
+  `/list`, se uma letra vem logo depois).
+- `python -m sim --grupo`: uma linha `nome: mensagem` por participante; linhas sem prefixo aparecem
+  como ignoradas.
 
 ### 5.3 Calibração pelo nível (B1-B2)
 
@@ -505,13 +531,15 @@ entries/{slug}             { palavra, classe, cefr_estimado, sentido:{traducao,d
                            # M12: sinonimos = [{expressao, significado, exemplo}] já mostrados ao aluno
                            # M10: campos de SM-2 simplificado (ADR-0011); proxima_revisao=None
                            # é um cartão novo, vencido desde já
-entries/{slug}/sentences/{auto}  { texto, autor:"usuario"|"bot", veredito?, correcoes?, versao_natural?, explicacao?, criado_em }
+entries/{slug}/sentences/{auto}  { texto, autor:"usuario"|"bot", autor_id?, veredito?, correcoes?, versao_natural?, explicacao?, criado_em }
                            # M12: versao_natural é a frase do aluno já corrigida pela IA (também nas revisões)
 processed/{message_id}     { criado_em, expira_em }     # deduplicação; política de TTL de 7 dias
                            # M15: `processed/aviso_{sha256(numero)}` é a marca do aviso "sem plano" (1 por semana)
 admins/{numero}            { adicionado_em, adicionado_por }          # M15 (ADR-0018): os admins, além do dono
 grupos_pendentes/{grupo}   { visto_em }   # M15: grupo em que o bot está sem ativação; sai depois de 24h
                            # espacos/{grupo} ganha, ao ativar: ativo, nome?, ativado_por, ativado_em
+espacos/{grupo}/membros/{numero}  { papel:"aluno"|"professor", nome?, entrou_em, marcado_em? }   # M16 (marcado_em: M17)
+espacos/{grupo}/respostas/{auto}  { entry, autor_id, marcado, qualidade, criado_em }              # M17
 lids/{lid}                 { numero }                   # cache LID -> número (seção 8.2), evita consultar o WAHA a cada mensagem
 ```
 - `slug`: minúsculas, `[^a-z0-9]+` → `-`. Se o mesmo slug surgir com outro sentido, use o sufixo `--s2`.
@@ -551,7 +579,7 @@ vida que apaga objetos após 7 dias.
 - Para cada evento `message`:
   1. **Ignore `fromMe == true`**, para o bot não responder a si mesmo e não entrar em loop.
   2. Ignore grupos (`@g.us`), status/broadcast e canais. Grupo não autorizado (fora de `ALLOWED_GROUPS`): o id vai ao log em INFO uma vez por processo, para o dono descobri-lo e autorizá-lo; nada mais sobre a mensagem é logado.
-  3. Aplique a allowlist (8.2). Número fora da lista, no privado, recebe só o aviso de "sem plano" (no máximo 1 por semana) e a IA nunca é chamada; admin que não é aluno só usa `/groups`. Em `@g.us`, só `!activate`/`!deactivate` de um admin é tratado (M15); o resto é ignorado sem ler, gravar nem marcar como lido, e o grupo não ativado é registrado como pendente.
+  3. Aplique a allowlist (8.2). Número fora da lista, no privado, recebe só o aviso de "sem plano" (no máximo 1 por semana) e a IA nunca é chamada; admin que não é aluno só usa `/groups`. Em `@g.us` (M15/M16): grupo não ativado só reage a `!activate` de um admin e fica pendente; grupo ativo só lê mensagens com o prefixo (5.2b), depois da resolução do participante (LID pelo cache `lids/`), da deduplicação e do `sendSeen`. O resto é ignorado sem ler, gravar nem marcar como lido.
   4. Deduplique pelo `id` da mensagem.
   5. Faça `sendSeen` e despache ao roteador, com a lógica síncrona em threadpool. A conversa (IA, atrasos "humanos") roda em segundo plano, depois do 200 (M4, ADR-0006).
   6. **Sempre** devolva 200. Registre as exceções e mande ao usuário uma mensagem curta de erro.
@@ -588,6 +616,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, marcar como lido, digi
 | M13 | Prática com letra de música (seção 5.8, ADR-0016): `/song nome [- artista]`, busca no LRCLIB atrás de `LyricsProvider`, escolha entre homônimas (`SONG_PICKING`), recusa de letra fora do inglês, verso a verso com `Tutor.song_line` (`SONG_PRACTICE`), oferta de salvar as expressões não entendidas (`SONG_SAVING`) | `make check` passa; ciclo completo de `/song` no `sim` (escolha, prática, `0`, salvar e a recusa em português); nenhuma letra real em testes, fixtures ou evals |
 | M14 | Multiusuário por espaço (ADR-0017, `spec/plano-turmas.md`): `espacos/{chat}/...`, `Banco` + `Repository`, `ALLOWED_NUMBERS`/`ALLOWED_GROUPS`/`OWNER_NUMBER`, trava e `Conversa` por espaço, agendador por espaço, `scripts.migrar_multiusuario` | Dois alunos no privado isolados (palavras, sessão, `/list`, `/export`, lembretes); migração com dry run, idempotente e `--limpar-origem` seguro; testes antigos do privado passam |
 | M15 | Controle de acesso (ADR-0018): admins no Firestore (`/admin`), grupo ativado só por `!activate` de um admin (`/groups`, `MAX_GROUPS`), grupo não ativado sai em 24 h (`group.v2.join`, `Channel.leave_group`), aviso "sem plano" a número fora da lista sem chamar a IA | Estranho recebe 1 aviso por semana e `FakeTutor.chamadas == []`; `!activate` de não admin não grava nem envia nada; limite respeitado; pendente sai em 24 h (relógio controlado) e ativado antes não sai |
+| M16 | Bot em grupo com prefixo `!` (ADR-0019, seção 5.2b): filtro de prefixo antes de tudo, conjunto fechado de comandos, `!teacher`/`!student`, `membros/`, `autor_id`, textos com o prefixo do espaço, `sim --grupo` | Grupo ativo com/sem prefixo (nada gravado, nenhum `sendSeen`), participante LID, mídia; cada comando; comando do privado recusado; `!` fora de atividade sem IA; ciclo "stall" com dois alunos no `sim --grupo` |
 | M11 | Deploy contínuo via GitHub Actions (seção 10.9, ADR-0013): branch protection na `main` (PR + checks obrigatórios), job `deploy` automático no merge, autenticado por Workload Identity Federation | Push direto na `main` é bloqueado pelo GitHub; um PR com CI verde, ao ser mergeado, dispara o job `deploy` e o bot responde `/help` depois do smoke test |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
@@ -696,7 +725,7 @@ Action é visível a qualquer pessoa — nada sensível pode aparecer em log.
   vermelho.
 - **Configuração no GitHub** (Settings → Secrets and variables → Actions): `ALLOWED_NUMBER`,
   `ALLOWED_NUMBERS`, `ALLOWED_GROUPS`, `OWNER_NUMBER` e `BOT_NUMBER` como **Secrets** (e `MAX_GROUPS`,
-  `CONTACT_EMAIL`, públicos, como Variables) (são telefone real, mascarados em log mesmo não sendo credencial);
+  `CONTACT_EMAIL`, `GROUP_PREFIX`, públicos, como Variables) (são telefone real, mascarados em log mesmo não sendo credencial);
   `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `LLM_PROVIDER`, `GEMINI_MODEL`, `GEMINI_MODEL_EVAL`,
   `USER_LEVEL`, `TIMEZONE` como **Variables**.
 - Decisão do usuário (2026-09-23): sem gate de aprovação manual entre o merge e o deploy — o CI é a
