@@ -39,8 +39,21 @@ def _executavel(caminho: Path, conteudo: str) -> None:
     caminho.chmod(caminho.stat().st_mode | stat.S_IXUSR)
 
 
+# O prazo do script é em `$SECONDS` (relógio real, inteiro), e o `sleep` aqui é falso. Um prazo de
+# 1 s vale de 0 a 1 s reais: numa máquina lenta (o runner do CI) estoura antes das tentativas que o
+# teste espera. Por isso quem deve ter sucesso ganha folga (sem custo: sai ao primeiro sucesso), e
+# só quem deve desistir usa um prazo curto.
+_PRAZO_FOLGADO = 60
+_PRAZO_CURTO = 1
+
+
 def _rodar(
-    tmp_path: Path, *, bot_falhas: int = 0, waha_falhas: int = 0, status: str = "WORKING"
+    tmp_path: Path,
+    *,
+    bot_falhas: int = 0,
+    waha_falhas: int = 0,
+    status: str = "WORKING",
+    espera: int = _PRAZO_FOLGADO,
 ) -> subprocess.CompletedProcess[str]:
     fake = tmp_path / "fake"
     vocabot = tmp_path / "vocabot"
@@ -58,7 +71,7 @@ def _rodar(
         "PATH": f"{fake / 'bin'}:{os.environ['PATH']}",
         "FAKE": str(fake),
         "VOCABOT_DIR": str(vocabot),
-        "ESPERA_MAXIMA": "1",
+        "ESPERA_MAXIMA": str(espera),
     }
     # roda o script FIXO do próprio repositório, com binários falsos: nada de entrada não confiável
     return subprocess.run(  # noqa: S603
@@ -97,7 +110,7 @@ def test_bot_que_ainda_esta_reiniciando_e_esperado(tmp_path: Path) -> None:
 
 
 def test_waha_que_nunca_chega_a_working_falha_depois_do_prazo(tmp_path: Path) -> None:
-    resultado = _rodar(tmp_path, status="SCAN_QR_CODE")
+    resultado = _rodar(tmp_path, status="SCAN_QR_CODE", espera=_PRAZO_CURTO)
 
     assert resultado.returncode != 0
     assert "SMOKE_OK" not in resultado.stdout
@@ -105,7 +118,7 @@ def test_waha_que_nunca_chega_a_working_falha_depois_do_prazo(tmp_path: Path) ->
 
 
 def test_waha_que_nunca_responde_falha_depois_do_prazo(tmp_path: Path) -> None:
-    resultado = _rodar(tmp_path, waha_falhas=10**6)
+    resultado = _rodar(tmp_path, waha_falhas=10**6, espera=_PRAZO_CURTO)
 
     assert resultado.returncode != 0
     assert "SMOKE_OK" not in resultado.stdout
@@ -113,14 +126,16 @@ def test_waha_que_nunca_responde_falha_depois_do_prazo(tmp_path: Path) -> None:
 
 
 def test_bot_que_nunca_sobe_falha_depois_do_prazo(tmp_path: Path) -> None:
-    resultado = _rodar(tmp_path, bot_falhas=10**6)
+    resultado = _rodar(tmp_path, bot_falhas=10**6, espera=_PRAZO_CURTO)
 
     assert resultado.returncode != 0
     assert "SMOKE_OK" not in resultado.stdout
 
 
 def test_a_chave_do_waha_nunca_aparece_na_saida(tmp_path: Path) -> None:
-    for i, kwargs in enumerate(({}, {"waha_falhas": 2}, {"status": "STOPPED"})):
+    for i, kwargs in enumerate(
+        ({}, {"waha_falhas": 2}, {"status": "STOPPED", "espera": _PRAZO_CURTO})
+    ):
         resultado = _rodar(tmp_path / str(i), **kwargs)  # type: ignore[arg-type]
 
         assert CHAVE not in resultado.stdout + resultado.stderr
