@@ -60,8 +60,14 @@ def _rodar(
         "VOCABOT_DIR": str(vocabot),
         "ESPERA_MAXIMA": "1",
     }
-    return subprocess.run(
-        ["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=60, check=False
+    # roda o script FIXO do próprio repositório, com binários falsos: nada de entrada não confiável
+    return subprocess.run(  # noqa: S603
+        ["bash", str(SCRIPT)],  # noqa: S607
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
     )
 
 
