@@ -12,7 +12,14 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
 
-from app.domain.choices import MENU_ACOES, eh_sair, eh_todos, parse_escolha, so_numeros
+from app.domain.choices import (
+    MENU_ACOES,
+    eh_pular,
+    eh_sair,
+    eh_todos,
+    parse_escolha,
+    so_numeros,
+)
 from app.domain.models import Estado
 
 SESSAO_EXPIRA_APOS = timedelta(hours=3)
@@ -23,6 +30,8 @@ class Acao(StrEnum):
     GERAR_EXEMPLOS = "GERAR_EXEMPLOS"
     GERAR_SINONIMOS = "GERAR_SINONIMOS"
     SALVAR = "SALVAR"
+    PULAR = "PULAR"
+    IGNORAR = "IGNORAR"
     ROTEAR = "ROTEAR"
     RESPONDER_REVISAO = "RESPONDER_REVISAO"
     ENCERRAR_REVISAO = "ENCERRAR_REVISAO"
@@ -49,7 +58,13 @@ def expirou(atualizado_em: datetime, agora: datetime) -> bool:
     return agora - atualizado_em > SESSAO_EXPIRA_APOS
 
 
-_ACAO_DO_MENU = {1: Acao.GERAR_EXEMPLOS, 2: Acao.GERAR_SINONIMOS, 3: Acao.SALVAR}
+_ACAO_DO_MENU = {
+    1: Acao.GERAR_EXEMPLOS,
+    2: Acao.GERAR_SINONIMOS,
+    3: Acao.SALVAR,
+    4: Acao.IGNORAR,
+}
+_ACAO_QUE_ENCERRA = {Acao.SALVAR, Acao.IGNORAR}
 
 
 def transicionar(estado: Estado, texto: str) -> Transicao:
@@ -73,8 +88,10 @@ def _await_action(texto: str) -> Transicao:
     opcao = parse_escolha(texto, MENU_ACOES)
     if opcao is not None:
         acao = _ACAO_DO_MENU[opcao]
-        estado = Estado.IDLE if acao is Acao.SALVAR else Estado.AWAIT_ACTION
+        estado = Estado.IDLE if acao in _ACAO_QUE_ENCERRA else Estado.AWAIT_ACTION
         return Transicao(estado, acao)
+    if eh_pular(texto):
+        return Transicao(Estado.IDLE, Acao.PULAR)
     return Transicao(Estado.AWAIT_ACTION, Acao.ROTEAR, texto)
 
 

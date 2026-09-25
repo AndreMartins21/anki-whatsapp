@@ -110,7 +110,7 @@ def convite(palavra: str, grupo: str | None = None) -> str:
 def menu_acoes(palavra: str, *, ja_viu_sinonimos: bool = False, grupo: str | None = None) -> str:
     """`grupo` é o prefixo do grupo (M16); `None` no privado, que segue exatamente como era."""
     opcao_2 = "See more synonyms" if ja_viu_sinonimos else "Check synonyms"
-    opcoes = ["See more examples", opcao_2, "Just save"]
+    opcoes = ["See more examples", opcao_2, "Just save", "Ignore this word, try another"]
     return convite(palavra, grupo) + "\n" + _lista_de_opcoes(opcoes, grupo)
 
 
@@ -142,6 +142,47 @@ def explicacao(
         + "\n\n"
         + menu_acoes(palavra, ja_viu_sinonimos=ja_viu_sinonimos, grupo=grupo)
     )
+
+
+def ja_existe(
+    palavra: str,
+    classe: str,
+    cefr: str,
+    sentido: Sense | SentidoSalvo,
+    exemplo: str,
+    *,
+    grupo: str | None = None,
+) -> str:
+    """O aluno mandou uma palavra que já está na lista: avisa, mostra o que já tem e oferece só o
+    que faz sentido (frase, exemplos, sinônimos) — salvar já não se aplica, e 0/skip abre caminho
+    para outra palavra sem passar pela IA."""
+    p = grupo or ""
+    linhas = [
+        f"📌 You already have *{palavra}* in your list.",
+        "",
+        _titulo(palavra, classe, cefr),
+        f"🇧🇷 {sentido.traducao}",
+        f"📖 {sentido.definicao}",
+    ]
+    if exemplo:
+        linhas.append(f'"{sem_marcas(exemplo)}"')
+    opcoes = ["See more examples", "Check synonyms"]
+    return (
+        "\n".join(linhas)
+        + "\n\n"
+        + convite(palavra, grupo)
+        + "\n"
+        + _lista_de_opcoes(opcoes, grupo)
+        + f"\n\nTo send another word or command, type {p}0 or {p}skip."
+    )
+
+
+def palavra_descartada(palavra: str) -> str:
+    return f"🗑️ Ignored *{palavra}*, it's not in your list. Send me another word whenever you want!"
+
+
+def palavra_mantida(palavra: str) -> str:
+    return f"Alright, *{palavra}* stays in your list. Send me another word whenever you want!"
 
 
 def avaliacao(

@@ -7,6 +7,7 @@ import pytest
 from app.domain.choices import (
     MENU_ACOES,
     contem_palavra_alvo,
+    eh_pular,
     eh_sair,
     eh_todos,
     marcar_alvo,
@@ -35,7 +36,13 @@ from app.domain.choices import (
         ("just save", 3),
         ("save", 3),
         ("done", 3),
-        ("4", None),
+        ("4", 4),
+        ("four", 4),
+        ("ignore this word", 4),
+        ("Ignore it", 4),
+        ("5", None),
+        ("ignore", None),  # sozinha pode ser a palavra que o aluno quer aprender
+        ("drop", None),
         ("stall", None),
         ("", None),
     ],
@@ -55,6 +62,17 @@ def test_parse_numero_respeita_o_maximo(texto: str, maximo: int, esperado: int |
 @pytest.mark.parametrize("texto", ["0", "stop", "Stop", "quit", "exit", "leave"])
 def test_eh_sair(texto: str) -> None:
     assert eh_sair(texto) is True
+
+
+@pytest.mark.parametrize("texto", ["0", "zero", "skip", "Skip", " 0 "])
+def test_eh_pular(texto: str) -> None:
+    assert eh_pular(texto) is True
+
+
+@pytest.mark.parametrize("texto", ["1", "stop", "leave", "quit", "skipping", "stall", ""])
+def test_eh_pular_rejeita_o_resto(texto: str) -> None:
+    # "stop"/"leave" podem ser a palavra a aprender: só o que o bot anuncia (0/skip) sai.
+    assert eh_pular(texto) is False
 
 
 def test_eh_sair_rejeita_o_resto() -> None:

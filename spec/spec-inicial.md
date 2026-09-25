@@ -14,7 +14,7 @@ Ciclo principal:
 
 1. O usuário manda uma palavra ou expressão em inglês, opcionalmente com a frase onde a viu (ex.: `stall | the talks stalled`).
 2. O bot explica a palavra numa única mensagem (o "card"): tradução, definição curta, uma dica e uma frase de exemplo — a IA já escolhe o sentido mais provável, sem perguntar.
-3. O card termina no **menu único**: 1 ver mais exemplos, 2 ver sinônimos, 3 só salvar — sempre com o convite a já escrever uma frase.
+3. O card termina no **menu único**: 1 ver mais exemplos, 2 ver sinônimos, 3 só salvar, 4 ignorar a palavra e seguir com outra — sempre com o convite a já escrever uma frase. Se a palavra **já está na lista**, o bot avisa, mostra o que o aluno já tem (sentido e exemplo salvos) e oferece só 1, 2 e a frase, além de `0`/`skip` para mandar outra palavra ou comando (seção 5.1).
 4. Texto livre (frase, pedido de ajuda, palavra nova, ou fora do escopo) é roteado por uma única chamada de IA (seção 5.1) que classifica e já responde. Frase de prática: avalia se usa a palavra corretamente, naquele sentido, e se é natural; o usuário pode tentar de novo.
 5. Ao concluir, tudo fica salvo no Firestore: a palavra, o sentido, as frases do usuário com as avaliações e os exemplos.
 6. Ao salvar ("3" ou pedido livre), o bot sugere até 3 **expressões relacionadas** como texto — sem menu; o usuário só manda a que quiser como qualquer palavra nova.
@@ -103,6 +103,8 @@ IDLE          ── texto (não comando) ──▶ explicar (a IA sempre escolh
 AWAIT_ACTION  ── 1 "see more examples" ──▶ gerar exemplos   ──▶ AWAIT_ACTION
               ── 2 "check synonyms"    ──▶ gerar sinônimos  ──▶ AWAIT_ACTION
               ── 3 "just save"         ──▶ salvar e sugerir ──▶ IDLE
+              ── 4 "ignore this word"  ──▶ descartar a palavra recém-criada ──▶ IDLE
+              ── 0 / skip              ──▶ sair da palavra (fica salva), sem IA ──▶ IDLE
               ── qualquer outro texto  ──▶ rotear pela IA (abaixo) ──▶ AWAIT_ACTION (ou IDLE)
 ```
 
@@ -130,6 +132,19 @@ Regras:
 
 - **Sessão parada há mais de 3 horas** volta para IDLE, salvando o que houver.
 - `/cancel` (ou `/cancelar`) volta a IDLE sem apagar o que já foi salvo.
+- **Opção 4 (ignorar):** apaga a entrada **só se** ela foi criada por esta captura
+  (`Sessao.entrada_criada_agora`) e o aluno ainda não escreveu nenhuma frase nela; caso contrário
+  (palavra que já estava na lista, ou já praticada) a entrada fica e o bot avisa que ela continua
+  na lista. Em ambos os casos volta a IDLE. Os apelidos de texto são só frases inteiras
+  (`ignore this word`, `ignore it`, `discard it`...): `ignore`/`drop` sozinhas podem ser a palavra
+  que o aluno quer aprender.
+- **`0` / `skip` em `AWAIT_ACTION`** (e só eles: `stop`, `leave` etc. seguem indo para o roteamento,
+  pois podem ser a palavra a aprender) saem da palavra aberta sem chamar a IA e sem apagar nada.
+- **Palavra que já existe** (mesmo `slug`: mesma palavra e mesmo sentido): em vez do card completo,
+  o bot manda `📌 You already have *X* in your list.` com título, 🇧🇷, 📖 e o exemplo **salvos**,
+  o convite a escrever uma frase, as opções 1 e 2 e a linha
+  `To send another word or command, type 0 or skip.` (no grupo, `!0 or !skip`). Nada é regravado;
+  a sessão fica em `AWAIT_ACTION` sobre aquela entrada (`entrada_criada_agora=false`).
 - **Sempre** reenvie o menu de ações ao final de cada resposta em `AWAIT_ACTION` — inclusive nas
   respostas do roteamento livre (`pedido`, `fora_do_escopo`, avaliação de `frase`), exceto quando a
   resposta já é o card de uma palavra nova (`nova_palavra`).
@@ -453,7 +468,7 @@ Implemente em `app/services/llm.py` uma interface `LLMProvider` com duas impleme
 - `VertexGeminiProvider` (padrão): `google-genai` com `vertexai=True`, `project=GCP_PROJECT_ID` e `location=VERTEX_LOCATION`. Peça **saída estruturada** com o schema derivado do modelo Pydantic (JSON mode com schema), conforme a documentação atual da SDK para o modelo escolhido.
 - `AnthropicProvider` (opcional): *tool use* com uma única ferramenta por tarefa (`input_schema` = schema Pydantic) e `tool_choice` forçando essa ferramenta.
 
-As funções de negócio (`explain`, `evaluate`, `examples`, `expansions`, `synonyms`, `route`) não sabem qual provedor está em uso. Valide sempre com Pydantic, com 1 nova tentativa em caso de erro. Temperatura 0.2 a 0.3. Prompts em `app/services/prompts.py`, com o nível e o contexto do usuário ("brasileiro, trabalha numa empresa internacional, usa inglês técnico no dia a dia"). **M9:** toda saída voltada ao aluno é pedida em inglês — só `traducao` continua em português do Brasil.
+As funções de negócio (`explain`, `evaluate`, `examples`, `expansions`, `synonyms`, `route`) não sabem qual provedor está em uso. Valide sempre com Pydantic, com 1 nova tentativa em caso de erro. No Vertex, o cliente `google-genai` retenta sozinho (4 tentativas, espera 1 s/2 s/4 s) os status 408, 429 e 5xx: o `429 RESOURCE_EXHAUSTED` acontece quando a capacidade compartilhada do modelo aperta, mesmo com volume baixo. O que sobrar de erro do provedor (`APIError`, falha de rede) vira `LLMError` (sem o corpo da resposta), e o aluno recebe "I couldn't reach the AI right now", não o aviso genérico de erro inesperado. Temperatura 0.2 a 0.3. Prompts em `app/services/prompts.py`, com o nível e o contexto do usuário ("brasileiro, trabalha numa empresa internacional, usa inglês técnico no dia a dia"). **M9:** toda saída voltada ao aluno é pedida em inglês — só `traducao` continua em português do Brasil.
 
 ```python
 class Sense(BaseModel):
@@ -537,10 +552,11 @@ profile/me                 { nivel, criado_em,
                              proximo_lembrete?, lembrete_sem_resposta, avisou_lembretes }
                            # M10 (seção 5.7): lembretes_por_dia=0 é desligado (padrão); chat_id é o
                            # destino real, aprendido de uma mensagem recebida (nunca o .env direto)
-session/current            { estado, entry_id, sentido_id, sinonimos_mostrados, atualizado_em,
+session/current            { estado, entry_id, sentido_id, sinonimos_mostrados, entrada_criada_agora, atualizado_em,
                              revisao_fila, revisao_atual?, revisao_feitas, revisao_lapsos, revisao_total,
                              musica_opcoes, musica_titulo?, musica_artista?, musica_versos,
                              musica_indice, musica_expressoes }
+                           # entrada_criada_agora: a opção 4 do menu só apaga entrada criada nesta captura
                            # M9: sinonimos_mostrados evita repetir e troca o rótulo do menu
                            # ("Check synonyms" -> "See more synonyms") depois da 1ª vez
                            # M10: os 5 campos de revisao_* só valem com estado=REVIEWING
