@@ -108,6 +108,32 @@ async def test_add_traz_o_card_com_o_menu_no_prefixo_do_grupo() -> None:
     _sem_comandos_do_privado([card])
 
 
+async def test_add_de_palavra_que_ja_existe_avisa_com_o_prefixo_e_0_libera() -> None:
+    m = _grupo()
+    await m.diz_no_grupo(ANA, "!add stall")
+    await m.diz_no_grupo(BIA, "!0")
+
+    (aviso,) = await m.diz_no_grupo(BIA, "!add stall")
+
+    assert aviso.startswith("📌 You already have *stall* in your list.")
+    assert "!1 — See more examples" in aviso and "!3" not in aviso
+    assert "type !0 or !skip" in aviso
+    assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.AWAIT_ACTION
+    (fim,) = await m.diz_no_grupo(BIA, "!skip")
+    assert fim.startswith("Alright!")
+    assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.IDLE
+
+
+async def test_opcao_4_no_grupo_descarta_a_palavra_recem_criada() -> None:
+    m = _grupo()
+    await m.diz_no_grupo(ANA, "!add stall")
+
+    (resposta,) = await m.diz_no_grupo(BIA, "!4")
+
+    assert resposta.startswith("🗑️ Ignored *stall*")
+    assert m.banco.do_espaco(GRUPO).obter_entrada("stall") is None
+
+
 async def test_ciclo_completo_stall_com_dois_alunos() -> None:
     m = _grupo()
     await m.diz_no_grupo(ANA, "!add stall | the talks stalled")

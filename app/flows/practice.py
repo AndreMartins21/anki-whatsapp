@@ -114,3 +114,24 @@ async def concluir(d: Deps, sessao: Sessao, perfil: Profile) -> Sessao:
         await bloq(d.repo.salvar_perfil, perfil.model_copy(update={"avisou_lembretes": True}))
     await d.conversa.enviar(texto)
     return d.sessao_vazia()
+
+
+async def pular(d: Deps) -> Sessao:
+    """0/skip com uma palavra aberta: nada a decidir sobre ela (já está gravada); só libera o
+    caminho para a próxima, sem chamar a IA."""
+    await d.conversa.enviar(messages.ENCERRADO)
+    return d.sessao_vazia()
+
+
+async def ignorar(d: Deps, sessao: Sessao) -> Sessao:
+    """Opção 4: descarta a palavra que acabou de ser criada. Uma palavra que o aluno já tinha, ou
+    em que ele já escreveu uma frase, fica na lista — o que já é dele não some por um número."""
+    entrada = await entrada_atual(d, sessao)
+    frases = await bloq(d.repo.listar_frases, entrada.slug)
+    praticada = any(f.autor == "usuario" for f in frases)
+    if sessao.entrada_criada_agora and not praticada:
+        await bloq(d.repo.apagar_entrada, entrada.slug)
+        await d.conversa.enviar(messages.palavra_descartada(entrada.palavra))
+    else:
+        await d.conversa.enviar(messages.palavra_mantida(entrada.palavra))
+    return d.sessao_vazia()

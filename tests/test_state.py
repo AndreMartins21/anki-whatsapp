@@ -26,6 +26,13 @@ TRANSICOES = [
     (Estado.AWAIT_ACTION, "check synonyms", Transicao(Estado.AWAIT_ACTION, Acao.GERAR_SINONIMOS)),
     (Estado.AWAIT_ACTION, "3", Transicao(Estado.IDLE, Acao.SALVAR)),
     (Estado.AWAIT_ACTION, "just save", Transicao(Estado.IDLE, Acao.SALVAR)),
+    (Estado.AWAIT_ACTION, "4", Transicao(Estado.IDLE, Acao.IGNORAR)),
+    (Estado.AWAIT_ACTION, "ignore this word", Transicao(Estado.IDLE, Acao.IGNORAR)),
+    # 0/skip abrem caminho para outra palavra ou comando, sem passar pela IA.
+    (Estado.AWAIT_ACTION, "0", Transicao(Estado.IDLE, Acao.PULAR)),
+    (Estado.AWAIT_ACTION, "skip", Transicao(Estado.IDLE, Acao.PULAR)),
+    (Estado.AWAIT_ACTION, "Skip", Transicao(Estado.IDLE, Acao.PULAR)),
+    (Estado.AWAIT_ACTION, "stop", Transicao(Estado.AWAIT_ACTION, Acao.ROTEAR, "stop")),
     # Qualquer outro texto (frase, pedido, palavra nova, fora do escopo...) vai para o roteamento.
     (
         Estado.AWAIT_ACTION,

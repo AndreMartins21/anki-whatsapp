@@ -23,6 +23,8 @@ MENU_ACOES: Menu = {
         "synonym",
     ),
     3: ("just save", "save", "done", "only save"),
+    # Só frases inteiras: "ignore" e "drop" sozinhas podem ser a palavra que o aluno quer aprender.
+    4: ("ignore this word", "ignore it", "discard it", "discard this word"),
 }
 
 _NUMEROS_POR_EXTENSO = {
@@ -34,6 +36,9 @@ _NUMEROS_POR_EXTENSO = {
     "five": 5,
 }
 _SAIR = {"0", "zero", "skip", "leave", "quit", "exit", "stop"}
+# Sair de uma palavra já aberta (AWAIT_ACTION), para mandar outra: só o que o bot anuncia. "stop",
+# "leave" etc. seguem sendo palavras que o aluno pode querer aprender.
+_PULAR = {"0", "zero", "skip"}
 
 
 def normalizar(texto: str) -> str:
@@ -70,6 +75,10 @@ def parse_numero(texto: str, maximo: int) -> int | None:
 
 def eh_sair(texto: str) -> bool:
     return normalizar(texto) in _SAIR
+
+
+def eh_pular(texto: str) -> bool:
+    return normalizar(texto) in _PULAR
 
 
 def so_numeros(texto: str) -> bool:

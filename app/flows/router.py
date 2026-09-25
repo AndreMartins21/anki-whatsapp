@@ -189,6 +189,10 @@ class Router:
                 return await synonyms.gerar(d, sessao, perfil)
             case Acao.SALVAR:
                 return await practice.concluir(d, sessao, perfil)
+            case Acao.PULAR:
+                return await practice.pular(d)
+            case Acao.IGNORAR:
+                return await practice.ignorar(d, sessao)
             case Acao.ROTEAR:
                 return await freeform.rotear(d, sessao, perfil, str(argumento))
             case Acao.RESPONDER_REVISAO:

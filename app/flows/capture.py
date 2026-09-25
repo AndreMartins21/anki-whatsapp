@@ -48,7 +48,9 @@ async def _comecar_pratica(
     sentido: Sense,
     existente: Entry | None,
 ) -> Sessao:
-    entrada = await bloq(gravar_entrada, d, explicacao, sentido, existente)
+    entrada, criada_agora = await bloq(gravar_entrada, d, explicacao, sentido, existente)
+    if existente is None and not criada_agora:
+        return await _avisar_que_ja_existe(d, entrada, sentido)
     await bloq(
         d.repo.adicionar_frase,
         entrada.slug,
@@ -70,13 +72,39 @@ async def _comecar_pratica(
             "estado": Estado.AWAIT_ACTION,
             "entry_id": entrada.slug,
             "sentido_id": sentido.id,
+            "entrada_criada_agora": criada_agora,
+        }
+    )
+
+
+async def _avisar_que_ja_existe(d: Deps, entrada: Entry, sentido: Sense) -> Sessao:
+    """A palavra já estava na lista: mostra o que o aluno tem (o sentido e o exemplo salvos, não os
+    da explicação nova) e segue na mesma palavra, para praticar, sem regravar nada."""
+    frases = await bloq(d.repo.listar_frases, entrada.slug)
+    exemplo = next((f.texto for f in frases if f.autor == "bot"), sentido.exemplo)
+    await d.conversa.enviar(
+        messages.ja_existe(
+            entrada.palavra,
+            entrada.classe,
+            entrada.cefr_estimado,
+            entrada.sentido,
+            exemplo,
+            grupo=d.grupo_prefixo,
+        )
+    )
+    return d.sessao_vazia().model_copy(
+        update={
+            "estado": Estado.AWAIT_ACTION,
+            "entry_id": entrada.slug,
+            "sentido_id": sentido.id,
         }
     )
 
 
 def gravar_entrada(
     d: Deps, explicacao: Explanation, sentido: Sense, existente: Entry | None
-) -> Entry:
+) -> tuple[Entry, bool]:
+    """A entrada gravada e se foi criada agora (`False`: já existia, ou é a atualização de uma)."""
     agora = d.agora()
     escolhido = SentidoSalvo(traducao=sentido.traducao, definicao=sentido.definicao)
     outros = [
@@ -101,12 +129,12 @@ def gravar_entrada(
             }
         )
         d.repo.salvar_entrada(atualizada)
-        return atualizada
+        return atualizada, False
 
     slug = resolver_slug(d.repo, explicacao.palavra, escolhido.traducao)
     ja_salva = d.repo.obter_entrada(slug)
     if ja_salva is not None:  # o aluno voltou a uma palavra que já tem: mantém as frases dela
-        return ja_salva
+        return ja_salva, False
 
     entrada = Entry(
         slug=slug,
@@ -124,5 +152,5 @@ def gravar_entrada(
     try:
         d.repo.criar_entrada(entrada)
     except EntradaJaExiste:
-        return d.repo.obter_entrada(slug) or entrada
-    return entrada
+        return d.repo.obter_entrada(slug) or entrada, False
+    return entrada, True

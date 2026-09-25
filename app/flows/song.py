@@ -207,7 +207,7 @@ async def salvar(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Sessao
             continue
         sentido_id = explicacao.sentido_do_contexto or explicacao.sentidos[0].id
         sentido = next(s for s in explicacao.sentidos if s.id == sentido_id)
-        entrada = await bloq(capture.gravar_entrada, d, explicacao, sentido, None)
+        entrada, _ = await bloq(capture.gravar_entrada, d, explicacao, sentido, None)
         await bloq(
             d.repo.adicionar_frase,
             entrada.slug,

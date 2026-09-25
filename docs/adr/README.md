@@ -30,6 +30,8 @@ operacional: numeração, status e o índice.
 | [0018](0018-acesso-por-admins-e-ativacao-de-grupos.md) | Acesso por admins e ativação de grupos | Aceito | 2026-09-24 |
 | [0019](0019-bot-em-grupo-com-prefixo-e-comandos-limitados.md) | Bot em grupo com prefixo `!` e comandos limitados | Aceito | 2026-09-24 |
 | [0020](0020-revisao-em-grupo-com-mencao-em-rodizio.md) | Revisão em grupo com menção em rodízio | Aceito | 2026-09-24 |
+| [0021](0021-palavra-repetida-pular-e-ignorar-no-menu.md) | Palavra repetida avisa e mostra o que já existe; `0`/`skip` saem da palavra e a opção 4 a descarta | Aceito | 2026-09-25 |
+| [0022](0022-retentativa-do-gemini-e-erro-de-provedor-como-llmerror.md) | Retentativa do Gemini no próprio SDK e erro do provedor tratado como `LLMError` | Aceito | 2026-09-25 |
 
 ## Quando escrever um
 

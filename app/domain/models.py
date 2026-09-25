@@ -357,6 +357,9 @@ class Sessao(BaseModel):
     entry_id: str | None = None
     sentido_id: str | None = None
     sinonimos_mostrados: list[str] = Field(default_factory=list)
+    # A entrada aberta foi criada agora, por esta captura: a opção 4 do menu ("ignorar") pode
+    # apagá-la. Fica falso para palavra que o aluno já tinha, expansão e prática.
+    entrada_criada_agora: bool = False
     atualizado_em: datetime = Field(default_factory=agora_utc)
     # Sessão de revisão (M10): fila de slugs por revisar, o atual, e o resumo ao final.
     revisao_fila: list[str] = Field(default_factory=list)

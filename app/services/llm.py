@@ -12,7 +12,9 @@ import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Protocol
 
+import httpx
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types
 from pydantic import BaseModel
 
@@ -42,6 +44,17 @@ TEMPERATURA_CRIATIVA = 0.3  # exemplos e expansões: um pouco de variedade
 MAX_TENTATIVAS = 2  # a original + 1 nova tentativa (seção 6)
 _MAX_TOKENS_ANTHROPIC = 2048
 _NOME_DA_FERRAMENTA = "responder"
+
+# Vertex AI responde 429 (RESOURCE_EXHAUSTED) quando a capacidade compartilhada do modelo aperta,
+# mesmo com o nosso volume minúsculo; costuma passar em segundos. Sem retentativa, cada 429 virava
+# um "algo deu errado" para o aluno. 4 tentativas com espera 1 s, 2 s, 4 s (+ jitter).
+_RETENTATIVA_GEMINI = types.HttpRetryOptions(
+    attempts=4,
+    initial_delay=1.0,
+    max_delay=8.0,
+    exp_base=2.0,
+    http_status_codes=[408, 429, 500, 502, 503, 504],
+)
 
 
 class LLMError(Exception):
@@ -146,9 +159,15 @@ class VertexGeminiProvider:
             # automático" e avisa que ele não é recomendado em generate_content.
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
-        resposta = self._client.models.generate_content(
-            model=modelo, contents=usuario, config=config
-        )
+        try:
+            resposta = self._client.models.generate_content(
+                model=modelo, contents=usuario, config=config
+            )
+        except genai_errors.APIError as erro:
+            # Só o código e o status: o corpo da resposta não vai para o log nem para a mensagem.
+            raise LLMError(f"o Gemini recusou a chamada ({erro.code} {erro.status})") from erro
+        except httpx.HTTPError as erro:
+            raise LLMError(f"sem resposta do Gemini ({type(erro).__name__})") from erro
         texto: str | None = resposta.text
         if not texto:
             raise LLMError("o Gemini não devolveu texto (resposta vazia ou bloqueada)")
@@ -389,7 +408,13 @@ class LLMTutor:
 def criar_provider_vertex(*, projeto: str, localizacao: str) -> VertexGeminiProvider:
     # `vertexai=True` é o nome que funciona em todas as versões do SDK (nas recentes é o apelido
     # legado de `enterprise=True`).
-    return VertexGeminiProvider(genai.Client(vertexai=True, project=projeto, location=localizacao))
+    cliente = genai.Client(
+        vertexai=True,
+        project=projeto,
+        location=localizacao,
+        http_options=types.HttpOptions(retry_options=_RETENTATIVA_GEMINI),
+    )
+    return VertexGeminiProvider(cliente)
 
 
 def criar_provider_anthropic(*, api_key: str) -> AnthropicProvider:

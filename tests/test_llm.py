@@ -6,7 +6,9 @@ import sys
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
+from google.genai import errors as genai_errors
 from pydantic import ValidationError
 
 from app.config import Settings
@@ -402,6 +404,37 @@ def test_gemini_com_resposta_vazia_levanta_erro() -> None:
         )
 
 
+class _ModelosQueFalham:
+    def __init__(self, erro: Exception) -> None:
+        self.erro = erro
+
+    def generate_content(self, **_: Any) -> None:
+        raise self.erro
+
+
+def test_gemini_com_429_vira_llm_error_sem_vazar_o_corpo() -> None:
+    erro = genai_errors.ClientError(
+        429, {"error": {"status": "RESOURCE_EXHAUSTED", "message": "corpo longo"}}
+    )
+    cliente = SimpleNamespace(models=_ModelosQueFalham(erro))
+
+    with pytest.raises(LLMError, match="429 RESOURCE_EXHAUSTED") as info:
+        VertexGeminiProvider(cliente).gerar(
+            sistema="s", usuario="u", schema=Exemplos, modelo="m", temperatura=0.2
+        )
+
+    assert "corpo longo" not in str(info.value)
+
+
+def test_gemini_sem_rede_vira_llm_error() -> None:
+    cliente = SimpleNamespace(models=_ModelosQueFalham(httpx.ConnectTimeout("t")))
+
+    with pytest.raises(LLMError, match="ConnectTimeout"):
+        VertexGeminiProvider(cliente).gerar(
+            sistema="s", usuario="u", schema=Exemplos, modelo="m", temperatura=0.2
+        )
+
+
 # ---- AnthropicProvider --------------------------------------------------------
 
 
@@ -481,7 +514,12 @@ def test_fabrica_do_gemini_usa_vertex_com_projeto_e_localizacao(
 
     tutor = criar_tutor(_settings(GEMINI_MODEL="gemini-x", VERTEX_LOCATION="global"))
 
-    assert criados == [{"vertexai": True, "project": "meu-projeto-local", "location": "global"}]
+    (kwargs,) = criados
+    retentativa = kwargs.pop("http_options").retry_options
+    assert kwargs == {"vertexai": True, "project": "meu-projeto-local", "location": "global"}
+    # 429 (cota compartilhada do Vertex) e falhas transitórias são retentados pelo próprio SDK.
+    assert retentativa.attempts > 1
+    assert 429 in retentativa.http_status_codes
     assert tutor._modelo == "gemini-x"
     assert tutor._modelo_avaliacao == "gemini-x"  # sem GEMINI_MODEL_EVAL, cai no padrão
 
