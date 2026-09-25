@@ -387,3 +387,17 @@ def slugify(palavra: str) -> str:
     """minúsculas, `[^a-z0-9]+` -> `-` (seção 7.1); acentos são descartados antes."""
     sem_acento = unicodedata.normalize("NFKD", palavra).encode("ascii", "ignore").decode("ascii")
     return re.sub(r"[^a-z0-9]+", "-", sem_acento.lower()).strip("-")
+
+
+def _partes_da_traducao(traducao: str) -> set[str]:
+    sem_parenteses = re.sub(r"\([^)]*\)", " ", traducao)
+    sem_acento = unicodedata.normalize("NFKD", sem_parenteses).encode("ascii", "ignore").decode()
+    partes = re.split(r"[,;/]|\bou\b", sem_acento.lower())
+    return {" ".join(parte.split()) for parte in partes} - {""}
+
+
+def mesma_traducao(a: str, b: str) -> bool:
+    """Duas traduções são o mesmo sentido se têm alguma opção em comum. A IA reescreve a tradução
+    a cada chamada ("avaliador" / "avaliador ou sistema de correção"); comparar o texto inteiro
+    tratava essa mudança de redação como um sentido novo e duplicava a palavra."""
+    return not _partes_da_traducao(a).isdisjoint(_partes_da_traducao(b))

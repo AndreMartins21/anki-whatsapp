@@ -16,6 +16,7 @@ from app.domain.models import (
     Sentence,
     SentidoSalvo,
     Sessao,
+    slugify,
 )
 from app.flows.base import Deps, bloq
 from app.repo.base import EntradaJaExiste, resolver_slug
@@ -101,6 +102,13 @@ async def _avisar_que_ja_existe(d: Deps, entrada: Entry, sentido: Sense) -> Sess
     )
 
 
+def _entradas_da_palavra(entradas: list[Entry], palavra: str) -> list[Entry]:
+    """Os sentidos salvos da palavra (`stall`, `stall--s2`...), o de slug-base primeiro."""
+    base = slugify(palavra)
+    dela = [e for e in entradas if e.slug == base or e.slug.startswith(f"{base}--s")]
+    return sorted(dela, key=lambda e: e.slug != base)
+
+
 def gravar_entrada(
     d: Deps, explicacao: Explanation, sentido: Sense, existente: Entry | None
 ) -> tuple[Entry, bool]:
@@ -130,6 +138,14 @@ def gravar_entrada(
         )
         d.repo.salvar_entrada(atualizada)
         return atualizada, False
+
+    if explicacao.frase_contexto is None:
+        # Palavra sozinha, sem frase: não há um sentido escolhido pelo aluno, só o "mais comum" que
+        # a IA sorteia a cada chamada. Quem já tem a palavra tem a palavra, qualquer que seja o
+        # sentido salvo; só uma frase de contexto justifica abrir outro sentido.
+        da_palavra = _entradas_da_palavra(d.repo.listar_entradas(), explicacao.palavra)
+        if da_palavra:
+            return da_palavra[0], False
 
     slug = resolver_slug(d.repo, explicacao.palavra, escolhido.traducao)
     ja_salva = d.repo.obter_entrada(slug)

@@ -22,6 +22,7 @@ from app.domain.models import (
     Sentence,
     Sessao,
     StatusEntrada,
+    mesma_traducao,
     slugify,
 )
 
@@ -177,6 +178,6 @@ def resolver_slug(repo: Repository, palavra: str, traducao_do_sentido: str) -> s
     for numero in range(1, _MAX_SLUGS_POR_PALAVRA + 1):
         candidato = base if numero == 1 else f"{base}--s{numero}"
         existente = repo.obter_entrada(candidato)
-        if existente is None or existente.sentido.traducao == traducao_do_sentido:
+        if existente is None or mesma_traducao(existente.sentido.traducao, traducao_do_sentido):
             return candidato
     raise RuntimeError(f"palavras demais com o slug {base!r}")

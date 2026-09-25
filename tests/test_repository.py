@@ -23,6 +23,7 @@ from app.domain.models import (
     SentidoSalvo,
     Sessao,
     Synonym,
+    mesma_traducao,
 )
 from app.repo.base import Banco, EntradaJaExiste, Repository, resolver_slug
 from app.repo.memory import MemoryBanco
@@ -621,3 +622,28 @@ def test_espaco_privado_nunca_entra_na_consulta_de_timeout(banco: Banco) -> None
     banco.do_espaco(ALUNO_A).salvar_sessao(_revisao_marcada("5531999998888", T0))
 
     assert banco.listar_grupos_com_timeout(T1) == []
+
+
+def test_resolver_slug_reaproveita_o_slug_quando_a_traducao_so_muda_de_redacao(
+    repo: Repository,
+) -> None:
+    repo.criar_entrada(_entrada("grader", traducao="avaliador"))
+
+    assert resolver_slug(repo, "grader", "avaliador ou sistema de correção") == "grader"
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "esperado"),
+    [
+        ("avaliador", "avaliador ou sistema de correção", True),
+        ("travar, emperrar", "travar", True),
+        ("Travar", "travar, emperrar", True),
+        ("tratar (alguém ou algo de uma certa maneira)", "tratar", True),
+        ("parar / interromper", "interromper", True),
+        ("domar, controlar", "aproveitar, utilizar", False),
+        ("travar", "barraca", False),
+        ("", "travar", False),
+    ],
+)
+def test_mesma_traducao_ignora_redacao_mas_nao_o_sentido(a: str, b: str, esperado: bool) -> None:
+    assert mesma_traducao(a, b) is esperado
