@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from app.domain.models import Estado, Roteamento, Synonym
+from app.domain.models import Estado, Explanation, Roteamento, Sense, Synonym
 from app.services.fake_llm import FakeTutor
 from app.services.llm import LLMError
 from tests.helpers import CHAT, avaliacao, expansoes, explicacao_stall, montar
@@ -493,3 +493,60 @@ async def test_opcao_4_nao_apaga_palavra_em_que_o_aluno_ja_escreveu_uma_frase() 
 
     assert resposta.startswith("Alright, *stall* stays in your list.")
     assert [f.autor for f in m.repo.listar_frases("stall")] == ["bot", "usuario"]
+
+
+# ---- a mesma palavra com a tradução escrita de outro jeito pela IA ---------------------------
+
+
+def _stall_com(traducao: str, *, frase_contexto: str | None) -> Explanation:
+    """Uma nova explicação de `stall`, como a IA a devolveria de novo: mesma palavra, mas o texto
+    da tradução (e a frase de contexto) mudam de uma chamada para outra."""
+    sentido = Sense(
+        id="s1", traducao=traducao, definicao="to stop", exemplo="The [[talks]] stalled."
+    )
+    return explicacao_stall().model_copy(
+        update={
+            "sentidos": [sentido],
+            "sentido_do_contexto": "s1",
+            "frase_contexto": frase_contexto,
+        }
+    )
+
+
+async def test_palavra_sem_frase_ja_existe_mesmo_que_a_ia_traduza_diferente() -> None:
+    """Regressão (produção, 2026-09-25): `grader` → `grader--s2` porque a IA devolveu
+    "avaliador ou sistema de correção" em vez de "avaliador"."""
+    outra = _stall_com("parar de funcionar", frase_contexto=None)
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(), outra]))
+    await m.diz("stall")
+    await m.diz("0")
+
+    (resposta,) = await m.diz("stall")
+
+    assert resposta.startswith("📌 You already have *stall* in your list.")
+    assert "🇧🇷 travar, emperrar" in resposta  # o que está salvo, não a tradução nova
+    assert [e.slug for e in m.repo.listar_entradas()] == ["stall"]
+
+
+async def test_palavra_com_frase_e_traducao_parecida_ja_existe() -> None:
+    parecida = _stall_com("travar", frase_contexto="The [[talks]] stalled.")
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(), parecida]))
+    await m.diz("stall")
+    await m.diz("0")
+
+    (resposta,) = await m.diz("stall | the talks stalled")
+
+    assert resposta.startswith("📌 You already have *stall* in your list.")
+    assert [e.slug for e in m.repo.listar_entradas()] == ["stall"]
+
+
+async def test_palavra_com_frase_e_outro_sentido_de_verdade_vira_um_novo_cartao() -> None:
+    outro_sentido = _stall_com("barraca", frase_contexto="I bought it at a [[stall]].")
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(), outro_sentido]))
+    await m.diz("stall")
+    await m.diz("0")
+
+    (resposta,) = await m.diz("stall | I bought it at a stall")
+
+    assert resposta.startswith("*stall*")  # card novo, não o aviso
+    assert [e.slug for e in m.repo.listar_entradas()] == ["stall", "stall--s2"]

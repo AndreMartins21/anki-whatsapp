@@ -140,7 +140,8 @@ Regras:
   que o aluno quer aprender.
 - **`0` / `skip` em `AWAIT_ACTION`** (e só eles: `stop`, `leave` etc. seguem indo para o roteamento,
   pois podem ser a palavra a aprender) saem da palavra aberta sem chamar a IA e sem apagar nada.
-- **Palavra que já existe** (mesmo `slug`: mesma palavra e mesmo sentido): em vez do card completo,
+- **Palavra que já existe** (ADR-0023: palavra sem frase de contexto já salva, em qualquer sentido; com
+  frase, mesmo `slug` e mesmo sentido — traduções com alguma opção em comum contam como o mesmo): em vez do card completo,
   o bot manda `📌 You already have *X* in your list.` com título, 🇧🇷, 📖 e o exemplo **salvos**,
   o convite a escrever uma frase, as opções 1 e 2 e a linha
   `To send another word or command, type 0 or skip.` (no grupo, `!0 or !skip`). Nada é regravado;
@@ -583,7 +584,7 @@ espacos/{grupo}/respostas/{auto}  { entry, autor_id, marcado, qualidade, criado_
                            # ganha timeout_em (espelho do prazo, para o agendador)
 lids/{lid}                 { numero }                   # cache LID -> número (seção 8.2), evita consultar o WAHA a cada mensagem
 ```
-- `slug`: minúsculas, `[^a-z0-9]+` → `-`. Se o mesmo slug surgir com outro sentido, use o sufixo `--s2`.
+- `slug`: minúsculas, `[^a-z0-9]+` → `-`. Se o mesmo slug surgir com outro sentido, use o sufixo `--s2`. "Outro sentido" só vale com frase de contexto e com traduções sem nenhuma opção em comum (separadas por `,`, `;`, `/` ou `ou`, ignorando acento e o que está entre parênteses); a IA reescreve a tradução a cada chamada, e a palavra sozinha, sem frase, nunca abre um sentido novo (ADR-0023).
 - Duas interfaces (Protocol): o `Repository`, o caderno de um espaço, e o `Banco`, a raiz, que entrega o caderno em `do_espaco(espaco_id)` e guarda a deduplicação (`create()`, que falha se o ID já existe), o cache de LIDs e `listar_espacos_com_lembrete`. Implementações: `FirestoreBanco`/`FirestoreRepository` e `MemoryBanco`/`MemoryRepository`, com o mesmo teste de contrato.
 - Migração do formato antigo (raiz do banco): `python -m scripts.migrar_multiusuario` (dry run por padrão, `--executar`, `--limpar-origem`), roda na máquina local com as credenciais padrão.
 
