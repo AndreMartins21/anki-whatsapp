@@ -706,7 +706,7 @@ Mostre também como ver a senha do painel **localmente e só quando eu pedir** (
 ### 10.6 Utilitários
 - `infra/logs.sh`: `docker compose logs -f --tail=200`.
 - `infra/ssh.sh`: abre um ssh via IAP.
-- `infra/smoke_test.sh`: pela VM, testa `GET /health` do bot e verifica se a sessão do WAHA está `WORKING`.
+- `infra/smoke_test.sh`: pela VM (via `infra/vm/smoke_remoto.sh`), testa `GET /health` do bot e verifica se a sessão do WAHA está `WORKING`, **esperando** até 3 minutos por cada um: depois de um deploy que recria o WAHA, o GOWS demora para subir e reinicia algumas vezes.
 
 ### 10.7 `docker-compose.yml`
 - `waha`:

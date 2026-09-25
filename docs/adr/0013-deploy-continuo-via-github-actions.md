@@ -81,6 +81,8 @@ pessoa.
   workflow.
 - Monitorar: `infra/smoke_test.sh` deveria rodar como último passo do job `deploy` para o workflow
   falhar (e ficar visível) se o bot não subir — sem isso, um deploy quebrado só aparece quando
-  alguém tenta usar o bot.
+  alguém tenta usar o bot. O smoke test **espera** o bot e o WAHA (até 3 min cada): sem isso, todo
+  deploy que recria o WAHA falhava por uma corrida (o GOWS leva mais de 10 s para subir e reinicia
+  algumas vezes), com o bot saudável e o workflow vermelho à toa (visto no deploy do M17).
 - Revisitar se: aparecer um segundo operador (aí um gate de aprovação manual volta a fazer
   sentido) ou se a VM virar mais de uma instância (o binding por instância vira lista).
