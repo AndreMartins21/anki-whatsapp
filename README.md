@@ -19,6 +19,7 @@ e tudo isso fica guardado (sentidos, frases corrigidas, sinônimos, revisões).
 | IA | Gemini no Vertex AI (SDK `google-genai`), sem chave de API |
 | Banco | Firestore (modo nativo) |
 | Arquivos | Cloud Storage + URL assinada V4 |
+| Pronúncia | Google Cloud Text-to-Speech (voz Neural2, OGG/Opus) + cache no Cloud Storage |
 | Hospedagem | 1 VM `e2-micro` (nível gratuito) com Docker Compose |
 | Ferramentas | uv, ruff, mypy, pytest, pre-commit |
 
@@ -44,11 +45,46 @@ make help      # todos os alvos
 
 ## Comandos do bot
 
-Manda uma palavra em inglês (`stall` ou `stall | the talks stalled`) e segue o menu numerado.
+Manda uma palavra em inglês (`stall` ou `stall | the talks stalled`) e segue o menu numerado
+(1 ouvir a pronúncia, 2 exemplos, 3 sinônimos, 4 salvar, 5 ignorar).
 `/help` lista tudo: `/list [página]` (numerada), `/info N` (frases, sinônimos etc. de uma palavra),
-`/pending`, `/practice [N|palavra]`, `/review`, `/song nome [- artista]` (prática com música, M13), `/reminders 3 9h-22h`, `/profile`, `/export`,
+`/listen N|palavra` (pronúncia de uma palavra já salva), `/pending`, `/practice [N|palavra]`, `/review`, `/song nome [- artista]` (prática com música, M13), `/reminders 3 9h-22h`, `/profile`, `/export`,
 `/delete N|palavra`, `/level B1-B2`, `/cancel`, `/status`. O `/export` devolve um link (válido por 24 h)
 para um `.xlsx` com três abas: `Words`, `Sentences` e `Synonyms`.
+
+## Pronúncia em áudio (M23)
+
+Sob demanda: a **opção 1** do menu de uma palavra (`!1` no grupo) ou `/listen N|palavra` mandam
+`🔊 *termo*` e **duas notas de voz**, na ordem: o termo e a frase de exemplo do card. A conversa
+continua onde estava.
+
+Como o áudio é gerado:
+
+1. O bot normaliza o texto (sem os `[[ ]]` que marcam a palavra-alvo, espaços colapsados, caixa mantida)
+   e calcula o nome do arquivo: `audio/<voz>/<sha256 de voz + texto>.ogg`.
+2. **Cache hit:** lê esse objeto do bucket `${PROJECT_ID}-vocabot-audio` e não chama o TTS.
+   **Cache miss:** sintetiza no Google Cloud Text-to-Speech (voz `en-US-Neural2-F`, formato OGG/Opus),
+   grava no bucket e devolve o áudio. O cache é compartilhado entre alunos: um termo é sintetizado uma vez só.
+3. O áudio segue para o WhatsApp como nota de voz (`POST /api/sendVoice` do WAHA, base64, sem
+   retentativa, para não duplicar). O link `gs://` fica em `Entry.audio_palavra` / `audio_exemplo`.
+4. Qualquer falha (TTS, Storage ou envio) só gera um aviso curto; a conversa nunca cai.
+
+Operação:
+
+- **Configuração:** `AUDIO_BUCKET` (padrão `${PROJECT_ID}-vocabot-audio`; vazio ou fora de
+  `APP_ENV=prod`, a pronúncia fica indisponível) e `TTS_VOICE` (padrão `en-US-Neural2-F`). Trocar a voz
+  gera arquivos novos no cache; os antigos ficam no bucket.
+- **Ativar num projeto novo:** `infra/setup.sh` habilita `texttospeech.googleapis.com`, cria o bucket
+  (privado, **sem** ciclo de vida, ao contrário do de exports) e dá `objectAdmin` só nele à conta da VM.
+  Sem isso, o log do bot mostra `403 SERVICE_DISABLED` ou erro de bucket e o aluno vê "I couldn't make
+  the audio right now".
+- **Custo:** cota gratuita mensal de 1M de caracteres em Neural2 (4M em Standard/WaveNet). Um termo ou
+  frase tem dezenas de caracteres, e o cache evita repetir a chamada.
+- **Localmente:** `make sim` usa um dublê do TTS e grava `exports/voz_NNN.ogg` (não toca); com
+  `python -m sim --tts-real` e credenciais do Google, o áudio é de verdade.
+
+Decisão e alternativas descartadas (TTS local, dicionários): [`ADR-0024`](docs/adr/0024-pronuncia-em-audio-com-google-cloud-tts.md).
+Contrato: seção 7.4 da spec.
 
 ## Deploy (runbook)
 
@@ -59,7 +95,7 @@ antes, e `DRY_RUN=1` só mostra os comandos.
 ```bash
 cp infra/.env.infra.example infra/.env.infra   # preencha GCP_PROJECT_ID, ALLOWED_NUMBER, BOT_NUMBER
 DRY_RUN=1 bash infra/setup.sh   # revisar o que será criado (só as leituras rodam)
-bash infra/setup.sh             # APIs, Firestore + TTL, conta de serviço, bucket, segredos, firewall, VM
+bash infra/setup.sh             # APIs, Firestore + TTL, conta de serviço, buckets (exports e áudio), segredos, firewall, VM
 bash infra/deploy.sh            # empacota, copia via IAP, renderiza o .env na VM e sobe o compose
 bash infra/pair.sh              # túnel (porta local 13000) p/ o painel do WAHA: escaneie o QR com o número do bot
 bash infra/smoke_test.sh        # bot em /health e sessão do WAHA em WORKING
