@@ -1,6 +1,6 @@
 """Simulador de terminal: a conversa inteira, sem WhatsApp (seção 9, M6).
 
-    python -m sim [--real-llm] [--letras-reais] [--nivel B1-B2]
+    python -m sim [--real-llm] [--letras-reais] [--tts-real] [--nivel B1-B2]
     python -m sim --grupo [--professor NOME]...
 
 Com `--grupo` (M16), simula um grupo de turma com vários participantes: cada linha é
@@ -15,7 +15,8 @@ Usa `ConsoleChannel` e `MemoryRepository` (nada é gravado; ao sair, tudo some),
 Gemini com as credenciais locais do Google (`gcloud auth application-default login`), lendo
 GCP_PROJECT_ID e GEMINI_MODEL do ambiente (`make sim` carrega o `.env`). `/exportar` grava o
 planilha Excel em `exports/`. `/song paper plane` pratica com uma música inventada (com
-`--letras-reais`, busca no LRCLIB de verdade). Digite `sair` para terminar.
+`--letras-reais`, busca no LRCLIB de verdade). A pronúncia (opção 5, `/listen`) grava `.ogg` em
+`exports/audio/` e `exports/voz_NNN.ogg`; sem `--tts-real` o áudio é um dublê (não toca). Digite `sair` para terminar.
 """
 
 from __future__ import annotations
@@ -35,16 +36,20 @@ from app.flows.base import Autor, ConfigGrupo
 from app.flows.conversa import Conversa
 from app.flows.router import Router
 from app.repo.memory import MemoryBanco
+from app.services.audio import ServicoAudio
+from app.services.fake_tts import FakeSintetizador
 from app.services.letras import LrclibProvider, LyricsProvider
 from app.services.llm import LLMError, Tutor, tutor_do_ambiente
 from app.services.planilha import ExportadorExcel
-from app.services.storage import ArmazenamentoLocal
+from app.services.storage import ArmazenamentoLocal, CacheAudioLocal
+from app.services.tts import GoogleTts, Sintetizador
 from sim.letras import letras_do_simulador
 from sim.tutor import SimTutor
 
 CHAT_DO_SIMULADOR = "simulador@c.us"
 GRUPO_DO_SIMULADOR = "120363000000000001@g.us"
 PREFIXO_DO_SIMULADOR = "!"
+VOZ_DO_SIMULADOR = "en-US-Neural2-F"
 NOME_DO_DONO = "dono"
 _SAIDAS = {"sair", "exit", "quit", ":q"}
 
@@ -134,6 +139,11 @@ def main(
     parser.add_argument(
         "--letras-reais", action="store_true", help="busca as letras do /song no LRCLIB"
     )
+    parser.add_argument(
+        "--tts-real",
+        action="store_true",
+        help="fala com o Google Cloud TTS de verdade (precisa de credencial); sem isto, o áudio é um dublê",
+    )
     parser.add_argument("--nivel", choices=["A2-B1", "B1-B2", "B2-C1"], default="B1-B2")
     parser.add_argument(
         "--grupo", action="store_true", help="simula um grupo de turma (`nome: mensagem`)"
@@ -167,6 +177,7 @@ def main(
 
     nivel: NivelUsuario = args.nivel
     letras: LyricsProvider = LrclibProvider() if args.letras_reais else letras_do_simulador()
+    sintetizador: Sintetizador = GoogleTts() if args.tts_real else FakeSintetizador()
     router = Router(
         banco=banco,
         tutor=tutor,
@@ -175,6 +186,7 @@ def main(
         status_da_sessao=_status_do_simulador,
         exportador=ExportadorExcel(ArmazenamentoLocal(exports)),
         letras=letras,
+        audio=ServicoAudio(sintetizador, CacheAudioLocal(exports / "audio"), VOZ_DO_SIMULADOR),
         prefixo_do_grupo=PREFIXO_DO_SIMULADOR,
         config_grupo=ConfigGrupo(participantes=canal.group_participants),
         eh_dono=lambda numero: numero == numero_do_participante(NOME_DO_DONO),

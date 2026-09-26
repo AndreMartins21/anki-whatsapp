@@ -170,6 +170,21 @@ def test_entrada_persiste_os_campos_de_revisao_espacada(repo: Repository) -> Non
     assert repo.obter_entrada("stall") == entrada
 
 
+def test_entrada_persiste_os_links_do_audio_de_pronuncia(repo: Repository) -> None:
+    repo.criar_entrada(_entrada())
+    assert _entrada().audio_palavra is None  # entrada antiga, sem áudio, segue válida
+
+    com_audio = _entrada().model_copy(
+        update={
+            "audio_palavra": "gs://proj-vocabot-audio/audio/en-US-Neural2-F/a.ogg",
+            "audio_exemplo": "gs://proj-vocabot-audio/audio/en-US-Neural2-F/b.ogg",
+        }
+    )
+    repo.salvar_entrada(com_audio)
+
+    assert repo.obter_entrada("stall") == com_audio
+
+
 def test_criar_entrada_com_slug_existente_falha_sem_sobrescrever(repo: Repository) -> None:
     repo.criar_entrada(_entrada())
 

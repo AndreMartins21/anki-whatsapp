@@ -32,6 +32,7 @@ class Acao(StrEnum):
     SALVAR = "SALVAR"
     PULAR = "PULAR"
     IGNORAR = "IGNORAR"
+    OUVIR = "OUVIR"
     ROTEAR = "ROTEAR"
     RESPONDER_REVISAO = "RESPONDER_REVISAO"
     ENCERRAR_REVISAO = "ENCERRAR_REVISAO"
@@ -59,10 +60,11 @@ def expirou(atualizado_em: datetime, agora: datetime) -> bool:
 
 
 _ACAO_DO_MENU = {
-    1: Acao.GERAR_EXEMPLOS,
-    2: Acao.GERAR_SINONIMOS,
-    3: Acao.SALVAR,
-    4: Acao.IGNORAR,
+    1: Acao.OUVIR,
+    2: Acao.GERAR_EXEMPLOS,
+    3: Acao.GERAR_SINONIMOS,
+    4: Acao.SALVAR,
+    5: Acao.IGNORAR,
 }
 _ACAO_QUE_ENCERRA = {Acao.SALVAR, Acao.IGNORAR}
 

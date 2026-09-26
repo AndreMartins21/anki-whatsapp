@@ -2,6 +2,7 @@
 
 - **Status:** Aceito
 - **Data:** 2026-09-25
+- **Nota (ADR-0024):** o menu foi renumerado e a opção "ignorar" citada aqui como 4 é hoje a **5**.
 
 ## Contexto
 

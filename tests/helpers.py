@@ -21,6 +21,7 @@ from app.flows.conversa import Conversa
 from app.flows.router import Router
 from app.repo.base import Repository
 from app.repo.memory import MemoryBanco
+from app.services.audio import ServicoAudio
 from app.services.fake_llm import FakeTutor
 from app.services.letras import LyricsProvider
 
@@ -122,6 +123,7 @@ def montar(
     exportador: Exportador | None = None,
     status_da_sessao: StatusDaSessao | None = None,
     letras: LyricsProvider | None = None,
+    audio: ServicoAudio | None = None,
     prefixo_do_grupo: str = "!",
     grupo_limite: int = 5,
     grupo_timeout: timedelta = timedelta(hours=3),
@@ -150,6 +152,7 @@ def montar(
         status_da_sessao=status_da_sessao,
         exportador=exportador,
         letras=letras,
+        audio=audio,
         prefixo_do_grupo=prefixo_do_grupo,
         eh_dono=lambda numero: numero == DONO_NUMERO,
         config_grupo=ConfigGrupo(

@@ -7,7 +7,7 @@ from typing import Protocol
 
 
 class Channel(Protocol):
-    """Enviar texto e arquivo, marcar como lido, digitando. Implementações: WahaChannel, ConsoleChannel,
+    """Enviar texto, arquivo e voz, marcar como lido, digitando. Implementações: WahaChannel, ConsoleChannel,
     FakeChannel — trocável no futuro por Cloud API ou Telegram sem tocar na lógica de negócio."""
 
     async def send_text(
@@ -21,6 +21,10 @@ class Channel(Protocol):
         self, chat_id: str, nome: str, conteudo: bytes, tipo: str, legenda: str = ""
     ) -> None:
         """Envia um arquivo (documento) para o chat, com legenda opcional."""
+        ...
+
+    async def send_voice(self, chat_id: str, conteudo: bytes) -> None:
+        """Envia uma nota de voz (áudio OGG/Opus) para o chat (M23)."""
         ...
 
     async def send_seen(self, chat_id: str) -> None: ...

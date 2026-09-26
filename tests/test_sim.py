@@ -22,9 +22,9 @@ def test_ciclo_completo_no_terminal(tmp_path: Path) -> None:
     codigo, tela = _executar(
         [
             "stall | the talks stalled",
-            "1",  # see more examples
+            "2",  # see more examples
             "The negotiations stalled after the first meeting.",
-            "3",  # just save
+            "4",  # just save
             "/list",
             "/info 1",
             "/export",
@@ -103,9 +103,9 @@ def test_ciclo_stall_no_grupo_com_dois_alunos(tmp_path: Path) -> None:
     codigo, tela = _executar(
         [
             "ana: !add stall | the talks stalled",
-            "bia: !1",  # see more examples
+            "bia: !2",  # see more examples
             "ana: !The negotiations stalled after the first meeting.",
-            "bia: !3",  # just save
+            "bia: !4",  # just save
             "ana: !list",
             "sair",
         ],
@@ -115,7 +115,7 @@ def test_ciclo_stall_no_grupo_com_dois_alunos(tmp_path: Path) -> None:
 
     assert codigo == 0
     assert "*stall* (verb) — B2" in tela
-    assert "!1 — See more examples" in tela
+    assert "!2 — See more examples" in tela
     assert "📝 *Examples with stall*" in tela
     assert "✅ *Perfect!*" in tela
     assert "✅ Saved: *stall*." in tela
@@ -168,7 +168,7 @@ def test_revisao_em_grupo_marca_o_aluno_pelo_nome_e_fecha_a_rodada(tmp_path: Pat
     _, tela = _executar(
         [
             "ana: !add stall | the talks stalled",
-            "ana: !3",  # just save: a palavra vira um card da turma
+            "ana: !4",  # just save: a palavra vira um card da turma
             "carla: !help",  # a professora aparece, mas nunca é marcada
             "ana: !review",
             "ana: !it means to stop making progress",
@@ -188,7 +188,7 @@ def test_timeout_no_simulador_repassa_o_card_e_depois_fecha(tmp_path: Path) -> N
     _, tela = _executar(
         [
             "ana: !add stall",
-            "ana: !3",
+            "ana: !4",
             "ana: !review",
             "~timeout",  # ninguém respondeu: repassa
             "~timeout",  # ninguém respondeu de novo: fecha

@@ -33,6 +33,8 @@ VM_NAME="vocabot-vm"
 SA_NAME="vocabot-vm"
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 EXPORT_BUCKET="${EXPORT_BUCKET:-${PROJECT_ID}-vocabot-exports}"
+AUDIO_BUCKET="${AUDIO_BUCKET:-${PROJECT_ID}-vocabot-audio}"
+TTS_VOICE="${TTS_VOICE:-en-US-Neural2-F}"
 LLM_PROVIDER="${LLM_PROVIDER:-vertex_gemini}"
 
 # Segredos que o setup.sh gera (openssl rand) sem mostrar na tela.

@@ -38,7 +38,7 @@ def test_grupo_ativo_com_prefixo_responde_no_grupo_e_cadastra_quem_escreveu(
 
     assert resposta.status_code == 200
     ((chat, texto),) = ambiente.canal.textos_enviados
-    assert chat == GRUPO_FIXO and "*stall*" in texto and "!1 — See more examples" in texto
+    assert chat == GRUPO_FIXO and "*stall*" in texto and "!2 — See more examples" in texto
     assert ambiente.canal.vistos == [GRUPO_FIXO]
     espaco = ambiente.banco.do_espaco(GRUPO_FIXO)
     assert [e.slug for e in espaco.listar_entradas()] == ["stall"]
@@ -129,7 +129,7 @@ def test_o_ciclo_stall_no_grupo_por_dois_alunos_pelo_webhook(ambiente: Ambiente)
     ambiente.tutor.expansoes.append(expansoes())
     ana, bia = f"{ANA}@c.us", "5511977776666@c.us"
 
-    for participante, texto in [(ana, "!add stall"), (bia, "!3")]:
+    for participante, texto in [(ana, "!add stall"), (bia, "!4")]:
         ambiente.cliente.post("/waha/webhook", json=_do_grupo(GRUPO_FIXO, participante, texto))
 
     textos = [t for _, t in ambiente.canal.textos_enviados]
@@ -191,7 +191,7 @@ def test_review_pelo_webhook_marca_um_aluno_da_lista_do_waha_e_nunca_o_bot(
         bia,
         "5531988887777",
     ]  # o bot é o BOT_NUMBER
-    for participante, texto in [(ANA, "!add stall"), (ANA, "!3"), (ANA, "!review")]:
+    for participante, texto in [(ANA, "!add stall"), (ANA, "!4"), (ANA, "!review")]:
         ambiente.cliente.post(
             "/waha/webhook", json=_do_grupo(GRUPO_FIXO, f"{participante}@c.us", texto)
         )
@@ -210,7 +210,7 @@ def test_a_resposta_da_pessoa_marcada_pelo_webhook_avanca_o_card(ambiente: Ambie
     ambiente.tutor.expansoes.append(expansoes())
     ambiente.tutor.revisoes.append(Revisao(tipo="definicao", qualidade="bom", feedback="Nice!"))
     ambiente.canal.participantes_de_grupos[GRUPO_FIXO] = [ANA]
-    for texto in ("!add stall", "!3", "!review"):
+    for texto in ("!add stall", "!4", "!review"):
         ambiente.cliente.post("/waha/webhook", json=_do_grupo(GRUPO_FIXO, f"{ANA}@c.us", texto))
 
     ambiente.cliente.post(

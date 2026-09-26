@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     # Storage
     export_bucket: str
 
+    # Pronúncia em áudio (M23, ADR-0024): Google Cloud TTS + cache num bucket próprio, permanente.
+    # Sem `AUDIO_BUCKET` o bot sobe normalmente e só a opção "Hear how it sounds" avisa que falhou.
+    audio_bucket: str | None = None
+    tts_voice: str = "en-US-Neural2-F"
+
     # Letras de música do /song (M13, seção 5.8, ADR-0016): API pública do LRCLIB, sem chave.
     lyrics_url: str = "https://lrclib.net"
 
@@ -83,6 +88,7 @@ class Settings(BaseSettings):
         "gemini_model",
         "gemini_model_eval",
         "owner_number",
+        "audio_bucket",
         mode="before",
     )
     @classmethod
@@ -104,6 +110,11 @@ class Settings(BaseSettings):
             for chave, valor in dados.items()
             if not (chave in _NUMERICOS and isinstance(valor, str) and not valor.strip())
         }
+
+    @field_validator("tts_voice", mode="before")
+    @classmethod
+    def _voz_vazia_usa_a_padrao(cls, valor: object) -> object:
+        return "en-US-Neural2-F" if isinstance(valor, str) and not valor.strip() else valor
 
     @field_validator("group_prefix", mode="before")
     @classmethod

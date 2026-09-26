@@ -102,7 +102,8 @@ async def test_add_traz_o_card_com_o_menu_no_prefixo_do_grupo() -> None:
     (card,) = await m.diz_no_grupo(ANA, "!add stall | the talks stalled")
 
     assert "*stall*" in card
-    assert "!1 — See more examples" in card and "!3 — Just save" in card
+    assert "!1 — Hear how it sounds" in card and "!2 — See more examples" in card
+    assert "!4 — Just save" in card
     assert "start it with !" in card
     assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.AWAIT_ACTION
     _sem_comandos_do_privado([card])
@@ -116,7 +117,8 @@ async def test_add_de_palavra_que_ja_existe_avisa_com_o_prefixo_e_0_libera() -> 
     (aviso,) = await m.diz_no_grupo(BIA, "!add stall")
 
     assert aviso.startswith("📌 You already have *stall* in your list.")
-    assert "!1 — See more examples" in aviso and "!3" not in aviso
+    assert "!1 — Hear how it sounds" in aviso and "!3 — Check synonyms" in aviso
+    assert "!4" not in aviso
     assert "type !0 or !skip" in aviso
     assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.AWAIT_ACTION
     (fim,) = await m.diz_no_grupo(BIA, "!skip")
@@ -128,7 +130,7 @@ async def test_opcao_4_no_grupo_descarta_a_palavra_recem_criada() -> None:
     m = _grupo()
     await m.diz_no_grupo(ANA, "!add stall")
 
-    (resposta,) = await m.diz_no_grupo(BIA, "!4")
+    (resposta,) = await m.diz_no_grupo(BIA, "!5")
 
     assert resposta.startswith("🗑️ Ignored *stall*")
     assert m.banco.do_espaco(GRUPO).obter_entrada("stall") is None
@@ -138,9 +140,9 @@ async def test_ciclo_completo_stall_com_dois_alunos() -> None:
     m = _grupo()
     await m.diz_no_grupo(ANA, "!add stall | the talks stalled")
 
-    exemplos = await m.diz_no_grupo(BIA, "!1")
+    exemplos = await m.diz_no_grupo(BIA, "!2")
     avaliacao = await m.diz_no_grupo(ANA, "!The project stalled because the client didn't send it")
-    salvo = await m.diz_no_grupo(BIA, "!3")
+    salvo = await m.diz_no_grupo(BIA, "!4")
 
     assert "Examples with stall" in exemplos[0]
     assert "Almost there" in avaliacao[0]
@@ -165,13 +167,13 @@ async def test_a_frase_guarda_quem_escreveu() -> None:
     assert all(f.autor_id is None for f in frases if f.autor == "bot")
 
 
-async def test_sinonimos_pelo_menu_2() -> None:
+async def test_sinonimos_pelo_menu_3() -> None:
     m = _grupo()
     await m.diz_no_grupo(ANA, "!add stall")
 
-    (resposta,) = await m.diz_no_grupo(CAIO, "!2")
+    (resposta,) = await m.diz_no_grupo(CAIO, "!3")
 
-    assert "Synonyms for stall" in resposta and "!3 — Just save" in resposta
+    assert "Synonyms for stall" in resposta and "!4 — Just save" in resposta
 
 
 async def test_add_sem_palavra_explica_o_uso() -> None:
@@ -275,7 +277,7 @@ async def test_list_vazio_e_com_palavras_no_titulo_da_turma() -> None:
     assert await m.diz_no_grupo(ANA, "!list") == [messages.sem_entradas("!")]
 
     await m.diz_no_grupo(ANA, "!add stall")
-    await m.diz_no_grupo(ANA, "!3")
+    await m.diz_no_grupo(ANA, "!4")
     (lista,) = await m.diz_no_grupo(BIA, "!list")
 
     assert "The class's words" in lista and "1. stall" in lista
@@ -296,17 +298,17 @@ async def test_list_pagina_invalida_cita_o_prefixo_do_grupo() -> None:
 async def test_practice_retoma_uma_palavra_do_caderno_da_turma() -> None:
     m = _grupo()
     await m.diz_no_grupo(ANA, "!add stall")
-    await m.diz_no_grupo(ANA, "!3")
+    await m.diz_no_grupo(ANA, "!4")
 
     (card,) = await m.diz_no_grupo(BIA, "!practice stall")
 
-    assert "*stall*" in card and "!1 — See more examples" in card
+    assert "*stall*" in card and "!2 — See more examples" in card
 
 
 async def test_practice_por_numero_e_palavra_inexistente() -> None:
     m = _grupo()
     await m.diz_no_grupo(ANA, "!add stall")
-    await m.diz_no_grupo(ANA, "!3")
+    await m.diz_no_grupo(ANA, "!4")
     m.tutor.explicacoes.append(explicacao_stall())
 
     assert "*stall*" in (await m.diz_no_grupo(BIA, "!practice 1"))[0]
@@ -349,7 +351,7 @@ async def test_a_dica_de_lembretes_do_grupo_cita_o_comando_do_grupo() -> None:
     m = _grupo()
     await m.diz_no_grupo(ANA, "!add stall")
 
-    (salvo,) = await m.diz_no_grupo(ANA, "!3")
+    (salvo,) = await m.diz_no_grupo(ANA, "!4")
 
     assert "Send !reminder 3" in salvo
     _sem_comandos_do_privado([salvo])
@@ -440,7 +442,7 @@ async def test_teacher_sem_alvo_explica_o_uso_e_os_papeis_nao_aparecem_no_help()
 async def test_group_mostra_a_turma_sem_telefone() -> None:
     m = _grupo()
     await m.diz_no_grupo(ANA, "!add stall")
-    await m.diz_no_grupo(ANA, "!3")
+    await m.diz_no_grupo(ANA, "!4")
     await m.diz_no_grupo(BIA, "!help")
     await m.diz_no_grupo(Autor(CAIO.numero, None), "!help")
     await m.diz_no_grupo(Autor(DONO_NUMERO, "Prof"), f"!teacher {BIA.numero}")
@@ -487,7 +489,7 @@ async def test_qualquer_mensagem_com_prefixo_de_qualquer_participante_conta_como
 async def test_o_apelido_exclamacao_no_privado_vale_a_barra() -> None:
     m = _grupo()
     await m.diz("stall")
-    await m.diz("3")
+    await m.diz("4")
 
     lista_com_barra = await m.diz("/list")
     lista_com_exclamacao = await m.diz("!list")

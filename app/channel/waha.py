@@ -1,4 +1,4 @@
-"""Cliente HTTP do WAHA (seção 8.3): send_text, send_file, send_seen, typing(on/off), session_status.
+"""Cliente HTTP do WAHA (seção 8.3): send_text, send_file, send_voice, send_seen, typing(on/off), session_status.
 
 Corpos de request confirmados na doc atual do WAHA (waha.devlike.pro/docs/how-to/*):
 `{"session": ..., "chatId": ...}` mais o campo específico de cada endpoint.
@@ -77,6 +77,26 @@ class WahaChannel:
                     "data": base64.b64encode(conteudo).decode("ascii"),
                 },
                 "caption": legenda,
+            },
+            tentativas=1,
+            limite_segundos=self._timeout_arquivo,
+        )
+
+    async def send_voice(self, chat_id: str, conteudo: bytes) -> None:
+        """`POST /api/sendVoice` com OGG/Opus em base64 (`file.data`): o WAHA exige esse formato
+        para a nota de voz, e o TTS já o entrega, então não usa `convert`. Sem retentativa, como o
+        `send_file`: reenviar uma resposta lenta duplicaria o áudio."""
+        await self._com_retentativas(
+            "POST",
+            "/api/sendVoice",
+            json={
+                "session": self._session,
+                "chatId": chat_id,
+                "file": {
+                    "mimetype": "audio/ogg; codecs=opus",
+                    "data": base64.b64encode(conteudo).decode("ascii"),
+                },
+                "convert": False,
             },
             tentativas=1,
             limite_segundos=self._timeout_arquivo,

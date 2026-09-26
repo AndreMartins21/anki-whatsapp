@@ -64,7 +64,7 @@ async def _stall_praticada() -> Montagem:
     )
     await m.diz("stall | the talks stalled")
     await m.diz("the project stalled")
-    await m.diz("3")  # salva, praticada
+    await m.diz("4")  # salva, praticada
     return m
 
 
@@ -73,7 +73,7 @@ async def _stall_e_hedge() -> Montagem:
     m.tutor.explicacoes.append(HEDGE)
     m.tutor.expansoes.append(expansoes())
     await m.diz("hedge")
-    await m.diz("3")  # salva, nova (não praticada)
+    await m.diz("4")  # salva, nova (não praticada)
     return m
 
 
@@ -534,9 +534,9 @@ async def test_info_por_numero_mostra_frases_corrigidas_exemplos_e_sinonimos() -
         )
     )
     await m.diz("stall | the talks stalled")
-    await m.diz("2")  # synonyms
+    await m.diz("3")  # synonyms
     await m.diz("the project stalled")
-    await m.diz("3")  # save
+    await m.diz("4")  # save
 
     (resposta,) = await m.diz("/info 1")
 

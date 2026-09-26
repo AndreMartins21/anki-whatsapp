@@ -19,6 +19,7 @@ class ConsoleChannel:
         self._pasta = pasta
         # número -> nome, para mostrar a menção como no WhatsApp (o simulador vai preenchendo)
         self._nomes = nomes if nomes is not None else {}
+        self._contador_de_vozes = 0
 
     async def send_file(
         self,
@@ -35,6 +36,17 @@ class ConsoleChannel:
             destino.write_bytes(conteudo)
             onde = f"\n{destino.resolve()}"
         await self.send_text("", f"📎 {Path(nome).name} ({len(conteudo)} bytes)\n{legenda}{onde}")
+
+    async def send_voice(self, chat_id: str, conteudo: bytes) -> None:  # noqa: ARG002
+        """Sem WhatsApp, a nota de voz vira um `.ogg` na pasta (para ouvir) e uma linha no terminal."""
+        onde = ""
+        if self._pasta is not None:
+            self._pasta.mkdir(parents=True, exist_ok=True)
+            self._contador_de_vozes += 1
+            destino = self._pasta / f"voz_{self._contador_de_vozes:03d}.ogg"
+            destino.write_bytes(conteudo)
+            onde = f"\n{destino.resolve()}"
+        await self.send_text("", f"🔊 (nota de voz, {len(conteudo)} bytes){onde}")
 
     async def send_text(
         self,
