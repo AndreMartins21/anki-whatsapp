@@ -50,9 +50,9 @@ async def test_a_sessao_de_um_aluno_nao_aparece_no_outro() -> None:
 async def test_palavras_e_list_sao_de_cada_aluno() -> None:
     m = _dois_alunos()
     await _diz(m, CHAT, "stall")
-    await _diz(m, CHAT, "3")  # salva
+    await _diz(m, CHAT, "4")  # salva
     await _diz(m, CHAT_B, "hedge")
-    await _diz(m, CHAT_B, "3")
+    await _diz(m, CHAT_B, "4")
 
     lista_a = "\n".join(await _diz(m, CHAT, "/list"))
     lista_b = "\n".join(await _diz(m, CHAT_B, "/list"))
@@ -68,7 +68,7 @@ async def test_palavras_e_list_sao_de_cada_aluno() -> None:
 async def test_aluno_sem_palavras_nao_ve_as_do_outro() -> None:
     m = _dois_alunos()
     await _diz(m, CHAT, "stall")
-    await _diz(m, CHAT, "3")
+    await _diz(m, CHAT, "4")
 
     resposta = "\n".join(await _diz(m, CHAT_B, "/list"))
 
@@ -84,10 +84,10 @@ async def test_o_mesmo_slug_pode_existir_nos_dois_espacos() -> None:
         )
     )
     await _diz(m, CHAT, "stall")
-    await _diz(m, CHAT, "3")
+    await _diz(m, CHAT, "4")
 
     await _diz(m, CHAT_B, "stall")
-    resposta = await _diz(m, CHAT_B, "3")
+    resposta = await _diz(m, CHAT_B, "4")
 
     assert resposta  # o B salvou sem esbarrar na palavra do A
     assert len(m.banco.do_espaco(CHAT_B).listar_entradas()) == 1
@@ -97,9 +97,9 @@ async def test_export_traz_so_as_palavras_de_quem_pediu() -> None:
     armazenamento = ArmazenamentoEmMemoria()
     m = _dois_alunos(exportador=ExportadorExcel(armazenamento, agora=lambda: T0))
     await _diz(m, CHAT, "stall")
-    await _diz(m, CHAT, "3")
+    await _diz(m, CHAT, "4")
     await _diz(m, CHAT_B, "hedge")
-    await _diz(m, CHAT_B, "3")
+    await _diz(m, CHAT_B, "4")
 
     await _diz(m, CHAT_B, "/export")
 

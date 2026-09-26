@@ -189,6 +189,46 @@ async def test_send_file_nao_tenta_de_novo_para_nao_duplicar_o_arquivo() -> None
     assert chamadas == 1
 
 
+async def test_send_voice_manda_ogg_opus_em_base64() -> None:
+    requisicoes: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requisicoes.append(request)
+        return httpx.Response(200, json={"id": "abc"})
+
+    canal = _canal(httpx.MockTransport(handler))
+    await canal.send_voice("5531999998888@c.us", b"ogg-bytes")
+    await canal.aclose()
+
+    (requisicao,) = requisicoes
+    assert requisicao.url.path == "/api/sendVoice"
+    assert json.loads(requisicao.content) == {
+        "session": "default",
+        "chatId": "5531999998888@c.us",
+        "file": {
+            "mimetype": "audio/ogg; codecs=opus",
+            "data": base64.b64encode(b"ogg-bytes").decode(),
+        },
+        "convert": False,
+    }
+
+
+async def test_send_voice_nao_tenta_de_novo_para_nao_duplicar_o_audio() -> None:
+    chamadas = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal chamadas
+        chamadas += 1
+        return httpx.Response(500)
+
+    canal = _canal(httpx.MockTransport(handler))
+    with pytest.raises(httpx.HTTPStatusError):
+        await canal.send_voice("5531999998888@c.us", b"x")
+    await canal.aclose()
+
+    assert chamadas == 1
+
+
 async def test_leave_group_usa_o_endpoint_de_sair_do_grupo() -> None:
     vistos: list[tuple[str, str]] = []
 

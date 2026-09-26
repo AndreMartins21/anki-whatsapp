@@ -13,6 +13,7 @@ from app.domain.models import Sessao
 from app.domain.rodizio import Candidato
 from app.flows.conversa import Conversa
 from app.repo.base import Repository
+from app.services.audio import ServicoAudio
 from app.services.letras import LyricsProvider
 from app.services.llm import Tutor
 
@@ -56,6 +57,7 @@ class Deps:
     agora: Callable[[], datetime]
     fuso: ZoneInfo = FUSO_PADRAO  # fuso do aluno, para mostrar horários de lembrete
     letras: LyricsProvider | None = None  # M13: fonte das letras do /song (None = indisponível)
+    audio: ServicoAudio | None = None  # M23: pronúncia em áudio (None = indisponível)
     grupo_prefixo: str | None = None  # M16: o prefixo do grupo (`!`); `None` no privado
     autor: Autor | None = None  # M16: quem escreveu, em grupo
     chat_id: str = ""  # o espaço desta mensagem

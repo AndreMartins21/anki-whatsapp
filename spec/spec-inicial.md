@@ -17,14 +17,16 @@ Ciclo principal:
 3. O card termina no **menu único**: 1 ver mais exemplos, 2 ver sinônimos, 3 só salvar, 4 ignorar a palavra e seguir com outra — sempre com o convite a já escrever uma frase. Se a palavra **já está na lista**, o bot avisa, mostra o que o aluno já tem (sentido e exemplo salvos) e oferece só 1, 2 e a frase, além de `0`/`skip` para mandar outra palavra ou comando (seção 5.1).
 4. Texto livre (frase, pedido de ajuda, palavra nova, ou fora do escopo) é roteado por uma única chamada de IA (seção 5.1) que classifica e já responde. Frase de prática: avalia se usa a palavra corretamente, naquele sentido, e se é natural; o usuário pode tentar de novo.
 5. Ao concluir, tudo fica salvo no Firestore: a palavra, o sentido, as frases do usuário com as avaliações e os exemplos.
-6. Ao salvar ("3" ou pedido livre), o bot sugere até 3 **expressões relacionadas** como texto — sem menu; o usuário só manda a que quiser como qualquer palavra nova.
+6. Ao salvar ("4" ou pedido livre), o bot sugere até 3 **expressões relacionadas** como texto — sem menu; o usuário só manda a que quiser como qualquer palavra nova.
 7. `/export` gera uma **planilha Excel** (`.xlsx`) com tudo o que foi coletado e **envia o arquivo direto no chat** (seção 7.3); só se o WhatsApp não aceitar, manda um **link temporário**. (Até o M11 era um `.txt` para o Anki; ver ADR-0014. O envio direto vem da ADR-0015: desde a 2026.6.1 o WAHA Core inclui os recursos do Plus, e o `/api/sendFile` deixou de ser exclusivo do Plus.)
 
 **M10:** o bot também faz revisão espaçada com lembretes agendados (seção 5.7) — deixou de ser fora de escopo.
 
 **M14:** o bot atende **vários alunos no privado**, cada um com o próprio caderno (o **espaço**, ADR-0017) — deixou de ser fora de escopo. **M15:** controle de acesso — quem não tem plano só recebe um aviso, e grupos só entram por um admin (ADR-0018). Os comandos de grupo (`!add`, `!list`...) são o M16 e a revisão em grupo com menção o M17 (`spec/plano-turmas.md`).
 
-Fora de escopo no MVP: áudio, painel web e conversa livre com IA sem relação a inglês.
+**M23:** o bot também **envia** a pronúncia em áudio, sob demanda (seção 7.4, ADR-0024). Receber áudio do aluno continua fora de escopo.
+
+Fora de escopo no MVP: áudio recebido do aluno, painel web e conversa livre com IA sem relação a inglês.
 
 ## 2. Stack e decisões fixas
 
@@ -81,6 +83,8 @@ A VM tem só 1 GB de RAM. Crie um **swap de 2 GB**, limite a memória dos contai
 | `WAHA_URL` | compose | `http://waha:3000` |
 | `WAHA_SESSION` | compose | `default` |
 | `EXPORT_BUCKET` | `.env.infra` | Nome do bucket de exportações |
+| `AUDIO_BUCKET` | `.env.infra` (opcional) | Bucket do cache de áudio de pronúncia (M23). Padrão `${PROJECT_ID}-vocabot-audio`; vazio ou fora de `APP_ENV=prod`, a pronúncia fica indisponível |
+| `TTS_VOICE` | `.env.infra` (opcional) | Voz do Cloud TTS (M23). Padrão `en-US-Neural2-F` |
 | `ANTHROPIC_MODEL` | `.env.infra` (opcional) | Padrão `claude-haiku-4-5-20251001` |
 | `USER_LEVEL` | `.env.infra` | Padrão `B1-B2` |
 | `TIMEZONE` | `.env.infra` | Padrão `America/Sao_Paulo`; fuso para distribuir os lembretes (M10, seção 5.7) |
@@ -104,6 +108,7 @@ AWAIT_ACTION  ── 1 "see more examples" ──▶ gerar exemplos   ──▶ 
               ── 2 "check synonyms"    ──▶ gerar sinônimos  ──▶ AWAIT_ACTION
               ── 3 "just save"         ──▶ salvar e sugerir ──▶ IDLE
               ── 4 "ignore this word"  ──▶ descartar a palavra recém-criada ──▶ IDLE
+              ── 5 "hear it"           ──▶ notas de voz do termo e do exemplo (M23) ──▶ AWAIT_ACTION
               ── 0 / skip              ──▶ sair da palavra (fica salva), sem IA ──▶ IDLE
               ── qualquer outro texto  ──▶ rotear pela IA (abaixo) ──▶ AWAIT_ACTION (ou IDLE)
 ```
@@ -120,9 +125,9 @@ opção do menu vira **uma única chamada de IA** que classifica a intenção e 
   avalia, com os mesmos campos de `evaluate`.
 - `exemplos` / `sinonimos` — pedido de mais exemplos/sinônimos, com quantidade opcional (1 a 10,
   padrão 3; fora do intervalo é limitado pelo fluxo, nunca pela IA).
-- `salvar` — equivalente a digitar "3".
+- `salvar` — equivalente a digitar "4".
 - `nova_palavra` — o texto não é sobre a palavra-alvo atual e parece uma nova palavra/expressão em
-  inglês: salva a atual silenciosamente (como em "3") e explica a nova, numa segunda mensagem.
+  inglês: salva a atual silenciosamente (como em "4") e explica a nova, numa segunda mensagem.
 - `pedido` — qualquer outro pedido sobre aprender inglês (pronúncia, outro sentido da palavra,
   exemplos numa área específica, dúvida de gramática...): a IA já escreve a resposta, em inglês.
 - `fora_do_escopo` — nada relacionado a aprender inglês (small talk, outro assunto): a IA recusa
@@ -132,18 +137,22 @@ Regras:
 
 - **Sessão parada há mais de 3 horas** volta para IDLE, salvando o que houver.
 - `/cancel` (ou `/cancelar`) volta a IDLE sem apagar o que já foi salvo.
-- **Opção 4 (ignorar):** apaga a entrada **só se** ela foi criada por esta captura
+- **Opção 5 (ignorar):** apaga a entrada **só se** ela foi criada por esta captura
   (`Sessao.entrada_criada_agora`) e o aluno ainda não escreveu nenhuma frase nela; caso contrário
   (palavra que já estava na lista, ou já praticada) a entrada fica e o bot avisa que ela continua
   na lista. Em ambos os casos volta a IDLE. Os apelidos de texto são só frases inteiras
   (`ignore this word`, `ignore it`, `discard it`...): `ignore`/`drop` sozinhas podem ser a palavra
   que o aluno quer aprender.
+- **Opção 1 (ouvir, M23, ADR-0024):** manda o texto `🔊 *termo*` + a frase de exemplo e **duas notas de
+  voz** (o termo e a frase do card, a do bot mais antiga da entrada), sem mudar de estado. Os apelidos
+  de texto também são só frases inteiras (`hear it`, `hear the pronunciation`...): `hear`/`listen`
+  sozinhas podem ser a palavra que o aluno quer aprender. Em grupo vale `!1`.
 - **`0` / `skip` em `AWAIT_ACTION`** (e só eles: `stop`, `leave` etc. seguem indo para o roteamento,
   pois podem ser a palavra a aprender) saem da palavra aberta sem chamar a IA e sem apagar nada.
 - **Palavra que já existe** (ADR-0023: palavra sem frase de contexto já salva, em qualquer sentido; com
   frase, mesmo `slug` e mesmo sentido — traduções com alguma opção em comum contam como o mesmo): em vez do card completo,
   o bot manda `📌 You already have *X* in your list.` com título, 🇧🇷, 📖 e o exemplo **salvos**,
-  o convite a escrever uma frase, as opções 1 e 2 e a linha
+  o convite a escrever uma frase, as opções 1 a 3 (ouvir, exemplos e sinônimos) e a linha
   `To send another word or command, type 0 or skip.` (no grupo, `!0 or !skip`). Nada é regravado;
   a sessão fica em `AWAIT_ACTION` sobre aquela entrada (`entrada_criada_agora=false`).
 - **Sempre** reenvie o menu de ações ao final de cada resposta em `AWAIT_ACTION` — inclusive nas
@@ -153,7 +162,7 @@ Regras:
 ### 5.2 Comandos
 
 `/help`, `/list [página]`, `/info N|palavra`, `/pending`, `/practice [N|palavra]`, `/review`,
-`/song nome [- artista]`, `/reminders [N [INICIOh-FIMh] | off]`, `/profile`, `/export`, `/delete N|palavra`,
+`/listen N|palavra`, `/song nome [- artista]`, `/reminders [N [INICIOh-FIMh] | off]`, `/profile`, `/export`, `/delete N|palavra`,
 `/level A2-B1|B1-B2|B2-C1`, `/cancel`, `/status`. Todos os nomes são em inglês (M12, ADR-0014). Os
 apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/praticar`,
 `/exportar [tudo]`, `/apagar`, `/nivel`, `/cancelar`, `/reminders`, `/review`, `/perfil`, `/musica`)
@@ -262,9 +271,11 @@ exemplo calibrada, reaproveitando palavras que o aluno já salvou quando der):
 "The project [[stalled]] because the client didn't send the documents."
 
 Now, you can write one or more sentences using *stall*, or type:
-1️⃣ See more examples
-2️⃣ Check synonyms
-3️⃣ Just save
+1️⃣ Hear how it sounds 🔊
+2️⃣ See more examples
+3️⃣ Check synonyms
+4️⃣ Just save
+5️⃣ Ignore this word, try another
 ```
 
 **Case A — texto livre** (roteado pela IA, seção 5.1). Frase de prática avaliada:
@@ -276,15 +287,17 @@ Now, you can write one or more sentences using *stall*, or type:
 
 Want to try another sentence?
 Now, you can write one or more sentences using *stall*, or type:
-1️⃣ See more examples
-2️⃣ See more synonyms
-3️⃣ Just save
+1️⃣ Hear how it sounds 🔊
+2️⃣ See more examples
+3️⃣ See more synonyms
+4️⃣ Just save
+5️⃣ Ignore this word, try another
 ```
 Pedido de ajuda ou palavra fora do escopo: a resposta da IA (ou, fora do escopo, uma recusa
 gentil) seguida do mesmo menu. Palavra nova: salva a atual silenciosamente e manda o card da nova,
 como se fosse `IDLE`.
 
-**Case B — "1" / "see more examples"** (padrão 3, máximo 10, sem repetir os já mostrados):
+**Case B — "2" / "see more examples"** (padrão 3, máximo 10, sem repetir os já mostrados):
 ```
 📝 *Examples with stall* (travar, emperrar)
 1. We had to stall before the deadline.
@@ -293,13 +306,15 @@ como se fosse `IDLE`.
 
 Want to try a sentence of your own?
 Now, you can write one or more sentences using *stall*, or type:
-1️⃣ See more examples
-2️⃣ Check synonyms
-3️⃣ Just save
+1️⃣ Hear how it sounds 🔊
+2️⃣ See more examples
+3️⃣ Check synonyms
+4️⃣ Just save
+5️⃣ Ignore this word, try another
 ```
 
-**Case C — "2" / "check synonyms"** (padrão 3, máximo 10, sem repetir os já mostrados; a partir
-daqui a opção 2 do menu vira "See more synonyms"):
+**Case C — "3" / "check synonyms"** (padrão 3, máximo 10, sem repetir os já mostrados; a partir
+daqui a opção 3 do menu vira "See more synonyms"):
 ```
 🔄 *Synonyms for stall* (travar, emperrar)
 *stumble* = to almost fail or lose momentum
@@ -307,12 +322,14 @@ _Example: "The talks stumbled early on."_
 
 Want to try a sentence with *stall*?
 Now, you can write one or more sentences using *stall*, or type:
-1️⃣ See more examples
-2️⃣ See more synonyms
-3️⃣ Just save
+1️⃣ Hear how it sounds 🔊
+2️⃣ See more examples
+3️⃣ See more synonyms
+4️⃣ Just save
+5️⃣ Ignore this word, try another
 ```
 
-**Case D — "3" / "just save"** (fecha a palavra; sugere até 3 expressões relacionadas só como
+**Case D — "4" / "just save"** (fecha a palavra; sugere até 3 expressões relacionadas só como
 texto, sem criar entradas nem menu — se o aluno quiser uma, é só mandá-la como qualquer palavra
 nova):
 ```
@@ -557,7 +574,7 @@ session/current            { estado, entry_id, sentido_id, sinonimos_mostrados, 
                              revisao_fila, revisao_atual?, revisao_feitas, revisao_lapsos, revisao_total,
                              musica_opcoes, musica_titulo?, musica_artista?, musica_versos,
                              musica_indice, musica_expressoes }
-                           # entrada_criada_agora: a opção 4 do menu só apaga entrada criada nesta captura
+                           # entrada_criada_agora: a opção 5 do menu só apaga entrada criada nesta captura
                            # M9: sinonimos_mostrados evita repetir e troca o rótulo do menu
                            # ("Check synonyms" -> "See more synonyms") depois da 1ª vez
                            # M10: os 5 campos de revisao_* só valem com estado=REVIEWING
@@ -567,7 +584,9 @@ session/current            { estado, entry_id, sentido_id, sinonimos_mostrados, 
 entries/{slug}             { palavra, classe, cefr_estimado, sentido:{traducao,definicao}, outros_sentidos,
                              sinonimos, nota, tags, origem_texto, origem:"usuario"|"expansao", pai?, status:"nova"|"praticada",
                              exportado, criado_em, atualizado_em,
-                             repeticoes, intervalo_dias, facilidade, lapsos, proxima_revisao?, revisada_em? }
+                             repeticoes, intervalo_dias, facilidade, lapsos, proxima_revisao?, revisada_em?,
+                             audio_palavra?, audio_exemplo? }
+                           # M23: links (gs://) dos áudios de pronúncia; só registro, o cache por hash manda
                            # M12: sinonimos = [{expressao, significado, exemplo}] já mostrados ao aluno
                            # M10: campos de SM-2 simplificado (ADR-0011); proxima_revisao=None
                            # é um cartão novo, vencido desde já
@@ -613,6 +632,26 @@ VM precisa do papel `roles/iam.serviceAccountTokenCreator` **sobre ela mesma**, 
 `service_account_email` + `access_token` no `generate_signed_url`. O bucket tem uma regra de ciclo de
 vida que apaga objetos após 7 dias.
 
+### 7.4 Pronúncia em áudio (M23, ADR-0024)
+
+**Sob demanda:** a opção 1 do menu e `/listen N|palavra` mandam `🔊 *termo*` (com a frase de exemplo, se
+houver) e duas notas de voz, na ordem: o termo, depois a frase do card (a do bot mais antiga da entrada,
+sem os `[[ ]]`). Entrada sem frase do bot recebe só a voz do termo.
+
+**Síntese:** interface `Sintetizador` (`app/services/tts.py`), implementada por `GoogleTts`
+(Cloud Text-to-Speech, `AudioEncoding.OGG_OPUS`, voz de `TTS_VOICE`, conta de serviço da VM) e por
+`FakeSintetizador` (testes e simulador).
+
+**Cache:** `ServicoAudio` (`app/services/audio.py`) grava em `gs://$AUDIO_BUCKET/audio/<voz>/<sha256[:32]>.ogg`,
+com o hash de `voz + texto` (espaços normalizados, caixa mantida). O bucket é privado e **sem** ciclo de
+vida; é compartilhado entre espaços. Hit lê o objeto; miss sintetiza, grava e devolve. O link `gs://`
+vai para `Entry.audio_palavra` / `Entry.audio_exemplo` quando muda.
+
+**Envio:** `Channel.send_voice` (`POST /api/sendVoice`, `mimetype: audio/ogg; codecs=opus`, base64,
+`convert: false`), com timeout de 90 s e **sem** retentativa. `Conversa.enviar_voz` respeita o limite
+de 3 mensagens seguidas (o texto e as duas vozes usam os 3). Qualquer falha (TTS, Storage, WhatsApp)
+vira `ERRO_AUDIO`, sem derrubar a conversa.
+
 ## 8. Canal: WAHA
 
 ### 8.1 Recebimento (`app/main.py`)
@@ -625,7 +664,7 @@ vida que apaga objetos após 7 dias.
   4. Deduplique pelo `id` da mensagem.
   5. Faça `sendSeen` e despache ao roteador, com a lógica síncrona em threadpool. A conversa (IA, atrasos "humanos") roda em segundo plano, depois do 200 (M4, ADR-0006).
   6. **Sempre** devolva 200. Registre as exceções e mande ao usuário uma mensagem curta de erro.
-- Mídia (`hasMedia`, áudio, figurinha etc.): responda que o MVP só entende texto.
+- Mídia (`hasMedia`, áudio, figurinha etc.): responda que o MVP só entende texto (o M23 só **envia** áudio; a recepção segue recusada).
 - `session.status`: registre no log. Se o status sair de `WORKING`, registre em nível WARNING.
 - `GET /health`: `{"ok": true}`, usado pelo healthcheck do compose.
 
@@ -634,10 +673,10 @@ vida que apaga objetos após 7 dias.
 - **Envie sempre para o chatId do remetente autorizado**: o número que o WhatsApp informa (`NUMERO@c.us`, ou o `pn` resolvido do LID), nunca para outro chat. Ele bate com o número da allowlist a menos do nono dígito brasileiro: contas antigas são registradas **sem** o 9, e enviar para o número com o 9 falha no WAHA com "no LID found" (visto no deploy real).
 
 ### 8.3 Cliente (`app/channel/waha.py`)
-Implemente `send_text`, `send_file`, `send_seen`, `typing(on/off)` e `session_status`, com o header `X-Api-Key` (ou o nome atual segundo a documentação). Timeouts de 15 s, até 2 novas tentativas com backoff para 5xx, logs **sem** a API key. `send_file` é a exceção: timeout de 90 s e **sem** retentativa (reenviar uma resposta lenta duplicaria o arquivo; quem chama decide o plano B).
+Implemente `send_text`, `send_file`, `send_voice`, `send_seen`, `typing(on/off)` e `session_status`, com o header `X-Api-Key` (ou o nome atual segundo a documentação). Timeouts de 15 s, até 2 novas tentativas com backoff para 5xx, logs **sem** a API key. `send_file` e `send_voice` são a exceção: timeout de 90 s e **sem** retentativa (reenviar uma resposta lenta duplicaria o arquivo ou o áudio; quem chama decide o plano B).
 
 ### 8.4 Adaptador de canal
-Crie a interface `Channel` (enviar texto, enviar arquivo, marcar como lido, digitando) com as implementações `WahaChannel`, `ConsoleChannel` (simulador) e `FakeChannel` (testes). A lógica de negócio **não** pode importar nada do WAHA diretamente, para que seja possível trocar por Cloud API ou Telegram no futuro.
+Crie a interface `Channel` (enviar texto, enviar arquivo, enviar voz, marcar como lido, digitando) com as implementações `WahaChannel`, `ConsoleChannel` (simulador) e `FakeChannel` (testes). A lógica de negócio **não** pode importar nada do WAHA diretamente, para que seja possível trocar por Cloud API ou Telegram no futuro.
 
 ## 9. Marcos (pare ao fim de cada um)
 
@@ -661,6 +700,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, marcar como lido, digi
 | M16 | Bot em grupo com prefixo `!` (ADR-0019, seção 5.2b): filtro de prefixo antes de tudo, conjunto fechado de comandos, `!teacher`/`!student`, `membros/`, `autor_id`, textos com o prefixo do espaço, `sim --grupo` | Grupo ativo com/sem prefixo (nada gravado, nenhum `sendSeen`), participante LID, mídia; cada comando; comando do privado recusado; `!` fora de atividade sem IA; ciclo "stall" com dois alunos no `sim --grupo` |
 | M17 | Revisão em grupo com menção em rodízio (ADR-0020, seção 5.2b): `send_text(mentions=)`, participantes do grupo, `domain/rodizio.py`, marcação por card, resposta do marcado vs. de outro, timeout no agendador (uma consulta por tick), `respostas/` | Rodízio (distribuição justa, professores excluídos, sem repetição seguida); resposta de não marcado sem nota; timeout com relógio controlado; menções no `FakeChannel`; rodada completa no `sim --grupo` |
 | M11 | Deploy contínuo via GitHub Actions (seção 10.9, ADR-0013): branch protection na `main` (PR + checks obrigatórios), job `deploy` automático no merge, autenticado por Workload Identity Federation | Push direto na `main` é bloqueado pelo GitHub; um PR com CI verde, ao ser mergeado, dispara o job `deploy` e o bot responde `/help` depois do smoke test |
+| M23 | Pronúncia em áudio sob demanda (seção 7.4, ADR-0024): opção 1 e `/listen`, `Sintetizador` (Google Cloud TTS) atrás de interface, cache por hash em bucket permanente, `Channel.send_voice` | Cache miss sintetiza e grava, hit não chama o TTS; duas vozes (termo e frase) na ordem; falha do TTS/envio só avisa; `send_voice` sem retentativa; `Entry` persiste os links; `make check` verde; `sim` grava os `.ogg` |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 
@@ -669,7 +709,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, marcar como lido, digi
 Pré-requisitos, que eu garanto: `gcloud` autenticado, projeto definido, faturamento ativo (trial) e papel de Owner.
 
 ### 10.1 `infra/config.sh` + `infra/.env.infra` (no `.gitignore`, com `.env.infra.example`)
-Contém `GCP_PROJECT_ID` (lido do `.env.infra`; se vazio, de `gcloud config get-value project`), `REGION=us-central1`, `ZONE=us-central1-a`, `VM_NAME=vocabot-vm`, `SA_NAME=vocabot-vm`, `EXPORT_BUCKET=${PROJECT_ID}-vocabot-exports` e os valores não secretos da seção 4.
+Contém `GCP_PROJECT_ID` (lido do `.env.infra`; se vazio, de `gcloud config get-value project`), `REGION=us-central1`, `ZONE=us-central1-a`, `VM_NAME=vocabot-vm`, `SA_NAME=vocabot-vm`, `EXPORT_BUCKET=${PROJECT_ID}-vocabot-exports`, `AUDIO_BUCKET=${PROJECT_ID}-vocabot-audio`, `TTS_VOICE` e os valores não secretos da seção 4.
 
 Exemplo de `infra/.env.infra.example`:
 ```dotenv
@@ -687,10 +727,10 @@ USER_LEVEL=B1-B2
 ```
 
 ### 10.2 `infra/setup.sh` (idempotente)
-1. Ativar as APIs `compute`, `firestore`, `secretmanager`, `storage`, `iap`, `iamcredentials`, `logging` e **`aiplatform`** (Vertex AI).
+1. Ativar as APIs `compute`, `firestore`, `secretmanager`, `storage`, `iap`, `iamcredentials`, `logging`, **`aiplatform`** (Vertex AI) e **`texttospeech`** (M23).
 2. Criar o Firestore nativo em `us-central1` e a política de TTL em `processed.expira_em`.
 3. Criar a conta de serviço `vocabot-vm` com os papéis `roles/datastore.user`, `roles/secretmanager.secretAccessor`, `roles/logging.logWriter` e **`roles/aiplatform.user`**. Adicionar `roles/iam.serviceAccountTokenCreator` **na própria SA** (ADR-0007: o `secretAccessor` é concedido em cada segredo, não no projeto) e `roles/storage.objectAdmin` **só no bucket**.
-4. Criar o bucket (`us-central1`, *uniform access*, prevenção de acesso público) com ciclo de vida de 7 dias.
+4. Criar o bucket (`us-central1`, *uniform access*, prevenção de acesso público) com ciclo de vida de 7 dias. **4b (M23):** criar também `$AUDIO_BUCKET` (mesmas proteções, **sem** ciclo de vida) com `roles/storage.objectAdmin` só nele para a SA da VM.
 5. Criar os segredos. `WAHA_API_KEY` e `WAHA_DASHBOARD_PASSWORD` são gerados com `openssl rand -hex 24` e enviados por pipe, sem ecoar na tela. `ANTHROPIC_API_KEY` só é criado (sem versão) se `LLM_PROVIDER=anthropic`.
 6. Criar a regra de firewall `allow-iap-ssh` (tcp:22 a partir de `35.235.240.0/20`, só para a tag `vocabot`). **Não** abrir as portas 3000 ou 8000.
 7. Criar a VM, se não existir:
@@ -740,7 +780,7 @@ Mostre também como ver a senha do painel **localmente e só quando eu pedir** (
   - `restart: unless-stopped`, `mem_limit: 300m`.
 
 ### 10.8 Custos (para você respeitar)
-A VM `e2-micro` com disco standard de 30 GB em `us-central1` está no nível gratuito. O Gemini no Vertex AI é pago por uso (centavos neste volume), coberto pelos créditos do trial. Os créditos do trial **não** pagam modelos de parceiros (ex.: Claude no Vertex), por isso ele não é opção aqui. O IP externo **não** está: custa alguns dólares por mês, coberto pelos créditos do trial. Firestore, Storage e Secret Manager ficam nas cotas gratuitas. Não crie Cloud NAT, balanceador, IP estático reservado nem máquinas maiores.
+A VM `e2-micro` com disco standard de 30 GB em `us-central1` está no nível gratuito. O Gemini no Vertex AI é pago por uso (centavos neste volume), coberto pelos créditos do trial. Os créditos do trial **não** pagam modelos de parceiros (ex.: Claude no Vertex), por isso ele não é opção aqui. O IP externo **não** está: custa alguns dólares por mês, coberto pelos créditos do trial. Firestore, Storage e Secret Manager ficam nas cotas gratuitas. O Cloud Text-to-Speech (M23) também: 1M de caracteres por mês em Neural2 (4M em Standard/WaveNet), e o cache evita sintetizar o mesmo texto duas vezes. Não crie Cloud NAT, balanceador, IP estático reservado nem máquinas maiores.
 
 ### 10.9 Deploy contínuo via GitHub Actions (M11, ADR-0013)
 
@@ -783,8 +823,8 @@ vocabot/
     main.py  config.py  messages.py
     channel/  base.py  waha.py  console.py  parser.py
     domain/   models.py  state.py  choices.py  srs.py  lembretes.py  musica.py
-    flows/    router.py  capture.py  practice.py  expansion.py  synonyms.py  freeform.py  review.py  song.py  commands.py
-    services/ llm.py  prompts.py  planilha.py  storage.py  lembretes.py  letras.py
+    flows/    router.py  capture.py  practice.py  pronuncia.py  expansion.py  synonyms.py  freeform.py  review.py  song.py  commands.py
+    services/ llm.py  prompts.py  planilha.py  storage.py  lembretes.py  letras.py  tts.py  audio.py
     repo/     base.py  memory.py  firestore.py   # Banco (a raiz) + Repository (um espaço), M14
   sim/        __main__.py  tutor.py  letras.py
   scripts/    migrar_multiusuario.py   # M14: raiz antiga -> espacos/{chat}

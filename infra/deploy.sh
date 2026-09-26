@@ -46,6 +46,8 @@ chmod 700 "$TMP"
   printf 'GEMINI_MODEL_EVAL=%s\n' "${GEMINI_MODEL_EVAL:-}"
   printf 'ANTHROPIC_MODEL=%s\n' "${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}"
   printf 'EXPORT_BUCKET=%s\n' "$EXPORT_BUCKET"
+  printf 'AUDIO_BUCKET=%s\n' "$AUDIO_BUCKET"
+  printf 'TTS_VOICE=%s\n' "$TTS_VOICE"
 } > "$TMP/vocabot.env.base"
 
 echo "==> Copiando para $VM_NAME (via IAP)"

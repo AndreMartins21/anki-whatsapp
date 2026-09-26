@@ -335,3 +335,21 @@ def test_o_env_que_o_deploy_renderiza_carrega_sem_erro(monkeypatch: pytest.Monke
             monkeypatch.setenv(nome, "")
 
     Settings(_env_file=None)  # não levanta
+
+
+def test_audio_e_opcional_e_a_voz_tem_padrao(monkeypatch: pytest.MonkeyPatch) -> None:
+    _com_env(monkeypatch, AUDIO_BUCKET="", TTS_VOICE="")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.audio_bucket is None  # vazio = pronúncia indisponível, o bot sobe igual
+    assert settings.tts_voice == "en-US-Neural2-F"
+
+
+def test_audio_bucket_e_voz_configurados(monkeypatch: pytest.MonkeyPatch) -> None:
+    _com_env(monkeypatch, AUDIO_BUCKET="proj-vocabot-audio", TTS_VOICE="en-US-Neural2-D")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.audio_bucket == "proj-vocabot-audio"
+    assert settings.tts_voice == "en-US-Neural2-D"

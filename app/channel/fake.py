@@ -11,6 +11,8 @@ class FakeChannel:
     textos_enviados: list[tuple[str, str]] = field(default_factory=list)
     arquivos_enviados: list[tuple[str, str, bytes, str]] = field(default_factory=list)
     falha_no_arquivo: bool = False
+    vozes_enviadas: list[tuple[str, bytes]] = field(default_factory=list)
+    falha_na_voz: bool = False
     vistos: list[str] = field(default_factory=list)
     digitando: list[tuple[str, bool]] = field(default_factory=list)
     lids_conhecidos: dict[str, str | None] = field(default_factory=dict)
@@ -37,6 +39,11 @@ class FakeChannel:
         if self.falha_no_arquivo:
             raise RuntimeError("falha simulada ao enviar o arquivo")
         self.arquivos_enviados.append((chat_id, nome, conteudo, legenda))
+
+    async def send_voice(self, chat_id: str, conteudo: bytes) -> None:
+        if self.falha_na_voz:
+            raise RuntimeError("falha simulada ao enviar a voz")
+        self.vozes_enviadas.append((chat_id, conteudo))
 
     async def send_seen(self, chat_id: str) -> None:
         self.vistos.append(chat_id)

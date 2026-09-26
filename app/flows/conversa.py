@@ -76,6 +76,18 @@ class Conversa:
         await self._channel.send_file(self._chat_id, nome, conteudo, tipo, legenda)
         self._seguidas += 1
 
+    async def enviar_voz(self, conteudo: bytes) -> None:
+        """Como `enviar_arquivo`, para uma nota de voz (M23): levanta a exceção do canal se o
+        envio falhar, e só um envio bem-sucedido conta no limite."""
+        if self._seguidas >= self._max_seguidas:
+            logger.warning(
+                "limite de %d mensagens sem resposta: envio descartado", self._max_seguidas
+            )
+            return
+        await self._dormir(self._atraso())
+        await self._channel.send_voice(self._chat_id, conteudo)
+        self._seguidas += 1
+
     @asynccontextmanager
     async def digitando(self) -> AsyncIterator[None]:
         await self._sinalizar(True)

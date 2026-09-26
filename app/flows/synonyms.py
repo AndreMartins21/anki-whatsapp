@@ -1,5 +1,5 @@
 """Sinônimos (M9, Case C): sinônimos da palavra em foco, sem repetir os já mostrados nesta
-palavra. A opção 2 do menu único vira "See more synonyms" depois da primeira vez."""
+palavra. A opção 3 do menu único vira "See more synonyms" depois da primeira vez."""
 
 from __future__ import annotations
 

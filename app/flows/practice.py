@@ -124,7 +124,7 @@ async def pular(d: Deps) -> Sessao:
 
 
 async def ignorar(d: Deps, sessao: Sessao) -> Sessao:
-    """Opção 4: descarta a palavra que acabou de ser criada. Uma palavra que o aluno já tinha, ou
+    """Opção 5: descarta a palavra que acabou de ser criada. Uma palavra que o aluno já tinha, ou
     em que ele já escreveu uma frase, fica na lista — o que já é dele não some por um número."""
     entrada = await entrada_atual(d, sessao)
     frases = await bloq(d.repo.listar_frases, entrada.slug)

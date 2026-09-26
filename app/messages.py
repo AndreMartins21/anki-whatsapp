@@ -38,6 +38,8 @@ SEM_PENDENTES = "No pending words. 🎉"
 EXPORTACAO_INDISPONIVEL = "Export isn't available here yet."
 SEM_EXPORTAVEIS = "There's nothing to export yet. Send me an English word to get started!"
 USO_DO_INFO = "Tell me which word: /info 3 (the number from /list) or /info stall."
+USO_DO_LISTEN = "Tell me which word: /listen 3 (the number from /list) or /listen stall."
+ERRO_AUDIO = "🔊 I couldn't make the audio right now. Try again in a bit?"
 PAGINA_INVALIDA = "That page doesn't exist. Use /list to see the first one."
 
 
@@ -68,6 +70,7 @@ Send me a word or expression in English (you can include the sentence where you 
 *Commands*
 /list [page] — your words, numbered
 /info 3 — everything about a word (sentences, synonyms…)
+/listen 3 — hear how a word sounds (the word and its example)
 /pending — the ones you haven't practiced yet
 /practice [word] — practice one (no word: the oldest pending one)
 /review — start a review session right now
@@ -109,8 +112,14 @@ def convite(palavra: str, grupo: str | None = None) -> str:
 
 def menu_acoes(palavra: str, *, ja_viu_sinonimos: bool = False, grupo: str | None = None) -> str:
     """`grupo` é o prefixo do grupo (M16); `None` no privado, que segue exatamente como era."""
-    opcao_2 = "See more synonyms" if ja_viu_sinonimos else "Check synonyms"
-    opcoes = ["See more examples", opcao_2, "Just save", "Ignore this word, try another"]
+    sinonimos = "See more synonyms" if ja_viu_sinonimos else "Check synonyms"
+    opcoes = [
+        "Hear how it sounds 🔊",
+        "See more examples",
+        sinonimos,
+        "Just save",
+        "Ignore this word, try another",
+    ]
     return convite(palavra, grupo) + "\n" + _lista_de_opcoes(opcoes, grupo)
 
 
@@ -166,7 +175,7 @@ def ja_existe(
     ]
     if exemplo:
         linhas.append(f'"{sem_marcas(exemplo)}"')
-    opcoes = ["See more examples", "Check synonyms"]
+    opcoes = ["Hear how it sounds 🔊", "See more examples", "Check synonyms"]
     return (
         "\n".join(linhas)
         + "\n\n"
@@ -377,6 +386,14 @@ def perfil_do_aluno(
         f"🔁 Due for review: {para_revisar}\n"
         f"⏰ Reminders: {lembretes}"
     )
+
+
+def pronuncia(palavra: str, exemplo: str | None) -> str:
+    """O texto que vai junto das notas de voz: o que o aluno está prestes a ouvir."""
+    linhas = [f"🔊 *{palavra}*"]
+    if exemplo:
+        linhas.append(f'"{sem_marcas(exemplo)}"')
+    return "\n".join(linhas)
 
 
 def palavra_nao_encontrada(palavra: str, p: str = "/", *, grupo: bool = False) -> str:

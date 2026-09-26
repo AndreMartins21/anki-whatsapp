@@ -50,11 +50,18 @@ from app.logging_config import configurar_logs, id_curto
 from app.repo.base import Banco
 from app.repo.firestore import FirestoreBanco
 from app.repo.memory import MemoryBanco
+from app.services.audio import ServicoAudio
 from app.services.lembretes import Agendador
 from app.services.letras import LrclibProvider
 from app.services.llm import criar_tutor
 from app.services.planilha import ExportadorExcel
-from app.services.storage import Armazenamento, ArmazenamentoLocal, criar_armazenamento_gcs
+from app.services.storage import (
+    Armazenamento,
+    ArmazenamentoLocal,
+    criar_armazenamento_gcs,
+    criar_cache_audio_gcs,
+)
+from app.services.tts import GoogleTts
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +86,18 @@ def _criar_armazenamento(settings: Settings) -> Armazenamento:
             projeto=settings.gcp_project_id, bucket=settings.export_bucket
         )
     return ArmazenamentoLocal(Path("exports"))
+
+
+def _criar_audio(settings: Settings) -> ServicoAudio | None:
+    """Pronúncia só em produção e com o bucket de áudio configurado; fora disso, indisponível
+    (o TTS real precisa da conta de serviço da VM)."""
+    if settings.app_env != "prod" or not settings.audio_bucket:
+        return None
+    return ServicoAudio(
+        GoogleTts(),
+        criar_cache_audio_gcs(projeto=settings.gcp_project_id, bucket=settings.audio_bucket),
+        settings.tts_voice,
+    )
 
 
 @asynccontextmanager
@@ -111,6 +130,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         ),
         fuso=ZoneInfo(settings.timezone),
         letras=letras,
+        audio=_criar_audio(settings),
     )
     app.state.router = router
 

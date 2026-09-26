@@ -1,4 +1,4 @@
-"""Comandos (seção 5.2): /help /list /info /pending /practice /review /song /reminders /profile
+"""Comandos (seção 5.2): /help /list /info /listen /pending /practice /review /song /reminders /profile
 /export /delete /level /cancel /status.
 
 Os nomes são em inglês (M12). Os apelidos em PT-BR que a spec sempre teve (`/praticar`, `/lista`,
@@ -15,7 +15,7 @@ from app.domain.choices import normalizar
 from app.domain.lembretes import parse_lembretes, proximo_a_exibir
 from app.domain.models import Entry, Estado, NivelUsuario, Profile, Sessao, slugify
 from app.domain.srs import vencida
-from app.flows import capture, review, song
+from app.flows import capture, pronuncia, review, song
 from app.flows.base import Deps, bloq
 from app.repo.base import Repository
 from app.services.planilha import TIPO_XLSX, ResultadoExportacao
@@ -35,6 +35,7 @@ _NIVEL = {"nivel", "level"}
 _CANCELAR = {"cancelar", "cancel"}
 _STATUS = {"status"}
 _INFO = {"info"}
+_OUVIR = {"listen", "ouvir"}
 _PERFIL = {"profile", "perfil"}
 _LEMBRETES = {"lembretes", "reminders"}
 _REVISAR = {"revisar", "review"}
@@ -72,6 +73,8 @@ async def executar(
         await listar(d, argumento)
     elif comando in _INFO:
         await _info(d, argumento)
+    elif comando in _OUVIR:
+        await _ouvir(d, argumento)
     elif comando in _PERFIL:
         await _perfil(d, perfil)
     elif comando in _PENDENTES:
@@ -163,6 +166,18 @@ async def _info(d: Deps, argumento: str) -> None:
     numero = next(i for i, e in enumerate(entradas, start=1) if e.slug == entrada.slug)
     frases = await bloq(d.repo.listar_frases, entrada.slug)
     await d.conversa.enviar(messages.info(entrada, numero, frases))
+
+
+async def _ouvir(d: Deps, argumento: str) -> None:
+    """`/listen N|palavra`: a pronúncia de uma palavra já salva (a da conversa aberta é a opção 1)."""
+    if not argumento:
+        await d.conversa.enviar(messages.USO_DO_LISTEN)
+        return
+    entrada = await bloq(_achar_entrada, d.repo, argumento)
+    if entrada is None:
+        await d.conversa.enviar(messages.palavra_nao_encontrada(argumento))
+        return
+    await pronuncia.ouvir(d, entrada)
 
 
 async def _perfil(d: Deps, perfil: Profile) -> None:

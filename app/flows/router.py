@@ -22,11 +22,22 @@ from app.domain.models import (
     agora_utc,
 )
 from app.domain.state import Acao, Transicao, expirou, transicionar
-from app.flows import capture, commands, freeform, grupo, practice, review, song, synonyms
+from app.flows import (
+    capture,
+    commands,
+    freeform,
+    grupo,
+    practice,
+    pronuncia,
+    review,
+    song,
+    synonyms,
+)
 from app.flows.base import FUSO_PADRAO, Autor, ConfigGrupo, Deps, bloq
 from app.flows.commands import Exportador, StatusDaSessao
 from app.flows.conversa import Conversa
 from app.repo.base import Banco
+from app.services.audio import ServicoAudio
 from app.services.letras import LyricsProvider
 from app.services.llm import LLMError, Tutor
 
@@ -46,6 +57,7 @@ class Router:
         exportador: Exportador | None = None,
         fuso: ZoneInfo = FUSO_PADRAO,
         letras: LyricsProvider | None = None,
+        audio: ServicoAudio | None = None,
         prefixo_do_grupo: str = "!",
         eh_dono: Callable[[str], bool] = lambda _numero: False,
         config_grupo: ConfigGrupo | None = None,
@@ -56,6 +68,7 @@ class Router:
         self._agora = agora
         self._fuso = fuso
         self._letras = letras
+        self._audio = audio
         self._prefixo_do_grupo = prefixo_do_grupo
         self._eh_dono = eh_dono
         self._config_grupo = config_grupo or ConfigGrupo()
@@ -82,6 +95,7 @@ class Router:
             agora=self._agora,
             fuso=self._fuso,
             letras=self._letras,
+            audio=self._audio,
             grupo_prefixo=self._prefixo_do_grupo if chat_id.endswith("@g.us") else None,
             autor=autor,
             chat_id=chat_id,
@@ -193,6 +207,8 @@ class Router:
                 return await practice.pular(d)
             case Acao.IGNORAR:
                 return await practice.ignorar(d, sessao)
+            case Acao.OUVIR:
+                return await pronuncia.ouvir_da_sessao(d, sessao)
             case Acao.ROTEAR:
                 return await freeform.rotear(d, sessao, perfil, str(argumento))
             case Acao.RESPONDER_REVISAO:

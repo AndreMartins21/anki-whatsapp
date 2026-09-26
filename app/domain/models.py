@@ -311,6 +311,11 @@ class Entry(BaseModel):
     proxima_revisao: datetime | None = None
     revisada_em: datetime | None = None
 
+    # M23 (ADR-0024): onde ficam os áudios de pronúncia no cache (`gs://bucket/audio/...`), do
+    # termo e da frase de exemplo do card. Só um registro: o cache por hash é quem manda.
+    audio_palavra: str | None = None
+    audio_exemplo: str | None = None
+
 
 class Profile(BaseModel):
     """Documento `profile/me`."""
@@ -348,7 +353,7 @@ class Sessao(BaseModel):
 
     Além dos campos da spec, guarda os sinônimos já mostrados nesta palavra
     (`sinonimos_mostrados`), para "see more synonyms" não repetir e para o menu saber trocar o
-    rótulo da opção 2, e a fila de uma sessão de revisão em andamento (M10, `REVIEWING`).
+    rótulo da opção 3, e a fila de uma sessão de revisão em andamento (M10, `REVIEWING`).
     """
 
     model_config = ConfigDict(use_enum_values=True)
@@ -357,7 +362,7 @@ class Sessao(BaseModel):
     entry_id: str | None = None
     sentido_id: str | None = None
     sinonimos_mostrados: list[str] = Field(default_factory=list)
-    # A entrada aberta foi criada agora, por esta captura: a opção 4 do menu ("ignorar") pode
+    # A entrada aberta foi criada agora, por esta captura: a opção 5 do menu ("ignorar") pode
     # apagá-la. Fica falso para palavra que o aluno já tinha, expansão e prática.
     entrada_criada_agora: bool = False
     atualizado_em: datetime = Field(default_factory=agora_utc)

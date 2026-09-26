@@ -20,6 +20,7 @@ dependencies = [
     # ZoneInfo("America/Sao_Paulo") (M10, lembretes) estoura na imagem, mesmo passando local.
     "tzdata>=2025.2",
     "openpyxl>=3.1.5",
+    "google-cloud-texttospeech>=2.37.0",
 ]
 
 [dependency-groups]

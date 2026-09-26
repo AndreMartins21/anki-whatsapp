@@ -13,8 +13,10 @@ from collections.abc import Mapping
 Menu = Mapping[int, tuple[str, ...]]
 
 MENU_ACOES: Menu = {
-    1: ("see more examples", "examples", "more examples", "more", "1"),
-    2: (
+    # Só frases inteiras: "listen" ou "hear" sozinhas podem ser a palavra que o aluno quer aprender.
+    1: ("hear it", "hear how it sounds", "hear the pronunciation", "hear pronunciation"),
+    2: ("see more examples", "examples", "more examples", "more"),
+    3: (
         "check synonyms",
         "synonyms",
         "see more synonyms",
@@ -22,9 +24,9 @@ MENU_ACOES: Menu = {
         "check synonym",
         "synonym",
     ),
-    3: ("just save", "save", "done", "only save"),
+    4: ("just save", "save", "done", "only save"),
     # Só frases inteiras: "ignore" e "drop" sozinhas podem ser a palavra que o aluno quer aprender.
-    4: ("ignore this word", "ignore it", "discard it", "discard this word"),
+    5: ("ignore this word", "ignore it", "discard it", "discard this word"),
 }
 
 _NUMEROS_POR_EXTENSO = {
