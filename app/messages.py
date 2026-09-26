@@ -93,12 +93,12 @@ def _linha_de_opcoes(opcoes: Sequence[str]) -> str:
     return "  ·  ".join(f"{_NUMEROS[i]} {texto}" for i, texto in enumerate(opcoes, start=1))
 
 
-def _lista_de_opcoes(opcoes: Sequence[str], grupo: str | None = None) -> str:
+def _lista_de_opcoes(opcoes: Sequence[str], grupo: str | None = None, *, primeira: int = 1) -> str:
+    """`primeira` é o número da 1ª opção: o menu depois do áudio começa no 2 e não renumera."""
+    numeradas = list(enumerate(opcoes, start=primeira))
     if grupo is not None:  # no grupo, cada opção se responde com o prefixo: !1, !2, !3
-        return "\n".join(
-            f"{_NUMEROS[i]} {grupo}{i} — {texto}" for i, texto in enumerate(opcoes, start=1)
-        )
-    return "\n".join(f"{_NUMEROS[i]} {texto}" for i, texto in enumerate(opcoes, start=1))
+        return "\n".join(f"{_NUMEROS[i]} {grupo}{i} — {texto}" for i, texto in numeradas)
+    return "\n".join(f"{_NUMEROS[i]} {texto}" for i, texto in numeradas)
 
 
 # ---- menu único (M9) -------------------------------------------------------------------------
@@ -110,17 +110,24 @@ def convite(palavra: str, grupo: str | None = None) -> str:
     return f"Now, you can write one or more sentences using *{palavra}*, or type:"
 
 
+def _opcoes_depois_do_audio(ja_viu_sinonimos: bool) -> list[str]:
+    """As opções 2 a 5 do menu; a 1 (ouvir) é a que fica de fora depois do áudio."""
+    sinonimos = "See more synonyms" if ja_viu_sinonimos else "Check synonyms"
+    return ["See more examples", sinonimos, "Just save", "Ignore this word, try another"]
+
+
 def menu_acoes(palavra: str, *, ja_viu_sinonimos: bool = False, grupo: str | None = None) -> str:
     """`grupo` é o prefixo do grupo (M16); `None` no privado, que segue exatamente como era."""
-    sinonimos = "See more synonyms" if ja_viu_sinonimos else "Check synonyms"
-    opcoes = [
-        "Hear how it sounds 🔊",
-        "See more examples",
-        sinonimos,
-        "Just save",
-        "Ignore this word, try another",
-    ]
+    opcoes = ["Hear how it sounds 🔊", *_opcoes_depois_do_audio(ja_viu_sinonimos)]
     return convite(palavra, grupo) + "\n" + _lista_de_opcoes(opcoes, grupo)
+
+
+def menu_depois_do_audio(
+    palavra: str, *, ja_viu_sinonimos: bool = False, grupo: str | None = None
+) -> str:
+    """O menu que segue as notas de voz (M23): as opções 2 a 5, com os mesmos números."""
+    opcoes = _opcoes_depois_do_audio(ja_viu_sinonimos)
+    return convite(palavra, grupo) + "\n" + _lista_de_opcoes(opcoes, grupo, primeira=2)
 
 
 # ---- respostas dos fluxos ------------------------------------------------------------------

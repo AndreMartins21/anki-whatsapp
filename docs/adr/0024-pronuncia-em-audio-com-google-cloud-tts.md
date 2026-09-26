@@ -21,8 +21,12 @@ Ouvir a pronúncia de um termo novo é parte de aprendê-lo, e o bot só falava 
 ## Decisão
 
 - **Sob demanda, nunca automático.** A opção **1** do menu ("Hear how it sounds 🔊") e o comando
-  `/listen N|palavra` mandam um texto curto (o termo e o exemplo) e **duas notas de voz**: o termo
-  e a frase de exemplo do card (a frase do bot mais antiga da entrada). A conversa segue onde estava.
+  `/listen N|palavra` mandam **duas notas de voz**: o termo e a frase de exemplo do card (a frase do bot
+  mais antiga da entrada). Na opção 1, a palavra está aberta, então logo depois vem **outra mensagem
+  perguntando o que fazer**, com as opções 2 a 5 (a 1 sai porque acabou de ser usada; os números não
+  mudam). São 3 mensagens seguidas, o máximo permitido (`MAX_MENSAGENS_SEGUIDAS`), por isso a opção 1 não
+  manda o texto de abertura. O `/listen` não abre a palavra: manda o texto de abertura e as vozes, sem menu.
+  A conversa segue onde estava.
 - **O menu é renumerado**: 1 ouvir, 2 exemplos, 3 sinônimos, 4 salvar, 5 ignorar (a opção "ignorar"
   do ADR-0021 passa de 4 para 5; o comportamento é o mesmo). O áudio fica no topo porque é o que se faz
   primeiro com um termo novo. O cartão de palavra repetida também oferece o áudio.

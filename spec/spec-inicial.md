@@ -143,8 +143,9 @@ Regras:
   na lista. Em ambos os casos volta a IDLE. Os apelidos de texto são só frases inteiras
   (`ignore this word`, `ignore it`, `discard it`...): `ignore`/`drop` sozinhas podem ser a palavra
   que o aluno quer aprender.
-- **Opção 1 (ouvir, M23, ADR-0024):** manda o texto `🔊 *termo*` + a frase de exemplo e **duas notas de
-  voz** (o termo e a frase do card, a do bot mais antiga da entrada), sem mudar de estado. Os apelidos
+- **Opção 1 (ouvir, M23, ADR-0024):** manda **duas notas de voz** (o termo e a frase do card, a do bot
+  mais antiga da entrada) e, em seguida, **outra mensagem perguntando o que fazer**: o convite a escrever
+  uma frase e as opções 2 a 5 (a 1 não volta, já foi usada; os números não mudam). Não muda de estado. Os apelidos
   de texto também são só frases inteiras (`hear it`, `hear the pronunciation`...): `hear`/`listen`
   sozinhas podem ser a palavra que o aluno quer aprender. Em grupo vale `!1`.
 - **`0` / `skip` em `AWAIT_ACTION`** (e só eles: `stop`, `leave` etc. seguem indo para o roteamento,
@@ -634,9 +635,14 @@ vida que apaga objetos após 7 dias.
 
 ### 7.4 Pronúncia em áudio (M23, ADR-0024)
 
-**Sob demanda:** a opção 1 do menu e `/listen N|palavra` mandam `🔊 *termo*` (com a frase de exemplo, se
-houver) e duas notas de voz, na ordem: o termo, depois a frase do card (a do bot mais antiga da entrada,
-sem os `[[ ]]`). Entrada sem frase do bot recebe só a voz do termo.
+**Sob demanda:** a opção 1 do menu e `/listen N|palavra` mandam duas notas de voz, na ordem: o termo,
+depois a frase do card (a do bot mais antiga da entrada, sem os `[[ ]]`). Entrada sem frase do bot recebe
+só a voz do termo.
+
+- **Opção 1** (a palavra está aberta): as duas vozes e, por último, o menu sem a opção 1 (`Now, you can
+  write one or more sentences using *termo*, or type:` + 2 a 5; no grupo, com o prefixo).
+- **`/listen`** (não abre a palavra): um texto antes, `🔊 *termo*` com a frase de exemplo, e as duas
+  vozes, sem menu.
 
 **Síntese:** interface `Sintetizador` (`app/services/tts.py`), implementada por `GoogleTts`
 (Cloud Text-to-Speech, `AudioEncoding.OGG_OPUS`, voz de `TTS_VOICE`, conta de serviço da VM) e por
@@ -649,7 +655,7 @@ vai para `Entry.audio_palavra` / `Entry.audio_exemplo` quando muda.
 
 **Envio:** `Channel.send_voice` (`POST /api/sendVoice`, `mimetype: audio/ogg; codecs=opus`, base64,
 `convert: false`), com timeout de 90 s e **sem** retentativa. `Conversa.enviar_voz` respeita o limite
-de 3 mensagens seguidas (o texto e as duas vozes usam os 3). Qualquer falha (TTS, Storage, WhatsApp)
+de 3 mensagens seguidas (duas vozes + o menu, ou o texto + duas vozes, usam os 3). Qualquer falha (TTS, Storage, WhatsApp)
 vira `ERRO_AUDIO`, sem derrubar a conversa.
 
 ## 8. Canal: WAHA

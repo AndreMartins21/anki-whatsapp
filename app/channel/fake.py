@@ -13,6 +13,7 @@ class FakeChannel:
     falha_no_arquivo: bool = False
     vozes_enviadas: list[tuple[str, bytes]] = field(default_factory=list)
     falha_na_voz: bool = False
+    ordem: list[str] = field(default_factory=list)  # "texto" | "voz", na ordem em que saíram
     vistos: list[str] = field(default_factory=list)
     digitando: list[tuple[str, bool]] = field(default_factory=list)
     lids_conhecidos: dict[str, str | None] = field(default_factory=dict)
@@ -24,6 +25,7 @@ class FakeChannel:
     async def send_text(
         self, chat_id: str, text: str, mentions: Sequence[str] | None = None
     ) -> None:
+        self.ordem.append("texto")
         self.textos_enviados.append((chat_id, text))
         if mentions:
             self.mencoes_enviadas.append((chat_id, tuple(mentions)))
@@ -43,6 +45,7 @@ class FakeChannel:
     async def send_voice(self, chat_id: str, conteudo: bytes) -> None:
         if self.falha_na_voz:
             raise RuntimeError("falha simulada ao enviar a voz")
+        self.ordem.append("voz")
         self.vozes_enviadas.append((chat_id, conteudo))
 
     async def send_seen(self, chat_id: str) -> None:
