@@ -322,14 +322,18 @@ class Profile(BaseModel):
 
     nivel: NivelUsuario
     criado_em: datetime = Field(default_factory=agora_utc)
-    # Lembretes de revisão espaçada (M10, seção 5.7). `lembretes_por_dia=0` = desligado (padrão).
-    lembretes_por_dia: int = 0
-    janela_inicio: int = 9
+    # Lembretes de revisão espaçada (M10, seção 5.7). `lembretes_por_dia=0` = desligado; o padrão
+    # (M24, ADR-0025) é ligado, 1x/dia às 12h — só vale para perfil novo, não muda quem já existe.
+    lembretes_por_dia: int = 1
+    janela_inicio: int = 12
     janela_fim: int = 21
     chat_id: str | None = None  # destino real do WhatsApp, aprendido de uma mensagem recebida
     proximo_lembrete: datetime | None = None
     lembrete_sem_resposta: bool = False
     avisou_lembretes: bool = False  # já mostrou a dica de /lembretes uma vez
+    # Tamanho da fila de revisão (M24): `None` = dinâmico, `MIN(palavras do aluno, 7)`; um valor
+    # fixo (`/reviewsize` ou o último parâmetro de `/reminders`) sobrepõe o dinâmico e o do grupo.
+    tamanho_revisao: int | None = None
 
 
 class OpcaoDeMusica(BaseModel):

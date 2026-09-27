@@ -15,8 +15,16 @@ MAX_LEMBRETES = 8
 JANELA_PADRAO_INICIO = 9
 JANELA_PADRAO_FIM = 21
 
+# Tamanho da fila de revisão (M24, seção 5.7): dinâmico por padrão (`MIN(palavras do aluno, isto)`)
+# até a pessoa fixar um valor com `/reviewsize` ou o último parâmetro de `/reminders`.
+TAMANHO_REVISAO_PADRAO = 7
+MIN_TAMANHO_REVISAO = 1
+MAX_TAMANHO_REVISAO = 20
+
 _SO_QUANTIDADE = re.compile(r"^(\d+)$")
+_QUANTIDADE_E_TAMANHO = re.compile(r"^(\d+)\s+(\d+)$")
 _QUANTIDADE_E_JANELA = re.compile(r"^(\d+)\s+(\d{1,2})h-(\d{1,2})h$")
+_QUANTIDADE_JANELA_E_TAMANHO = re.compile(r"^(\d+)\s+(\d{1,2})h-(\d{1,2})h\s+(\d+)$")
 
 
 def horarios_do_dia(quantidade: int, inicio: int, fim: int) -> list[time]:
@@ -69,24 +77,55 @@ def proximo_a_exibir(perfil: Profile, agora: datetime, fuso: ZoneInfo) -> dateti
     )
 
 
-def parse_lembretes(argumento: str) -> tuple[int, int, int] | None:
-    """`"3"` -> `(3, 9, 21)` (janela padrão); `"3 9h-22h"` -> `(3, 9, 22)`. `None` se o formato,
-    a quantidade (1-8) ou a janela (`0 <= inicio < fim <= 23`) forem inválidos."""
+def parse_lembretes(argumento: str) -> tuple[int, int, int, int] | None:
+    """`"3"` -> `(3, 9, 21, 7)` (janela e tamanho da fila padrão); `"3 9h-22h"` -> `(3, 9, 22, 7)`;
+    `"3 9h-22h 10"` -> `(3, 9, 22, 10)`; `"3 10"` -> `(3, 9, 21, 10)` (tamanho sem mudar a janela).
+    `None` se o formato, a quantidade (1-8), a janela (`0 <= inicio < fim <= 23`) ou o tamanho da
+    fila (1-20) forem inválidos."""
     texto = argumento.strip().lower()
-    casamento_com_janela = _QUANTIDADE_E_JANELA.match(texto)
-    if casamento_com_janela:
-        quantidade = int(casamento_com_janela[1])
-        inicio = int(casamento_com_janela[2])
-        fim = int(casamento_com_janela[3])
+    casamento_completo = _QUANTIDADE_JANELA_E_TAMANHO.match(texto)
+    if casamento_completo:
+        quantidade = int(casamento_completo[1])
+        inicio = int(casamento_completo[2])
+        fim = int(casamento_completo[3])
+        tamanho = int(casamento_completo[4])
     else:
-        casamento_simples = _SO_QUANTIDADE.match(texto)
-        if not casamento_simples:
-            return None
-        quantidade = int(casamento_simples[1])
-        inicio, fim = JANELA_PADRAO_INICIO, JANELA_PADRAO_FIM
+        casamento_com_janela = _QUANTIDADE_E_JANELA.match(texto)
+        if casamento_com_janela:
+            quantidade = int(casamento_com_janela[1])
+            inicio = int(casamento_com_janela[2])
+            fim = int(casamento_com_janela[3])
+            tamanho = TAMANHO_REVISAO_PADRAO
+        else:
+            casamento_com_tamanho = _QUANTIDADE_E_TAMANHO.match(texto)
+            if casamento_com_tamanho:
+                quantidade = int(casamento_com_tamanho[1])
+                inicio, fim = JANELA_PADRAO_INICIO, JANELA_PADRAO_FIM
+                tamanho = int(casamento_com_tamanho[2])
+            else:
+                casamento_simples = _SO_QUANTIDADE.match(texto)
+                if not casamento_simples:
+                    return None
+                quantidade = int(casamento_simples[1])
+                inicio, fim = JANELA_PADRAO_INICIO, JANELA_PADRAO_FIM
+                tamanho = TAMANHO_REVISAO_PADRAO
 
     if not (MIN_LEMBRETES <= quantidade <= MAX_LEMBRETES):
         return None
     if not (0 <= inicio < fim <= 23):
         return None
-    return quantidade, inicio, fim
+    if not (MIN_TAMANHO_REVISAO <= tamanho <= MAX_TAMANHO_REVISAO):
+        return None
+    return quantidade, inicio, fim, tamanho
+
+
+def parse_tamanho_revisao(argumento: str) -> int | None:
+    """`/reviewsize N`, um tamanho fixo de 1 a 20. `None` se não for um número nessa faixa (quem
+    chama trata `"auto"`/`"off"` à parte, como o `/reminders off`)."""
+    texto = argumento.strip().lower()
+    if not texto.isdigit():
+        return None
+    tamanho = int(texto)
+    if not (MIN_TAMANHO_REVISAO <= tamanho <= MAX_TAMANHO_REVISAO):
+        return None
+    return tamanho

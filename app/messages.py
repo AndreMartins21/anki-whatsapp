@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from datetime import datetime
 
+from app.domain.lembretes import TAMANHO_REVISAO_PADRAO
 from app.domain.models import (
     Entry,
     Evaluation,
@@ -74,6 +75,7 @@ Send me a word or expression in English (you can include the sentence where you 
 /pending — the ones you haven't practiced yet
 /practice [word] — practice one (no word: the oldest pending one)
 /review — start a review session right now
+/reviewsize 7 — how many words per review session (or /reviewsize auto)
 /song name - artist — practice with a song, line by line
 /reminders 3 9h-22h — daily practice reminders (or /reminders off)
 /profile — your level, words and reminders
@@ -386,11 +388,13 @@ def perfil_do_aluno(
         lembretes = f"every day, {vezes} between {p.janela_inicio}h and {p.janela_fim}h"
         if proximo is not None and agora is not None:
             lembretes += f"\n⏭️ Next reminder: {_quando(proximo, agora)}"
+    tamanho = _tamanho_efetivo(p, total)
     return (
         "*Your profile* 👤\n"
         f"🎯 Level: {p.nivel}\n"
         f"📚 Words: {total} ({praticadas} practiced, {total - praticadas} pending)\n"
         f"🔁 Due for review: {para_revisar}\n"
+        f"📏 Review session size: up to {tamanho} words\n"
         f"⏰ Reminders: {lembretes}"
     )
 
@@ -499,19 +503,19 @@ def card_de_revisao(
         return (
             f"🔁 {indice}/{total} · *{palavra}*\n"
             f"@{marcado}, your turn: explain it in English in your own words, or write a "
-            f"sentence using it (start with {grupo}).\n"
+            f"sentence using it (start with {grupo}).\n\n"
             f"_Anyone can type {grupo}0 to leave the practice._"
         )
     if grupo is not None:
         return (
             f"🔁 {indice}/{total} · *{palavra}*\n"
             f"Explain it in English in your own words, or write a sentence using it "
-            f"(start with {grupo}).\n"
+            f"(start with {grupo}).\n\n"
             f"_Type {grupo}0 to leave the practice._"
         )
     return (
         f"🔁 {indice}/{total} · *{palavra}*\n"
-        "Explain it in English in your own words, or write a sentence using it.\n"
+        "Explain it in English in your own words, or write a sentence using it.\n\n"
         "_Type 0 to leave the practice._"
     )
 
@@ -573,6 +577,34 @@ def lembretes_alterados(
 
 def lembretes_desligados() -> str:
     return "✅ Reminders are off."
+
+
+def _tamanho_efetivo(perfil: Profile, total_palavras: int) -> int:
+    if perfil.tamanho_revisao is not None:
+        return perfil.tamanho_revisao
+    return min(total_palavras, TAMANHO_REVISAO_PADRAO)
+
+
+def tamanho_de_revisao_atual(perfil: Profile, total_palavras: int) -> str:
+    efetivo = _tamanho_efetivo(perfil, total_palavras)
+    if perfil.tamanho_revisao is None:
+        return (
+            f"Review sessions: up to {efetivo} words (automatic — the smaller of your word count "
+            "and 7). Set a fixed number with /reviewsize N."
+        )
+    return f"Review sessions: up to {efetivo} words (fixed). Send /reviewsize auto for automatic."
+
+
+def tamanho_de_revisao_alterado(tamanho: int) -> str:
+    return f"✅ Review sessions: up to {tamanho} words now."
+
+
+def tamanho_de_revisao_automatico() -> str:
+    return "✅ Review sessions: back to automatic (the smaller of your word count and 7)."
+
+
+def tamanho_de_revisao_invalido() -> str:
+    return "I couldn't understand that. Try /reviewsize 7 (a number from 1 to 20), or /reviewsize auto."
 
 
 # --- Prática com música (M13, seção 5.8) ---
