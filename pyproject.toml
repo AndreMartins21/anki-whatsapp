@@ -21,6 +21,7 @@ dependencies = [
     "tzdata>=2025.2",
     "openpyxl>=3.1.5",
     "google-cloud-texttospeech>=2.37.0",
+    "google-cloud-logging>=3.16.3",
 ]
 
 [dependency-groups]
@@ -119,6 +120,11 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = ["google.*", "waha.*", "anthropic.*"]
 ignore_missing_imports = true
+
+# google-cloud-logging: o `Client.__init__` não é tipado (M27, ADR-0028) — isolado neste módulo.
+[[tool.mypy.overrides]]
+module = ["app.services.log_handler"]
+disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]

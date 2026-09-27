@@ -22,6 +22,7 @@ from app.channel.base import Channel
 from app.channel.parser import numero_esta_na_lista
 from app.domain.choices import normalizar
 from app.flows.base import bloq
+from app.logging_config import id_curto, registrar_evento
 from app.repo.base import Banco
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,7 @@ def ativar_grupo(a: Acesso, grupo_id: str, numero: str, nome: str | None) -> Res
     if len(a.banco.listar_grupos_ativos()) >= a.max_grupos:
         return Resultado.LIMITE
     a.banco.ativar_grupo(grupo_id, nome=nome, por=so_digitos(numero), agora=a.agora())
+    registrar_evento(logger, "grupo_ativado", espaco=id_curto(grupo_id))
     return Resultado.ATIVADO
 
 
@@ -92,6 +94,7 @@ def desativar_grupo(a: Acesso, grupo_id: str, numero: str) -> Resultado:
     if not eh_admin(a, numero):
         return Resultado.NAO_ADMIN
     if a.banco.desativar_grupo(grupo_id):
+        registrar_evento(logger, "grupo_desativado", espaco=id_curto(grupo_id))
         return Resultado.DESATIVADO
     return Resultado.NAO_ESTAVA_ATIVO  # inclusive um grupo fixo: esse só sai da configuração
 

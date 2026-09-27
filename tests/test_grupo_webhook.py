@@ -11,7 +11,7 @@ from typing import Any, cast
 import pytest
 
 from app import messages
-from tests.helpers import expansoes
+from tests.helpers import eventos, expansoes
 from tests.webhook_helpers import (
     ADMIN,
     ALUNO_COMUM,
@@ -45,6 +45,29 @@ def test_grupo_ativo_com_prefixo_responde_no_grupo_e_cadastra_quem_escreveu(
     membro = espaco.obter_membro(ANA)
     assert membro is not None and (membro.papel, membro.nome) == ("aluno", "Ana")
     assert ambiente.banco.do_espaco(f"{ANA}@c.us").listar_entradas() == []  # o privado da Ana, não
+
+
+def test_grupo_ativo_com_prefixo_registra_mensagem_recebida(
+    ambiente: Ambiente, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO):
+        ambiente.cliente.post("/waha/webhook", json=_fixture("grupo_ativo_com_prefixo"))
+
+    (evento,) = eventos(caplog.records, "mensagem_recebida")
+    assert evento.tipo_espaco == "grupo"
+
+
+def test_grupo_nao_ativo_registra_grupo_pendente_uma_vez(
+    ambiente: Ambiente, caplog: pytest.LogCaptureFixture
+) -> None:
+    corpo = _fixture("grupo_ativo_com_prefixo")
+    corpo["payload"]["from"] = GRUPO  # um grupo que ninguém ativou
+
+    with caplog.at_level(logging.INFO):
+        ambiente.cliente.post("/waha/webhook", json=corpo)
+        ambiente.cliente.post("/waha/webhook", json=corpo)
+
+    assert len(eventos(caplog.records, "grupo_pendente")) == 1  # só na primeira vez
 
 
 def test_grupo_ativo_sem_prefixo_nada_gravado_nada_enviado_nenhum_sendseen(

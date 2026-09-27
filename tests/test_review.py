@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
+
+import pytest
 
 from app.domain.models import Entry, Estado, Revisao, SentidoSalvo
 from app.flows.review import montar_fila
@@ -11,7 +14,7 @@ from app.services.audio import ServicoAudio
 from app.services.fake_llm import FakeTutor
 from app.services.fake_tts import FakeSintetizador
 from app.services.storage import CacheAudioEmMemoria
-from tests.helpers import CHAT, T0, Montagem, montar
+from tests.helpers import CHAT, T0, Montagem, eventos, montar
 
 SENTIDO = SentidoSalvo(traducao="travar", definicao="to stop making progress")
 
@@ -263,3 +266,58 @@ async def test_o_audio_da_revisao_fica_em_silencio_sem_servico_configurado() -> 
 
     assert "🔊" not in primeira
     assert m.channel.vozes_enviadas == []
+
+
+# --- eventos estruturados (M27, ADR-0028, seção 12 da spec) -------------------------------------
+
+
+async def test_cada_resposta_registra_revisao_resposta_sem_marcado_no_privado(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    m = await _com_stall_e_hedge_vencidas()
+    await m.diz("/revisar")
+    m.tutor.revisoes.append(
+        Revisao(tipo="definicao", qualidade="bom", feedback="That's exactly right.")
+    )
+
+    with caplog.at_level(logging.INFO):
+        await m.diz("to stop making progress")
+
+    (evento,) = eventos(caplog.records, "revisao_resposta")
+    assert evento.qualidade == "bom"
+    assert evento.tipo_espaco == "privado"
+    assert not hasattr(evento, "marcado")  # só faz sentido em grupo
+
+
+async def test_cancelar_registra_revisao_concluida_com_motivo_manual(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    m = await _com_stall_e_hedge_vencidas()
+    await m.diz("/revisar")
+
+    with caplog.at_level(logging.INFO):
+        await m.diz("0")
+
+    (evento,) = eventos(caplog.records, "revisao_concluida")
+    assert evento.motivo == "manual"
+    assert evento.n == 0
+    assert evento.total == 2
+
+
+async def test_fila_esgotada_sem_digitar_0_registra_motivo_fila_vazia(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    m = await _com_stall_e_hedge_vencidas()
+    m.tutor.revisoes = [
+        Revisao(tipo="definicao", qualidade="bom", feedback="Got it."),
+        Revisao(tipo="definicao", qualidade="bom", feedback="Good."),
+    ]
+    await m.diz("/revisar")
+    await m.diz("to stop making progress")
+
+    with caplog.at_level(logging.INFO):
+        await m.diz("to protect against loss")  # esgota a fila sem digitar 0
+
+    (evento,) = eventos(caplog.records, "revisao_concluida")
+    assert evento.motivo == "fila_vazia"
+    assert evento.n == 2

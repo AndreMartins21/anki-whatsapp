@@ -3,9 +3,11 @@ respostas de IA do ciclo "stall" (M9: interface em inglês, menu único)."""
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from app.channel.fake import FakeChannel
 from app.domain.models import (
@@ -173,3 +175,20 @@ def montar(
         router.conversa_do(CHAT),
         esperas,
     )
+
+
+def eventos(caplog_records: Sequence[logging.LogRecord], nome: str | None = None) -> list[Any]:
+    """Os registros de `registrar_evento` (M27, ADR-0028) capturados por `caplog`, como uma lista
+    de objetos com os campos extras acessíveis por atributo (`evento.motivo`, `evento.n`...).
+
+    `getattr`/`SimpleNamespace` em vez do `LogRecord` bruto: os campos de `extra=` só existem em
+    tempo de execução, e o mypy reprova acessá-los como atributo de `LogRecord`."""
+    from types import SimpleNamespace
+
+    campos_padrao = set(vars(logging.LogRecord("x", logging.INFO, "x", 0, "x", (), None)))
+    achados = [
+        SimpleNamespace(**{k: v for k, v in vars(r).items() if k not in campos_padrao})
+        for r in caplog_records
+        if hasattr(r, "evento")
+    ]
+    return [a for a in achados if nome is None or a.evento == nome]

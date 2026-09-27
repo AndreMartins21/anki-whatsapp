@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from types import SimpleNamespace
 from typing import Any
@@ -32,6 +33,7 @@ from app.services.llm import (
     VertexGeminiProvider,
     criar_tutor,
 )
+from tests.helpers import eventos
 
 SENTIDO = SentidoSalvo(traducao="travar", definicao="to stop making progress")
 
@@ -355,6 +357,44 @@ def test_erro_do_provedor_nao_e_engolido() -> None:
 
     with pytest.raises(TimeoutError):
         _tutor(provider).explain("stall", "B1-B2")
+
+
+# --- eventos estruturados (M27, ADR-0028, seção 12 da spec) -------------------------------------
+
+
+def test_chamada_com_sucesso_registra_llm_chamada_ok(caplog: pytest.LogCaptureFixture) -> None:
+    provider = FakeLLMProvider([EXPLICACAO])
+
+    with caplog.at_level(logging.INFO):
+        _tutor(provider).explain("stall", "B1-B2")
+
+    (evento,) = eventos(caplog.records, "llm_chamada")
+    assert evento.metodo == "explain"
+    assert evento.modelo == "modelo-rapido"
+    assert evento.ok is True
+    assert evento.latencia_ms >= 0
+
+
+def test_desistencia_registra_llm_chamada_ok_false_uma_unica_vez(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    provider = FakeLLMProvider(["lixo", '{"ok": true}'])
+
+    with caplog.at_level(logging.INFO), pytest.raises(LLMError):
+        _tutor(provider).explain("stall", "B1-B2")
+
+    (evento,) = eventos(caplog.records, "llm_chamada")  # uma linha por chamada, não por tentativa
+    assert evento.ok is False
+
+
+def test_erro_do_provedor_tambem_registra_ok_false(caplog: pytest.LogCaptureFixture) -> None:
+    provider = FakeLLMProvider([TimeoutError("sem resposta")])
+
+    with caplog.at_level(logging.INFO), pytest.raises(TimeoutError):
+        _tutor(provider).explain("stall", "B1-B2")
+
+    (evento,) = eventos(caplog.records, "llm_chamada")
+    assert evento.ok is False
 
 
 # ---- VertexGeminiProvider -----------------------------------------------------

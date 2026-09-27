@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 import pytest
@@ -22,7 +23,7 @@ from app.flows.admin import (
     tratar_ativacao_no_grupo,
 )
 from app.repo.memory import MemoryBanco
-from tests.helpers import T0
+from tests.helpers import T0, eventos
 
 DONO = "5531999998888"
 ADMIN = "5511988887777"
@@ -331,3 +332,30 @@ async def test_groups_off_com_numero_invalido_ou_uso_errado() -> None:
     assert await comando_privado(a, "/groups off", ADMIN) == messages.GRUPOS_USO
     assert await comando_privado(a, "/groups on 1", ADMIN) == messages.GRUPOS_USO
     assert banco.grupo_esta_ativo("1@g.us")
+
+
+# --- eventos estruturados (M27, ADR-0028, seção 12 da spec) ---------------------------------
+
+
+def test_ativar_e_desativar_grupo_registram_eventos(caplog: pytest.LogCaptureFixture) -> None:
+    a, _, _ = _acesso()
+
+    with caplog.at_level(logging.INFO):
+        ativar_grupo(a, GRUPO, ADMIN, None)
+        desativar_grupo(a, GRUPO, ADMIN)
+
+    nomes = [e.evento for e in eventos(caplog.records)]
+    assert nomes == ["grupo_ativado", "grupo_desativado"]
+
+
+def test_ativar_grupo_ja_ativo_ou_negado_nao_registra_evento(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    a, _, _ = _acesso()
+    ativar_grupo(a, GRUPO, ADMIN, None)
+
+    with caplog.at_level(logging.INFO):
+        assert ativar_grupo(a, GRUPO, ADMIN, None) is Resultado.JA_ATIVO
+        assert ativar_grupo(a, GRUPO, ALUNO, None) is Resultado.NAO_ADMIN
+
+    assert eventos(caplog.records) == []

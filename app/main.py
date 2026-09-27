@@ -46,14 +46,15 @@ from app.flows import admin, grupo
 from app.flows.base import Autor, ConfigGrupo
 from app.flows.conversa import Conversa
 from app.flows.router import Router
-from app.logging_config import configurar_logs, id_curto
-from app.repo.base import Banco
+from app.logging_config import configurar_logs, id_curto, registrar_evento
+from app.repo.base import Banco, tipo_do_espaco
 from app.repo.firestore import FirestoreBanco
 from app.repo.memory import MemoryBanco
 from app.services.audio import ServicoAudio
 from app.services.lembretes import Agendador
 from app.services.letras import LrclibProvider
 from app.services.llm import criar_tutor
+from app.services.log_handler import criar_handler_da_nuvem
 from app.services.planilha import ExportadorExcel
 from app.services.storage import (
     Armazenamento,
@@ -64,6 +65,19 @@ from app.services.storage import (
 from app.services.tts import GoogleTts
 
 logger = logging.getLogger(__name__)
+
+
+def _nome_do_comando(corpo: str, prefixo: str) -> str:
+    """Só para o evento `mensagem_recebida` (M27, seção 12 da spec): um rótulo grosseiro, nunca o
+    texto do aluno. `"midia"` sem corpo (a mídia em si não é logada), o comando em minúsculas sem
+    o prefixo, ou `"texto"` para o resto — não é o parser de comandos de verdade."""
+    texto = corpo.strip()
+    if not texto:
+        return "midia"
+    primeira = texto.split(maxsplit=1)[0]
+    if primeira.startswith(prefixo):
+        return primeira[len(prefixo) :].lower() or "midia"
+    return "texto"
 
 
 @lru_cache
@@ -88,6 +102,15 @@ def _criar_armazenamento(settings: Settings) -> Armazenamento:
     return ArmazenamentoLocal(Path("exports"))
 
 
+def _handler_da_nuvem(settings: Settings) -> logging.Handler | None:
+    """M27 (ADR-0028): os mesmos logs também vão ao Cloud Logging, em paralelo ao stdout de
+    sempre — o driver do Docker não muda (o `gcplogs` quebraria `docker compose logs`). Só em
+    produção: dev/CI nunca falam com a API real."""
+    if settings.app_env != "prod":
+        return None
+    return criar_handler_da_nuvem(settings.gcp_project_id)
+
+
 def _criar_audio(settings: Settings) -> ServicoAudio | None:
     """Pronúncia só em produção e com o bucket de áudio configurado; fora disso, indisponível
     (o TTS real precisa da conta de serviço da VM)."""
@@ -103,7 +126,8 @@ def _criar_audio(settings: Settings) -> ServicoAudio | None:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    configurar_logs(settings.log_level)
+    configurar_logs(settings.log_level, handler_extra=_handler_da_nuvem(settings))
+    registrar_evento(logger, "inicio")
     canal = WahaChannel(
         base_url=settings.waha_url,
         api_key=settings.waha_api_key,
@@ -319,6 +343,13 @@ async def _despachar(
         logger.info("mensagem duplicada ignorada: %s", id_curto(payload.id))
         return
 
+    registrar_evento(
+        logger,
+        "mensagem_recebida",
+        espaco=id_curto(chat_destino),
+        tipo_espaco=tipo_do_espaco(chat_destino),
+        comando=_nome_do_comando(payload.body, "/"),
+    )
     await channel.send_seen(chat_destino)
     tarefas.add_task(_responder, router, payload, channel, chat_destino, acesso, numero, aluno)
 
@@ -373,7 +404,7 @@ async def _avisar_sem_plano(acesso: admin.Acesso, numero: str, chat_destino: str
         acesso.banco.marcar_processada, _chave_do_aviso(numero), agora_utc()
     ):
         return
-    logger.info("mensagem de número sem plano: aviso enviado")
+    registrar_evento(logger, "numero_sem_plano")
     with contextlib.suppress(Exception):
         await acesso.canal.send_text(chat_destino, messages.sem_plano(acesso.contato))
 
@@ -402,7 +433,8 @@ async def _registrar_pendente(banco: Banco, grupo_id: str) -> None:
     grupo por processo: um grupo barulhento não gera uma escrita por mensagem."""
     if grupo_id in _PENDENTES_JA_REGISTRADOS:
         return
-    await run_in_threadpool(banco.registrar_grupo_pendente, grupo_id, agora_utc())
+    if await run_in_threadpool(banco.registrar_grupo_pendente, grupo_id, agora_utc()):
+        registrar_evento(logger, "grupo_pendente", espaco=id_curto(grupo_id))
     _PENDENTES_JA_REGISTRADOS.add(grupo_id)
 
 
@@ -450,6 +482,13 @@ async def _tratar_mensagem_de_grupo(
     if not await run_in_threadpool(banco.marcar_processada, payload.id, agora_utc()):
         logger.info("mensagem duplicada ignorada: %s", id_curto(payload.id))
         return
+    registrar_evento(
+        logger,
+        "mensagem_recebida",
+        espaco=id_curto(grupo_id),
+        tipo_espaco="grupo",
+        comando=_nome_do_comando(payload.body, settings.group_prefix),
+    )
     await channel.send_seen(grupo_id)
 
     if comando is not None:
@@ -501,7 +540,11 @@ async def _numero_do_remetente(chat_id: str, channel: ChannelComLid, banco: Banc
 
 
 def _tratar_status_sessao(evento: SessionStatusEvent) -> None:
-    if evento.payload.status == "WORKING":
-        logger.info("sessão do WAHA em WORKING")
-    else:
-        logger.warning("sessão do WAHA saiu de WORKING: %s", evento.payload.status)
+    ok = evento.payload.status == "WORKING"
+    registrar_evento(
+        logger,
+        "waha_status",
+        nivel=logging.INFO if ok else logging.WARNING,
+        ok=ok,
+        motivo=evento.payload.status,
+    )
