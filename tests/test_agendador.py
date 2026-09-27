@@ -4,13 +4,16 @@ nunca sem nada vencido, e adia (sem desistir) enquanto a conversa está aberta."
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from zoneinfo import ZoneInfo
+
+import pytest
 
 from app.domain.models import Entry, Estado, Profile, SentidoSalvo
 from app.services.fake_llm import FakeTutor
 from app.services.lembretes import Agendador
-from tests.helpers import CHAT, T0, Montagem, montar
+from tests.helpers import CHAT, T0, Montagem, eventos, montar
 
 UTC = ZoneInfo("UTC")
 SENTIDO = SentidoSalvo(traducao="travar", definicao="to stop making progress")
@@ -192,3 +195,89 @@ async def test_tick_sem_nada_vencido_nao_dispara_nem_marca_backoff() -> None:
     assert perfil.lembrete_sem_resposta is False
     assert perfil.proximo_lembrete is not None
     assert perfil.proximo_lembrete > T0
+
+
+# --- eventos estruturados (M27, ADR-0028, seção 12 da spec) ------------------------------------
+
+
+async def test_lembrete_enviado_registra_evento_com_o_tamanho_da_fila(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    m = montar(tutor=FakeTutor())
+    m.repo.criar_entrada(_entrada_vencida())
+    m.repo.salvar_perfil(
+        Profile(nivel="B1-B2", chat_id=CHAT, lembretes_por_dia=3, proximo_lembrete=T0)
+    )
+    with caplog.at_level(logging.INFO):
+        await _agendador(m)._tick()
+
+    (evento,) = eventos(caplog.records, "lembrete_enviado")
+    assert evento.tipo_espaco == "privado"
+    assert evento.n == 1
+
+
+async def test_lembrete_desistido_por_sem_resposta_anterior(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    m = montar()
+    m.repo.criar_entrada(_entrada_vencida())
+    m.repo.salvar_perfil(
+        Profile(
+            nivel="B1-B2",
+            chat_id=CHAT,
+            lembretes_por_dia=3,
+            proximo_lembrete=T0,
+            lembrete_sem_resposta=True,
+        )
+    )
+    with caplog.at_level(logging.INFO):
+        await _agendador(m)._tick()
+
+    (evento,) = eventos(caplog.records, "lembrete_desistido")
+    assert evento.motivo == "sem_resposta_anterior"
+
+
+async def test_lembrete_desistido_por_atraso(caplog: pytest.LogCaptureFixture) -> None:
+    m = montar()
+    m.repo.criar_entrada(_entrada_vencida())
+    m.repo.salvar_perfil(
+        Profile(
+            nivel="B1-B2",
+            chat_id=CHAT,
+            lembretes_por_dia=3,
+            proximo_lembrete=T0 - timedelta(hours=3),
+        )
+    )
+    with caplog.at_level(logging.INFO):
+        await _agendador(m)._tick()
+
+    (evento,) = eventos(caplog.records, "lembrete_desistido")
+    assert evento.motivo == "atraso"
+
+
+async def test_lembrete_adiado_por_sessao_aberta(caplog: pytest.LogCaptureFixture) -> None:
+    m = montar()
+    m.repo.criar_entrada(_entrada_vencida())
+    m.repo.salvar_perfil(
+        Profile(nivel="B1-B2", chat_id=CHAT, lembretes_por_dia=3, proximo_lembrete=T0)
+    )
+    m.repo.salvar_sessao(m.repo.obter_sessao().model_copy(update={"estado": Estado.AWAIT_ACTION}))
+
+    with caplog.at_level(logging.INFO):
+        await _agendador(m)._tick()
+
+    (evento,) = eventos(caplog.records, "lembrete_adiado")
+    assert evento.motivo == "conversa_em_andamento"
+
+
+async def test_lembrete_adiado_por_nada_vencido(caplog: pytest.LogCaptureFixture) -> None:
+    m = montar()
+    m.repo.salvar_perfil(
+        Profile(nivel="B1-B2", chat_id=CHAT, lembretes_por_dia=3, proximo_lembrete=T0)
+    )
+
+    with caplog.at_level(logging.INFO):
+        await _agendador(m)._tick()
+
+    (evento,) = eventos(caplog.records, "lembrete_adiado")
+    assert evento.motivo == "nada_vencido"

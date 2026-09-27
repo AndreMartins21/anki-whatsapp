@@ -21,7 +21,7 @@ from app.flows.router import Router
 from app.main import app, get_banco, get_channel, get_router, get_settings
 from app.repo.memory import MemoryBanco
 from app.services.fake_llm import FakeTutor
-from tests.helpers import explicacao_stall
+from tests.helpers import eventos, explicacao_stall
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CHAT_ALLOWED = "5531999998888@c.us"
@@ -87,6 +87,18 @@ def test_mensagem_de_texto_marca_como_lida_e_e_recebida(
     assert "stall" in texto
 
 
+def test_mensagem_de_texto_registra_mensagem_recebida_sem_o_numero(
+    cliente: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO):
+        cliente.post("/waha/webhook", json=_fixture("texto"))
+
+    (evento,) = eventos(caplog.records, "mensagem_recebida")
+    assert evento.tipo_espaco == "privado"
+    assert evento.comando == "texto"
+    assert "5531999998888" not in json.dumps(vars(evento))
+
+
 def test_from_me_e_ignorada(cliente: TestClient, fake_channel: FakeChannel) -> None:
     resposta = cliente.post("/waha/webhook", json=_fixture("from_me"))
 
@@ -125,6 +137,15 @@ def test_numero_sem_plano_recebe_so_o_aviso_e_nada_e_processado(
     ((chat, texto),) = fake_channel.textos_enviados
     assert chat == "5511888887777@c.us"
     assert "You don't have a plan" in texto
+
+
+def test_numero_sem_plano_registra_evento(
+    cliente: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO):
+        cliente.post("/waha/webhook", json=_fixture("numero_nao_autorizado"))
+
+    assert len(eventos(caplog.records, "numero_sem_plano")) == 1
 
 
 def test_lid_resolvido_para_numero_permitido_e_processado(
@@ -255,7 +276,9 @@ def test_session_status_working_e_so_logado(
 
     assert resposta.status_code == 200
     assert fake_channel.vistos == []
-    assert any("WORKING" in registro.message for registro in caplog.records)
+    (evento,) = eventos(caplog.records, "waha_status")
+    assert evento.ok is True
+    assert evento.motivo == "WORKING"
 
 
 def test_session_status_fora_de_working_gera_warning(

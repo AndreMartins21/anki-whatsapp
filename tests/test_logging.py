@@ -7,7 +7,7 @@ import logging
 
 import pytest
 
-from app.logging_config import configurar_logs, id_curto, mascarar_numero
+from app.logging_config import configurar_logs, id_curto, mascarar_numero, registrar_evento
 
 
 def test_log_sai_em_uma_linha_json_com_severity_e_message(
@@ -48,6 +48,58 @@ def test_nivel_filtra_e_configurar_duas_vezes_nao_duplica(
 
     linhas = capsys.readouterr().out.strip().splitlines()
     assert len(linhas) == 1
+
+
+def test_registrar_evento_inclui_os_campos_da_lista_branca(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    configurar_logs("INFO")
+    logger = logging.getLogger("teste")
+
+    registrar_evento(logger, "lembrete_enviado", espaco="abcd1234", tipo_espaco="grupo", n=7)
+
+    evento = json.loads(capsys.readouterr().out.strip())
+    assert evento["evento"] == "lembrete_enviado"
+    assert evento["message"] == "lembrete_enviado"
+    assert evento["espaco"] == "abcd1234"
+    assert evento["tipo_espaco"] == "grupo"
+    assert evento["n"] == 7
+
+
+def test_campo_fora_da_lista_branca_e_descartado(capsys: pytest.CaptureFixture[str]) -> None:
+    configurar_logs("INFO")
+
+    logging.getLogger("teste").info("evento comum", extra={"numero_do_aluno": "5531999998888"})
+
+    evento = json.loads(capsys.readouterr().out.strip())
+    assert "numero_do_aluno" not in evento
+
+
+def test_ok_false_e_n_zero_aparecem_no_json(capsys: pytest.CaptureFixture[str]) -> None:
+    """`getattr(record, campo, None)` não pode confundir `False`/`0` com "campo ausente"."""
+    configurar_logs("INFO")
+    logger = logging.getLogger("teste")
+
+    registrar_evento(logger, "llm_chamada", metodo="explain", ok=False, n=0)
+
+    evento = json.loads(capsys.readouterr().out.strip())
+    assert evento["ok"] is False
+    assert evento["n"] == 0
+
+
+def test_configurar_logs_liga_o_handler_extra(capsys: pytest.CaptureFixture[str]) -> None:
+    linhas_do_extra: list[str] = []
+
+    class HandlerDeTeste(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            linhas_do_extra.append(record.getMessage())
+
+    configurar_logs("INFO", handler_extra=HandlerDeTeste())
+    logging.getLogger("teste").info("também vai para a nuvem")
+
+    assert linhas_do_extra == ["também vai para a nuvem"]
+    # o stdout continua funcionando normalmente (o handler extra não substitui o de sempre).
+    assert json.loads(capsys.readouterr().out.strip())["message"] == "também vai para a nuvem"
 
 
 def test_mascarar_numero() -> None:

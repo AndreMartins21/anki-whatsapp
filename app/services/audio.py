@@ -7,10 +7,15 @@ a mesma frase, é sintetizado uma única vez, para todos os espaços. O texto ch
 from __future__ import annotations
 
 import hashlib
+import logging
+import time
 from dataclasses import dataclass
 
+from app.logging_config import registrar_evento
 from app.services.storage import CacheAudio
 from app.services.tts import Sintetizador
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -35,7 +40,23 @@ class ServicoAudio:
         chave = hashlib.sha256(f"{self._voz}\n{limpo}".encode()).hexdigest()[:32]
         nome = f"audio/{self._voz}/{chave}.ogg"
         conteudo = self._cache.obter(nome)
-        if conteudo is None:
+        if conteudo is not None:
+            registrar_evento(logger, "tts_chamada", ok=True, cache="hit", caracteres=len(limpo))
+            return AudioPronto(nome=nome, uri=self._cache.uri(nome), conteudo=conteudo)
+
+        inicio = time.monotonic()
+        ok = False
+        try:
             conteudo = self._sintetizador.sintetizar(limpo, self._voz)
-            self._cache.guardar(nome, conteudo)
+            ok = True
+        finally:
+            registrar_evento(
+                logger,
+                "tts_chamada",
+                ok=ok,
+                cache="miss",
+                caracteres=len(limpo),
+                latencia_ms=round((time.monotonic() - inicio) * 1000),
+            )
+        self._cache.guardar(nome, conteudo)
         return AudioPronto(nome=nome, uri=self._cache.uri(nome), conteudo=conteudo)

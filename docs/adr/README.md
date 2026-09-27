@@ -37,6 +37,7 @@ operacional: numeração, status e o índice.
 | [0025](0025-lembretes-ligados-por-padrao-e-fila-de-revisao-configuravel.md) | Lembretes ligados por padrão (1x às 12h, só perfil novo) e tamanho da fila de revisão configurável | Aceito | 2026-09-27 |
 | [0026](0026-pronuncia-automatica-substitui-a-opcao-de-ouvir.md) | Pronúncia automática ao explicar a palavra, substituindo a opção de ouvir no menu | Aceito | 2026-09-27 |
 | [0027](0027-pronuncia-automatica-na-revisao-so-no-privado.md) | Pronúncia automática do termo em cada card de revisão, só no privado | Aceito | 2026-09-27 |
+| [0028](0028-logs-estruturados-com-eventos-e-handler-para-o-cloud-logging.md) | Logs estruturados com eventos e um handler para o Cloud Logging (não o driver `gcplogs`) | Aceito | 2026-09-27 |
 
 ## Quando escrever um
 

@@ -745,6 +745,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, enviar voz, marcar com
 | M24 | Lembretes ligados por padrão, 1x às 12h, só para perfil novo (seção 5.7, ADR-0025); tamanho da fila de revisão configurável (`/reviewsize`, ou o último parâmetro de `/reminders`), padrão dinâmico `MIN(palavras do aluno, 7)` | `make check` passa; perfil novo nasce com lembrete ligado, perfil existente não muda sozinho; `/reviewsize`/`/reminders` fixam e resetam o tamanho da fila; `/profile` mostra o tamanho efetivo |
 | M25 | Pronúncia automática ao explicar a palavra, nova ou já existente (seção 5.1/7.4, ADR-0026): sai a opção 1 (ouvir) do menu, que passa a começar no 2 sem renumerar as demais; `/listen` continua sob demanda | `make check` passa; explicar uma palavra manda a explicação/menu e, na sequência, as duas vozes (sem serviço de áudio configurado, fica em silêncio); `/listen` continua avisando se não há áudio; nenhuma opção "1" sobra no menu |
 | M26 | Pronúncia automática do termo em cada card de revisão, só no privado (seção 5.7/7.4, ADR-0027) | `make check` passa; cada card no privado manda a voz do termo, sem a frase; o grupo não manda áudio na revisão (orçamento de 3 mensagens preservado para repasse/fechamento) |
+| M27 | Eventos estruturados nos logs e handler para o Cloud Logging (seção 12, ADR-0028, `spec/plano-dashboard.md`) | `make check` passa; catálogo de eventos emitido nos pontos da seção 12; nenhum evento carrega número completo nem texto do aluno; `configurar_logs` sem `handler_extra` continua igual (dev/CI nunca falam com a nuvem) |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 
@@ -879,3 +880,37 @@ vocabot/
   docs/adr/   README.md  0000-template.md  NNNN-*.md
 ```
 Se existir `referencia/`, ela contém um MVP anterior, feito para a Cloud API oficial (webhook da Meta, export etc.). Use-a só como consulta: o canal agora é o WAHA.
+
+## 12. Observabilidade (M27, ADR-0028, `spec/plano-dashboard.md`)
+
+Base do dashboard de saúde e uso (`spec/plano-dashboard.md`, M27–M30): pontos de negócio
+importantes chamam `registrar_evento(logger, nome, **campos)` (`app/logging_config.py`), que grava
+o campo `evento` no log JSON, mais uma **lista branca** de campos (`CAMPOS_DE_EVENTO`) — nunca
+texto do aluno, número completo ou payload. `espaco` é sempre `id_curto(espaco_id)` (o mesmo hash
+curto já usado nos logs): é a chave de junção com o snapshot do M28.
+
+Em produção (`app_env == "prod"`), o processo do bot manda esses mesmos registros também ao Cloud
+Logging por um segundo handler (`google-cloud-logging`, montado em `app/main.py` e passado a
+`configurar_logs(handler_extra=...)`) — o driver de log do Docker **não muda** (ADR-0028 descartou
+o `gcplogs`: quebraria `docker compose logs`/`infra/logs.sh`/`infra/smoke_test.sh`). O `waha`
+continua só no `json-file` local.
+
+Catálogo de eventos:
+
+| `evento` | Onde | Campos | Serve para |
+|---|---|---|---|
+| `mensagem_recebida` | `main.py` (privado e grupo, após deduplicar) | `espaco`, `tipo_espaco`, `comando` | mensagens/dia, espaços ativos, uso por comando |
+| `lembrete_enviado` | `Agendador._tick_espaco` | `espaco`, `tipo_espaco`, `n` (cartões na fila) | lembretes por pessoa/grupo |
+| `lembrete_adiado` | `Agendador._tick_espaco` | `espaco`, `tipo_espaco`, `motivo` (`conversa_em_andamento`\|`nada_vencido`) | saúde do agendador |
+| `lembrete_desistido` | `Agendador._tick_espaco` | `espaco`, `tipo_espaco`, `motivo` (`atraso`\|`sem_resposta_anterior`) | saúde do agendador |
+| `revisao_concluida` | `flows/review.py` (fim da rodada) | `espaco`, `tipo_espaco`, `n` (feitas), `total`, `lapsos`, `motivo` (`manual`\|`fila_vazia`\|`timeout`) | taxa de conclusão das revisões |
+| `revisao_resposta` | `flows/review.py:responder` | `espaco`, `tipo_espaco`, `qualidade`, `marcado` (só em grupo) | distribuição de qualidade, taxa de acerto |
+| `marcacao_expirada` | `Agendador._expirar_marcacoes` | `espaco` | engajamento nos grupos |
+| `llm_chamada` | `services/llm.py:_gerar_validado` | `metodo`, `modelo`, `ok`, `latencia_ms` | volume, latência, falhas da IA |
+| `tts_chamada` | `services/audio.py:ServicoAudio.obter` | `ok`, `cache` (`hit`\|`miss`), `caracteres`, `latencia_ms` (só no miss) | volume e custo do Cloud TTS, taxa de acerto do cache |
+| `grupo_ativado` / `grupo_desativado` | `flows/admin.py` | `espaco` | funil de ativação de grupos |
+| `grupo_pendente` | `main.py:_registrar_pendente` | `espaco` | funil de ativação de grupos |
+| `saiu_de_grupo` | `Agendador._sair_de_grupos_pendentes` | `espaco` | grupos abandonados em 24h |
+| `numero_sem_plano` | `main.py:_avisar_sem_plano` | — | demanda reprimida |
+| `waha_status` | `main.py:_tratar_status_sessao` | `ok`, `motivo` (o status) | disponibilidade do WhatsApp |
+| `inicio` | `main.py:_lifespan` | — | reinícios/crash loop |

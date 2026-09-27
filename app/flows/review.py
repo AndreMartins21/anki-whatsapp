@@ -22,6 +22,8 @@ from app.domain.rodizio import Candidato, escolher
 from app.domain.srs import reagendar, vencida
 from app.flows import pronuncia
 from app.flows.base import Deps, bloq
+from app.logging_config import id_curto, registrar_evento
+from app.repo.base import tipo_do_espaco
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +166,14 @@ async def responder(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Ses
     conta = (
         not d.em_grupo or sessao.marcado_id is None or _mesma_pessoa(d.autor_id, sessao.marcado_id)
     )
+    registrar_evento(
+        logger,
+        "revisao_resposta",
+        espaco=id_curto(d.chat_id),
+        tipo_espaco=tipo_do_espaco(d.chat_id),
+        qualidade=revisao.qualidade,
+        **({"marcado": conta} if d.em_grupo else {}),
+    )
     if revisao.tipo == "frase":
         await bloq(
             d.repo.adicionar_frase,
@@ -221,7 +231,25 @@ async def responder(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Ses
     )
 
 
+def _registrar_conclusao(
+    d: Deps, feitas: Sequence[str], lapsos: Sequence[str], total: int, motivo: str
+) -> None:
+    registrar_evento(
+        logger,
+        "revisao_concluida",
+        espaco=id_curto(d.chat_id),
+        tipo_espaco=tipo_do_espaco(d.chat_id),
+        n=len(feitas),
+        total=total,
+        lapsos=len(lapsos),
+        motivo=motivo,
+    )
+
+
 async def encerrar(d: Deps, sessao: Sessao) -> Sessao:
+    _registrar_conclusao(
+        d, sessao.revisao_feitas, sessao.revisao_lapsos, sessao.revisao_total, "manual"
+    )
     await d.conversa.enviar(
         messages.revisao_encerrada(sessao.revisao_feitas, sessao.revisao_lapsos, p=d.p)
     )
@@ -250,6 +278,9 @@ async def sem_resposta(d: Deps, sessao: Sessao) -> Sessao:
                     "marcacao_tentativas": sessao.marcacao_tentativas + 1,
                 }
             )
+    _registrar_conclusao(
+        d, sessao.revisao_feitas, sessao.revisao_lapsos, sessao.revisao_total, "timeout"
+    )
     await d.conversa.enviar(
         messages.revisao_sem_resposta(sessao.revisao_feitas, sessao.revisao_lapsos, p=d.p)
     )
@@ -305,6 +336,7 @@ async def _mostrar_proxima(
             atualizado_em=d.agora(),
         )
 
+    _registrar_conclusao(d, feitas, lapsos, total, "fila_vazia")
     resumo = messages.revisao_encerrada(feitas, lapsos, p=d.p)
     await d.conversa.enviar(f"{feedback}\n\n{resumo}" if feedback else resumo)
     return d.sessao_vazia()

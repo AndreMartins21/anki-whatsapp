@@ -23,7 +23,8 @@ from app.flows import review
 from app.flows.admin import PRAZO_GRUPO_PENDENTE
 from app.flows.base import bloq
 from app.flows.router import Router
-from app.repo.base import Banco, Repository
+from app.logging_config import id_curto, registrar_evento
+from app.repo.base import Banco, Repository, tipo_do_espaco
 
 logger = logging.getLogger(__name__)
 
@@ -107,24 +108,49 @@ class Agendador:
         if agora_utc < perfil.proximo_lembrete:
             return  # ainda não deu a hora
 
+        tipo_espaco = tipo_do_espaco(espaco_id)
+        espaco = id_curto(espaco_id)
+
         atrasado_demais = agora_utc - perfil.proximo_lembrete > LIMITE_DE_ATRASO
         if atrasado_demais or perfil.lembrete_sem_resposta:
             # desiste deste horário (atraso grande, ou o aluno não respondeu ao lembrete
             # anterior): recalcula o próximo, sem disparar de novo.
+            motivo = "atraso" if atrasado_demais else "sem_resposta_anterior"
+            registrar_evento(
+                logger, "lembrete_desistido", espaco=espaco, tipo_espaco=tipo_espaco, motivo=motivo
+            )
             await self._agendar_proximo(repo, perfil, agora_local)
             return
 
         sessao = await bloq(repo.obter_sessao)
         if sessao.estado != Estado.IDLE:
+            registrar_evento(
+                logger,
+                "lembrete_adiado",
+                espaco=espaco,
+                tipo_espaco=tipo_espaco,
+                motivo="conversa_em_andamento",
+            )
             return  # conversa em andamento: tenta de novo no próximo tick
 
         entradas = await bloq(repo.listar_entradas)
-        if not review.montar_fila(entradas, agora_utc):
+        fila = review.montar_fila(entradas, agora_utc)
+        if not fila:
             # nada vencido agora: recalcula o próximo horário, sem marcar backoff nem mandar nada.
+            registrar_evento(
+                logger,
+                "lembrete_adiado",
+                espaco=espaco,
+                tipo_espaco=tipo_espaco,
+                motivo="nada_vencido",
+            )
             await self._agendar_proximo(repo, perfil, agora_local)
             return
 
         await bloq(repo.salvar_perfil, perfil.model_copy(update={"lembrete_sem_resposta": True}))
+        registrar_evento(
+            logger, "lembrete_enviado", espaco=espaco, tipo_espaco=tipo_espaco, n=len(fila)
+        )
         await self._router.iniciar_revisao(perfil.chat_id)
 
         perfil_apos = await bloq(repo.obter_perfil)
@@ -148,6 +174,7 @@ class Agendador:
         for grupo_id in await bloq(self._banco.listar_grupos_com_timeout, agora):
             try:
                 await self._router.expirar_marcacao(grupo_id)
+                registrar_evento(logger, "marcacao_expirada", espaco=id_curto(grupo_id))
             except Exception:  # um grupo com problema não pode calar os outros
                 logger.exception("falha ao expirar a marcação de um grupo; os demais seguem")
 
@@ -170,4 +197,4 @@ class Agendador:
                     continue
                 logger.warning("desisti de sair de um grupo pendente (falha por muito tempo)")
             await bloq(self._banco.remover_grupo_pendente, grupo_id)
-            logger.info("saí de um grupo que ninguém ativou em 24 h")
+            registrar_evento(logger, "saiu_de_grupo", espaco=id_curto(grupo_id))

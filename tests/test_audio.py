@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from typing import Any
 
@@ -12,6 +13,7 @@ from app.services.audio import ServicoAudio
 from app.services.fake_tts import FakeSintetizador
 from app.services.storage import CacheAudioEmMemoria, CacheAudioGcs
 from app.services.tts import GoogleTts
+from tests.helpers import eventos
 
 VOZ = "en-US-Neural2-F"
 
@@ -65,6 +67,43 @@ def test_falha_do_tts_nao_grava_nada() -> None:
         servico.obter("stall")
 
     assert cache.arquivos == {}
+
+
+# --- eventos estruturados (M27, ADR-0028, seção 12 da spec) -------------------------------------
+
+
+def test_miss_registra_tts_chamada_ok_true_e_cache_miss(caplog: pytest.LogCaptureFixture) -> None:
+    servico, _, _ = _servico()
+
+    with caplog.at_level(logging.INFO):
+        servico.obter("stall")
+
+    (evento,) = eventos(caplog.records, "tts_chamada")
+    assert evento.ok is True
+    assert evento.cache == "miss"
+    assert evento.caracteres == len("stall")
+
+
+def test_hit_registra_tts_chamada_cache_hit(caplog: pytest.LogCaptureFixture) -> None:
+    servico, _, _ = _servico()
+    servico.obter("stall")
+
+    with caplog.at_level(logging.INFO):
+        servico.obter("stall")
+
+    (evento,) = eventos(caplog.records, "tts_chamada")
+    assert evento.cache == "hit"
+
+
+def test_falha_do_tts_registra_ok_false(caplog: pytest.LogCaptureFixture) -> None:
+    servico, _, _ = _servico(FakeSintetizador(falha=True))
+
+    with caplog.at_level(logging.INFO), pytest.raises(RuntimeError):
+        servico.obter("stall")
+
+    (evento,) = eventos(caplog.records, "tts_chamada")
+    assert evento.ok is False
+    assert evento.cache == "miss"
 
 
 def test_texto_vazio_e_recusado() -> None:

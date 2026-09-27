@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Protocol
@@ -34,6 +35,7 @@ from app.domain.models import (
     Sinonimos,
     Synonym,
 )
+from app.logging_config import registrar_evento
 from app.services import prompts
 from app.services.prompts import Prompt
 
@@ -211,6 +213,20 @@ class AnthropicProvider:
         raise LLMError("a Anthropic não devolveu a ferramenta esperada")
 
 
+# M27 (ADR-0028): nome do método para o evento `llm_chamada` (seção 12 da spec) — cada schema de
+# saída corresponde a uma única tarefa do `Tutor`.
+_METODO_POR_SCHEMA: dict[type[BaseModel], str] = {
+    Explanation: "explain",
+    Evaluation: "evaluate",
+    Exemplos: "examples",
+    Expansoes: "expansions",
+    Sinonimos: "synonyms",
+    Roteamento: "route",
+    Revisao: "review",
+    LinhaDaMusica: "song_line",
+}
+
+
 def _chave(expressao: str) -> str:
     sem_acento = unicodedata.normalize("NFKD", expressao).encode("ascii", "ignore").decode()
     return " ".join(sem_acento.lower().split())
@@ -226,31 +242,50 @@ def _gerar_validado[T: BaseModel](
     validar: Callable[[T], None] | None = None,
 ) -> T:
     """Valida com Pydantic (e com `validar`, para regras que o schema não expressa); em caso de
-    erro, uma nova tentativa avisando o modelo do que estava errado."""
-    usuario = prompt.usuario
-    ultimo_erro: ValueError | None = None
-    for _ in range(MAX_TENTATIVAS):
-        bruto = provider.gerar(
-            sistema=prompt.sistema,
-            usuario=usuario,
-            schema=schema,
-            modelo=modelo,
-            temperatura=temperatura,
-        )
-        try:
-            resultado = schema.model_validate_json(bruto)
-            if validar is not None:
-                validar(resultado)
-        except ValueError as erro:  # ValidationError (JSON ou schema) é um ValueError
-            ultimo_erro = erro
-            logger.warning("resposta da IA rejeitada (%s)", type(erro).__name__)
-            usuario = (
-                f"{prompt.usuario}\n\nSua resposta anterior foi rejeitada: {str(erro)[:400]}\n"
-                "Responda de novo, seguindo exatamente o schema e as regras."
+    erro, uma nova tentativa avisando o modelo do que estava errado.
+
+    Emite `llm_chamada` (M27, ADR-0028, seção 12 da spec) uma vez por chamada, cobrindo todas as
+    tentativas: `ok=False` tanto para uma falha de transporte (`LLMError` do provider) quanto para
+    todas as tentativas rejeitadas na validação."""
+    inicio = time.monotonic()
+    ok = False
+    try:
+        usuario = prompt.usuario
+        ultimo_erro: ValueError | None = None
+        for _ in range(MAX_TENTATIVAS):
+            bruto = provider.gerar(
+                sistema=prompt.sistema,
+                usuario=usuario,
+                schema=schema,
+                modelo=modelo,
+                temperatura=temperatura,
             )
-        else:
-            return resultado
-    raise LLMError(f"a IA não devolveu uma resposta válida ({schema.__name__})") from ultimo_erro
+            try:
+                resultado = schema.model_validate_json(bruto)
+                if validar is not None:
+                    validar(resultado)
+            except ValueError as erro:  # ValidationError (JSON ou schema) é um ValueError
+                ultimo_erro = erro
+                logger.warning("resposta da IA rejeitada (%s)", type(erro).__name__)
+                usuario = (
+                    f"{prompt.usuario}\n\nSua resposta anterior foi rejeitada: {str(erro)[:400]}\n"
+                    "Responda de novo, seguindo exatamente o schema e as regras."
+                )
+            else:
+                ok = True
+                return resultado
+        raise LLMError(
+            f"a IA não devolveu uma resposta válida ({schema.__name__})"
+        ) from ultimo_erro
+    finally:
+        registrar_evento(
+            logger,
+            "llm_chamada",
+            metodo=_METODO_POR_SCHEMA.get(schema, schema.__name__),
+            modelo=modelo,
+            ok=ok,
+            latencia_ms=round((time.monotonic() - inicio) * 1000),
+        )
 
 
 class LLMTutor:

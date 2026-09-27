@@ -5,6 +5,7 @@ a rodada fecha. Sem rede, sem credencial, com o relógio controlado."""
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from itertools import pairwise
 from zoneinfo import ZoneInfo
@@ -20,7 +21,7 @@ from app.services.fake_llm import FakeTutor
 from app.services.fake_tts import FakeSintetizador
 from app.services.lembretes import Agendador
 from app.services.storage import CacheAudioEmMemoria
-from tests.helpers import ANA, BIA, CAIO, GRUPO, T0, Montagem, montar
+from tests.helpers import ANA, BIA, CAIO, GRUPO, T0, Montagem, eventos, montar
 
 BOT = "5531988887777"
 CARLA = Autor("5541900000001", "Carla")  # professora
@@ -490,3 +491,34 @@ async def test_o_fechamento_da_rodada_no_grupo_so_cita_comandos_do_grupo() -> No
 
     assert "Add a new word whenever you want: !add word." in fim
     assert "Send me" not in fim
+
+
+async def test_resposta_da_pessoa_marcada_registra_revisao_resposta_com_marcado_true(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    m = _turma()
+    await m.diz_no_grupo(ANA, "!review")
+    primeiro = _marcado(m)
+    autor = next(a for a in (ANA, BIA, CAIO) if a.numero == primeiro)
+
+    with caplog.at_level(logging.INFO):
+        await m.diz_no_grupo(autor, "!it means to stop making progress")
+
+    (evento,) = eventos(caplog.records, "revisao_resposta")
+    assert evento.tipo_espaco == "grupo"
+    assert evento.marcado is True
+
+
+async def test_resposta_de_quem_nao_e_o_marcado_registra_marcado_false(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    m = _turma()
+    await m.diz_no_grupo(ANA, "!review")
+    primeiro = _marcado(m)
+    intruso = next(a for a in (ANA, BIA, CAIO) if a.numero != primeiro)
+
+    with caplog.at_level(logging.INFO):
+        await m.diz_no_grupo(intruso, "!maybe it means to delay")
+
+    (evento,) = eventos(caplog.records, "revisao_resposta")
+    assert evento.marcado is False

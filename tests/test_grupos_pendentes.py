@@ -3,11 +3,14 @@ há mais de 24 h, em silêncio, com o relógio controlado."""
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from app.services.lembretes import DESISTIR_DE_SAIR_APOS, Agendador
-from tests.helpers import T0, Montagem, montar
+from tests.helpers import T0, Montagem, eventos, montar
 
 GRUPO = "120363000000000001@g.us"
 OUTRO = "120363000000000002@g.us"
@@ -36,6 +39,18 @@ async def test_sai_do_grupo_pendente_depois_de_24_horas_e_apaga_o_registro() -> 
     assert m.channel.grupos_deixados == [GRUPO]
     assert m.banco.listar_grupos_pendentes() == []
     assert m.channel.textos_enviados == []  # sai sem dizer nada
+
+
+async def test_sair_do_grupo_pendente_registra_evento(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    m = montar()
+    m.banco.registrar_grupo_pendente(GRUPO, T0 - timedelta(hours=25))
+
+    with caplog.at_level(logging.INFO):
+        await _agendador(m)._tick()
+
+    assert len(eventos(caplog.records, "saiu_de_grupo")) == 1
 
 
 async def test_antes_de_24_horas_o_bot_continua_no_grupo() -> None:
