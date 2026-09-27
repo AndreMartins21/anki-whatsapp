@@ -55,8 +55,9 @@ para um `.xlsx` com três abas: `Words`, `Sentences` e `Synonyms`.
 ## Pronúncia em áudio (M23)
 
 Sob demanda: a **opção 1** do menu de uma palavra (`!1` no grupo) ou `/listen N|palavra` mandam
-`🔊 *termo*` e **duas notas de voz**, na ordem: o termo e a frase de exemplo do card. A conversa
-continua onde estava.
+**duas notas de voz**, na ordem: o termo e a frase de exemplo do card. Pela opção 1, o bot em seguida
+pergunta o que fazer, com as opções 2 a 5 (a 1 não repete). A conversa continua onde estava; `/listen`
+manda só as vozes (com um texto de abertura), sem menu.
 
 Como o áudio é gerado:
 
