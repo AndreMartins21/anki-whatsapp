@@ -15,8 +15,11 @@ import pytest
 from app import messages
 from app.domain.models import Entry, Estado, Membro, Profile, Revisao, SentidoSalvo
 from app.flows.base import Autor, Participantes
+from app.services.audio import ServicoAudio
 from app.services.fake_llm import FakeTutor
+from app.services.fake_tts import FakeSintetizador
 from app.services.lembretes import Agendador
+from app.services.storage import CacheAudioEmMemoria
 from tests.helpers import ANA, BIA, CAIO, GRUPO, T0, Montagem, montar
 
 BOT = "5531988887777"
@@ -57,6 +60,7 @@ def _turma(
     participantes: list[str] | None = None,
     limite: int = 5,
     participantes_do_grupo: Participantes | None = None,
+    audio: ServicoAudio | None = None,
 ) -> Montagem:
     """Uma turma com `alunos` e a professora Carla; o sorteio é determinístico (o primeiro)."""
     m = montar(
@@ -65,6 +69,7 @@ def _turma(
         numero_do_bot=BOT,
         sortear=lambda itens: itens[0],
         participantes=participantes_do_grupo,
+        audio=audio,
     )
     m.channel.participantes_de_grupos[GRUPO] = (
         participantes
@@ -105,6 +110,16 @@ async def test_review_marca_um_aluno_e_o_card_leva_a_mencao() -> None:
     assert "Practice time" in card and "1/3" in card
     assert "Anyone can type !0" in card
     assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.REVIEWING
+
+
+async def test_revisao_em_grupo_nao_manda_audio_automatico() -> None:
+    """M26 (ADR-0027): a pronúncia automática do termo é só no privado — no grupo o orçamento de 3
+    mensagens já é disputado pelo repasse e pelo fechamento da rodada (ADR-0020)."""
+    m = _turma(audio=ServicoAudio(FakeSintetizador(), CacheAudioEmMemoria(), "en-US-Neural2-F"))
+
+    await m.diz_no_grupo(ANA, "!review")
+
+    assert m.channel.vozes_enviadas == []
 
 
 async def test_professor_e_o_proprio_bot_nunca_sao_marcados() -> None:

@@ -7,8 +7,11 @@ from datetime import datetime, timedelta
 
 from app.domain.models import Entry, Estado, Revisao, SentidoSalvo
 from app.flows.review import montar_fila
+from app.services.audio import ServicoAudio
 from app.services.fake_llm import FakeTutor
-from tests.helpers import T0, Montagem, montar
+from app.services.fake_tts import FakeSintetizador
+from app.services.storage import CacheAudioEmMemoria
+from tests.helpers import CHAT, T0, Montagem, montar
 
 SENTIDO = SentidoSalvo(traducao="travar", definicao="to stop making progress")
 
@@ -229,3 +232,34 @@ async def test_reviewsize_auto_volta_ao_dinamico() -> None:
     (primeira,) = await m.diz("/revisar")
 
     assert primeira.startswith("⏰ *Practice time* — 7 words to review.")
+
+
+# ---- pronúncia automática no privado (M26, ADR-0027) --------------------------------------------
+
+VOZ = "en-US-Neural2-F"
+
+
+async def _com_stall_e_hedge_vencidas_e_audio() -> Montagem:
+    sintetizador = FakeSintetizador()
+    m = montar(tutor=FakeTutor(), audio=ServicoAudio(sintetizador, CacheAudioEmMemoria(), VOZ))
+    m.repo.criar_entrada(_entrada("stall", criado_em=T0))
+    m.repo.criar_entrada(_entrada("hedge", criado_em=T0 + timedelta(minutes=1)))
+    return m
+
+
+async def test_cada_card_de_revisao_manda_so_o_termo_em_audio() -> None:
+    m = await _com_stall_e_hedge_vencidas_e_audio()
+
+    await m.diz("/revisar")
+
+    # só o termo (com_frase=False): a entrada não tem frase salva além do próprio card de revisão
+    assert m.channel.vozes_enviadas == [(CHAT, b"ogg:stall")]
+
+
+async def test_o_audio_da_revisao_fica_em_silencio_sem_servico_configurado() -> None:
+    m = await _com_stall_e_hedge_vencidas()
+
+    (primeira,) = await m.diz("/revisar")
+
+    assert "🔊" not in primeira
+    assert m.channel.vozes_enviadas == []
