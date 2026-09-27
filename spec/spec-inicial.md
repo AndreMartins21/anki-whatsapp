@@ -24,7 +24,7 @@ Ciclo principal:
 
 **M14:** o bot atende **vários alunos no privado**, cada um com o próprio caderno (o **espaço**, ADR-0017) — deixou de ser fora de escopo. **M15:** controle de acesso — quem não tem plano só recebe um aviso, e grupos só entram por um admin (ADR-0018). Os comandos de grupo (`!add`, `!list`...) são o M16 e a revisão em grupo com menção o M17 (`spec/plano-turmas.md`).
 
-**M23:** o bot também **envia** a pronúncia em áudio, sob demanda (seção 7.4, ADR-0024). Receber áudio do aluno continua fora de escopo.
+**M23:** o bot também **envia** a pronúncia em áudio, sob demanda (seção 7.4, ADR-0024). Receber áudio do aluno continua fora de escopo. **M25:** o áudio virou automático, junto da explicação, e a opção 1 (ouvir) saiu do menu (ADR-0026).
 
 Fora de escopo no MVP: áudio recebido do aluno, painel web e conversa livre com IA sem relação a inglês.
 
@@ -103,15 +103,18 @@ ou uma palavra nova?", menu de expansões numerado). As escolhas do menu continu
 aceite também variações (`1`, `1.`, apelidos em inglês como `examples`, `save`).
 
 ```
-IDLE          ── texto (não comando) ──▶ explicar (a IA sempre escolhe um sentido) ──▶ AWAIT_ACTION
-AWAIT_ACTION  ── 1 "see more examples" ──▶ gerar exemplos   ──▶ AWAIT_ACTION
-              ── 2 "check synonyms"    ──▶ gerar sinônimos  ──▶ AWAIT_ACTION
-              ── 3 "just save"         ──▶ salvar e sugerir ──▶ IDLE
-              ── 4 "ignore this word"  ──▶ descartar a palavra recém-criada ──▶ IDLE
-              ── 5 "hear it"           ──▶ notas de voz do termo e do exemplo (M23) ──▶ AWAIT_ACTION
+IDLE          ── texto (não comando) ──▶ explicar + notas de voz automáticas (M25) ──▶ AWAIT_ACTION
+AWAIT_ACTION  ── 2 "see more examples" ──▶ gerar exemplos   ──▶ AWAIT_ACTION
+              ── 3 "check synonyms"    ──▶ gerar sinônimos  ──▶ AWAIT_ACTION
+              ── 4 "just save"         ──▶ salvar e sugerir ──▶ IDLE
+              ── 5 "ignore this word"  ──▶ descartar a palavra recém-criada ──▶ IDLE
               ── 0 / skip              ──▶ sair da palavra (fica salva), sem IA ──▶ IDLE
               ── qualquer outro texto  ──▶ rotear pela IA (abaixo) ──▶ AWAIT_ACTION (ou IDLE)
 ```
+
+O menu começa no **2** (não tem opção 1) desde o M25 (ADR-0026): a pronúncia em áudio virou
+automática, junto da explicação, então deixou de ser uma escolha — e os números 2-5 continuam os
+mesmos de sempre, para não mudar o que o aluno já decorou.
 
 A revisão espaçada (`REVIEWING`, seção 5.7) e a prática com música (`SONG_PICKING`,
 `SONG_PRACTICE`, `SONG_SAVING`, seção 5.8) são sessões à parte, iniciadas por comando (ou pelo
@@ -143,11 +146,12 @@ Regras:
   na lista. Em ambos os casos volta a IDLE. Os apelidos de texto são só frases inteiras
   (`ignore this word`, `ignore it`, `discard it`...): `ignore`/`drop` sozinhas podem ser a palavra
   que o aluno quer aprender.
-- **Opção 1 (ouvir, M23, ADR-0024):** manda **duas notas de voz** (o termo e a frase do card, a do bot
-  mais antiga da entrada) e, em seguida, **outra mensagem perguntando o que fazer**: o convite a escrever
-  uma frase e as opções 2 a 5 (a 1 não volta, já foi usada; os números não mudam). Não muda de estado. Os apelidos
-  de texto também são só frases inteiras (`hear it`, `hear the pronunciation`...): `hear`/`listen`
-  sozinhas podem ser a palavra que o aluno quer aprender. Em grupo vale `!1`.
+- **Pronúncia automática (M25, ADR-0026, seção 7.4):** logo depois de explicar a palavra (nova ou já
+  existente), o bot manda **duas notas de voz** (o termo e a frase do card, a do bot mais antiga da
+  entrada), sem precisar de nenhuma escolha do menu. Se o serviço de áudio não está configurado
+  neste ambiente, fica em silêncio (ninguém pediu, a explicação já dita basta); uma falha de
+  verdade (TTS, Storage, WhatsApp) avisa em uma linha, sem derrubar a conversa. `/listen` continua
+  existindo à parte, para tocar de novo qualquer palavra já salva.
 - **`0` / `skip` em `AWAIT_ACTION`** (e só eles: `stop`, `leave` etc. seguem indo para o roteamento,
   pois podem ser a palavra a aprender) saem da palavra aberta sem chamar a IA e sem apagar nada.
 - **Palavra que já existe** (ADR-0023: palavra sem frase de contexto já salva, em qualquer sentido; com
@@ -646,16 +650,20 @@ VM precisa do papel `roles/iam.serviceAccountTokenCreator` **sobre ela mesma**, 
 `service_account_email` + `access_token` no `generate_signed_url`. O bucket tem uma regra de ciclo de
 vida que apaga objetos após 7 dias.
 
-### 7.4 Pronúncia em áudio (M23, ADR-0024)
+### 7.4 Pronúncia em áudio (M23/M25, ADR-0024, ADR-0026)
 
-**Sob demanda:** a opção 1 do menu e `/listen N|palavra` mandam duas notas de voz, na ordem: o termo,
-depois a frase do card (a do bot mais antiga da entrada, sem os `[[ ]]`). Entrada sem frase do bot recebe
-só a voz do termo.
+`app/flows/pronuncia.py:ouvir` manda duas notas de voz, na ordem: o termo, depois a frase do card (a
+do bot mais antiga da entrada, sem os `[[ ]]`). Entrada sem frase do bot recebe só a voz do termo.
+Duas formas de chamar, pelo parâmetro `anunciar`:
 
-- **Opção 1** (a palavra está aberta): as duas vozes e, por último, o menu sem a opção 1 (`Now, you can
-  write one or more sentences using *termo*, or type:` + 2 a 5; no grupo, com o prefixo).
-- **`/listen`** (não abre a palavra): um texto antes, `🔊 *termo*` com a frase de exemplo, e as duas
-  vozes, sem menu.
+- **Automático** (M25, `anunciar=False`, logo depois de explicar a palavra — nova ou já existente,
+  seção 5.1): as duas vozes, sem texto antes nem depois (a explicação + o menu, já mandados, bastam).
+  Sem serviço de áudio configurado neste ambiente, fica **em silêncio** — ninguém pediu áudio
+  explicitamente. Uma falha de verdade (TTS, Storage, WhatsApp) ainda avisa (`ERRO_AUDIO`): quebrar
+  em silêncio pareceria o bot ignorando o aluno.
+- **Sob demanda** (`/listen N|palavra`, `anunciar=True`, não abre a palavra): um texto antes,
+  `🔊 *termo*` com a frase de exemplo, e as duas vozes. Sem serviço de áudio configurado, avisa
+  (`ERRO_AUDIO`) — aqui a pessoa pediu explicitamente, então o silêncio seria confuso.
 
 **Síntese:** interface `Sintetizador` (`app/services/tts.py`), implementada por `GoogleTts`
 (Cloud Text-to-Speech, `AudioEncoding.OGG_OPUS`, voz de `TTS_VOICE`, conta de serviço da VM) e por
@@ -668,8 +676,9 @@ vai para `Entry.audio_palavra` / `Entry.audio_exemplo` quando muda.
 
 **Envio:** `Channel.send_voice` (`POST /api/sendVoice`, `mimetype: audio/ogg; codecs=opus`, base64,
 `convert: false`), com timeout de 90 s e **sem** retentativa. `Conversa.enviar_voz` respeita o limite
-de 3 mensagens seguidas (duas vozes + o menu, ou o texto + duas vozes, usam os 3). Qualquer falha (TTS, Storage, WhatsApp)
-vira `ERRO_AUDIO`, sem derrubar a conversa.
+de 3 mensagens seguidas (a explicação/menu + as duas vozes, ou o texto do `/listen` + as duas vozes,
+usam os 3). Qualquer falha de verdade (TTS, Storage, WhatsApp) vira `ERRO_AUDIO`, sem derrubar a
+conversa (ver seção 5.1 sobre o caso de áudio não configurado).
 
 ## 8. Canal: WAHA
 
@@ -721,6 +730,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, enviar voz, marcar com
 | M11 | Deploy contínuo via GitHub Actions (seção 10.9, ADR-0013): branch protection na `main` (PR + checks obrigatórios), job `deploy` automático no merge, autenticado por Workload Identity Federation | Push direto na `main` é bloqueado pelo GitHub; um PR com CI verde, ao ser mergeado, dispara o job `deploy` e o bot responde `/help` depois do smoke test |
 | M23 | Pronúncia em áudio sob demanda (seção 7.4, ADR-0024): opção 1 e `/listen`, `Sintetizador` (Google Cloud TTS) atrás de interface, cache por hash em bucket permanente, `Channel.send_voice` | Cache miss sintetiza e grava, hit não chama o TTS; duas vozes (termo e frase) na ordem; falha do TTS/envio só avisa; `send_voice` sem retentativa; `Entry` persiste os links; `make check` verde; `sim` grava os `.ogg` |
 | M24 | Lembretes ligados por padrão, 1x às 12h, só para perfil novo (seção 5.7, ADR-0025); tamanho da fila de revisão configurável (`/reviewsize`, ou o último parâmetro de `/reminders`), padrão dinâmico `MIN(palavras do aluno, 7)` | `make check` passa; perfil novo nasce com lembrete ligado, perfil existente não muda sozinho; `/reviewsize`/`/reminders` fixam e resetam o tamanho da fila; `/profile` mostra o tamanho efetivo |
+| M25 | Pronúncia automática ao explicar a palavra, nova ou já existente (seção 5.1/7.4, ADR-0026): sai a opção 1 (ouvir) do menu, que passa a começar no 2 sem renumerar as demais; `/listen` continua sob demanda | `make check` passa; explicar uma palavra manda a explicação/menu e, na sequência, as duas vozes (sem serviço de áudio configurado, fica em silêncio); `/listen` continua avisando se não há áudio; nenhuma opção "1" sobra no menu |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 

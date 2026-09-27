@@ -28,7 +28,6 @@ from app.flows import (
     freeform,
     grupo,
     practice,
-    pronuncia,
     review,
     song,
     synonyms,
@@ -207,8 +206,6 @@ class Router:
                 return await practice.pular(d)
             case Acao.IGNORAR:
                 return await practice.ignorar(d, sessao)
-            case Acao.OUVIR:
-                return await pronuncia.ouvir_da_sessao(d, sessao)
             case Acao.ROTEAR:
                 return await freeform.rotear(d, sessao, perfil, str(argumento))
             case Acao.RESPONDER_REVISAO:

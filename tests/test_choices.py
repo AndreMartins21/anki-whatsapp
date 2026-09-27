@@ -22,13 +22,14 @@ from app.domain.choices import (
 @pytest.mark.parametrize(
     ("texto", "esperado"),
     [
-        ("1", 1),
-        ("1.", 1),
-        ("1)", 1),
         (" 2 ", 2),
-        ("1️⃣", 1),
-        ("hear it", 1),
-        ("Hear the pronunciation", 1),
+        # M25: a opção 1 (ouvir) some do menu — o áudio virou automático.
+        ("1", None),
+        ("1.", None),
+        ("1)", None),
+        ("1️⃣", None),
+        ("hear it", None),
+        ("Hear the pronunciation", None),
         ("see more examples", 2),
         ("See More Examples", 2),
         ("examples", 2),

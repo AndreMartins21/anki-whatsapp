@@ -63,7 +63,6 @@ async def test_ciclo_completo_do_stall() -> None:
         '"The talks stalled."\n'
         "\n"
         "Now, you can write one or more sentences using *stall*, or type:\n"
-        "1️⃣ Hear how it sounds 🔊\n"
         "2️⃣ See more examples\n"
         "3️⃣ Check synonyms\n"
         "4️⃣ Just save\n"
@@ -95,7 +94,6 @@ async def test_ciclo_completo_do_stall() -> None:
         "\n"
         "Want to try another sentence?\n"
         "Now, you can write one or more sentences using *stall*, or type:\n"
-        "1️⃣ Hear how it sounds 🔊\n"
         "2️⃣ See more examples\n"
         "3️⃣ See more synonyms\n"
         "4️⃣ Just save\n"
@@ -429,7 +427,6 @@ async def test_palavra_que_ja_existe_avisa_e_mostra_o_que_o_aluno_tem() -> None:
         '"The talks stalled."\n'
         "\n"
         "Now, you can write one or more sentences using *stall*, or type:\n"
-        "1️⃣ Hear how it sounds 🔊\n"
         "2️⃣ See more examples\n"
         "3️⃣ Check synonyms\n"
         "\n"

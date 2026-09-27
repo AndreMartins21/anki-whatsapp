@@ -112,23 +112,12 @@ def convite(palavra: str, grupo: str | None = None) -> str:
     return f"Now, you can write one or more sentences using *{palavra}*, or type:"
 
 
-def _opcoes_depois_do_audio(ja_viu_sinonimos: bool) -> list[str]:
-    """As opções 2 a 5 do menu; a 1 (ouvir) é a que fica de fora depois do áudio."""
-    sinonimos = "See more synonyms" if ja_viu_sinonimos else "Check synonyms"
-    return ["See more examples", sinonimos, "Just save", "Ignore this word, try another"]
-
-
 def menu_acoes(palavra: str, *, ja_viu_sinonimos: bool = False, grupo: str | None = None) -> str:
-    """`grupo` é o prefixo do grupo (M16); `None` no privado, que segue exatamente como era."""
-    opcoes = ["Hear how it sounds 🔊", *_opcoes_depois_do_audio(ja_viu_sinonimos)]
-    return convite(palavra, grupo) + "\n" + _lista_de_opcoes(opcoes, grupo)
-
-
-def menu_depois_do_audio(
-    palavra: str, *, ja_viu_sinonimos: bool = False, grupo: str | None = None
-) -> str:
-    """O menu que segue as notas de voz (M23): as opções 2 a 5, com os mesmos números."""
-    opcoes = _opcoes_depois_do_audio(ja_viu_sinonimos)
+    """O menu único de ações (M9). Desde o M25 (ADR-0026) não tem mais opção 1 (ouvir): o áudio
+    virou automático, já mandado junto da explicação — por isso o menu começa no 2, sem renumerar
+    o que o aluno já decorou (`grupo` é o prefixo do grupo, M16; `None` no privado)."""
+    sinonimos = "See more synonyms" if ja_viu_sinonimos else "Check synonyms"
+    opcoes = ["See more examples", sinonimos, "Just save", "Ignore this word, try another"]
     return convite(palavra, grupo) + "\n" + _lista_de_opcoes(opcoes, grupo, primeira=2)
 
 
@@ -173,7 +162,7 @@ def ja_existe(
 ) -> str:
     """O aluno mandou uma palavra que já está na lista: avisa, mostra o que já tem e oferece só o
     que faz sentido (frase, exemplos, sinônimos) — salvar já não se aplica, e 0/skip abre caminho
-    para outra palavra sem passar pela IA."""
+    para outra palavra sem passar pela IA. O áudio (M25) já vai junto, automático, sem opção."""
     p = grupo or ""
     linhas = [
         f"📌 You already have *{palavra}* in your list.",
@@ -184,13 +173,13 @@ def ja_existe(
     ]
     if exemplo:
         linhas.append(f'"{sem_marcas(exemplo)}"')
-    opcoes = ["Hear how it sounds 🔊", "See more examples", "Check synonyms"]
+    opcoes = ["See more examples", "Check synonyms"]
     return (
         "\n".join(linhas)
         + "\n\n"
         + convite(palavra, grupo)
         + "\n"
-        + _lista_de_opcoes(opcoes, grupo)
+        + _lista_de_opcoes(opcoes, grupo, primeira=2)
         + f"\n\nTo send another word or command, type {p}0 or {p}skip."
     )
 
@@ -796,8 +785,8 @@ def ajuda_do_grupo(p: str = "!") -> str:
         f"{p}review — start a review round right now\n"
         f"{p}reminder 3 9h-22h — daily practice reminders (or {p}reminder off)\n"
         f"{p}group — the class, its words and reminders\n\n"
-        f"While practicing, pick an option with {p}1, {p}2 or {p}3, and start a sentence with {p} "
-        "to try it."
+        f"While practicing, pick an option with {p}2, {p}3, {p}4 or {p}5, and start a sentence "
+        f"with {p} to try it."
     )
 
 

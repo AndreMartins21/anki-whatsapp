@@ -102,7 +102,7 @@ async def test_add_traz_o_card_com_o_menu_no_prefixo_do_grupo() -> None:
     (card,) = await m.diz_no_grupo(ANA, "!add stall | the talks stalled")
 
     assert "*stall*" in card
-    assert "!1 — Hear how it sounds" in card and "!2 — See more examples" in card
+    assert "!2 — See more examples" in card and "!3 — Check synonyms" in card
     assert "!4 — Just save" in card
     assert "start it with !" in card
     assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.AWAIT_ACTION
@@ -117,7 +117,7 @@ async def test_add_de_palavra_que_ja_existe_avisa_com_o_prefixo_e_0_libera() -> 
     (aviso,) = await m.diz_no_grupo(BIA, "!add stall")
 
     assert aviso.startswith("📌 You already have *stall* in your list.")
-    assert "!1 — Hear how it sounds" in aviso and "!3 — Check synonyms" in aviso
+    assert "!2 — See more examples" in aviso and "!3 — Check synonyms" in aviso
     assert "!4" not in aviso
     assert "type !0 or !skip" in aviso
     assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.AWAIT_ACTION

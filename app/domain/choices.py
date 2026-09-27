@@ -13,8 +13,8 @@ from collections.abc import Mapping
 Menu = Mapping[int, tuple[str, ...]]
 
 MENU_ACOES: Menu = {
-    # Só frases inteiras: "listen" ou "hear" sozinhas podem ser a palavra que o aluno quer aprender.
-    1: ("hear it", "hear how it sounds", "hear the pronunciation", "hear pronunciation"),
+    # M25 (ADR-0026): a opção 1 (ouvir) some daqui — o áudio virou automático, não é mais escolha
+    # do menu. Os números 2-5 ficam como sempre foram, para não mudar o que o aluno já decorou.
     2: ("see more examples", "examples", "more examples", "more"),
     3: (
         "check synonyms",

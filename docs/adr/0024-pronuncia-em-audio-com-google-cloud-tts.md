@@ -2,6 +2,9 @@
 
 - **Status:** Aceito
 - **Data:** 2026-09-26
+- **Nota (ADR-0026):** o "sob demanda, nunca automático" da opção 1 foi revertido — o áudio virou
+  automático ao explicar a palavra, e a opção 1 saiu do menu (2-5 continuam com os mesmos números).
+  O resto desta ADR (Sintetizador, cache por hash, envio) continua valendo.
 
 ## Contexto
 
