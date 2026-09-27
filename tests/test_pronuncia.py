@@ -1,5 +1,6 @@
-"""Pronúncia em áudio (M23, ADR-0024): opção 1 do menu e /listen mandam duas notas de voz —
-o termo e a frase de exemplo —, sempre sob demanda, com o áudio vindo do cache depois da 1ª vez."""
+"""Pronúncia em áudio (M23/M25, ADR-0024/ADR-0026): duas notas de voz — o termo e a frase de
+exemplo —, automáticas desde o M25 (logo depois de explicar a palavra) e sob demanda no /listen,
+com o áudio vindo do cache depois da 1ª vez."""
 
 from __future__ import annotations
 
@@ -11,13 +12,7 @@ from app.services.storage import CacheAudioEmMemoria
 from tests.helpers import CHAT, GRUPO, T0, Montagem, expansoes, explicacao_stall, montar
 
 VOZ = "en-US-Neural2-F"
-MENU_SEM_AUDIO = (
-    "Now, you can write one or more sentences using *stall*, or type:\n"
-    "2️⃣ See more examples\n"
-    "3️⃣ Check synonyms\n"
-    "4️⃣ Just save\n"
-    "5️⃣ Ignore this word, try another"
-)
+ERRO = "🔊 I couldn't make the audio right now. Try again in a bit?"
 
 
 def _com_audio(
@@ -32,45 +27,41 @@ def _com_audio(
     return m, sintetizador, cache
 
 
-async def test_opcao_1_manda_o_termo_e_a_frase_de_exemplo_em_duas_notas_de_voz() -> None:
+# ---- automático, ao explicar a palavra (M25) -------------------------------------------------
+
+
+async def test_a_palavra_nova_manda_o_termo_e_a_frase_de_exemplo_automaticamente() -> None:
     m, sintetizador, _ = _com_audio()
-    await m.diz("stall | the talks stalled")
 
-    textos = await m.diz("1")
+    (card,) = await m.diz("stall | the talks stalled")
 
-    assert textos == [MENU_SEM_AUDIO]
+    assert "*stall*" in card
     assert m.channel.vozes_enviadas == [(CHAT, b"ogg:stall"), (CHAT, b"ogg:The talks stalled.")]
     assert sintetizador.chamadas == [("stall", VOZ), ("The talks stalled.", VOZ)]
 
 
-async def test_depois_das_duas_vozes_vem_o_menu_sem_a_opcao_do_audio() -> None:
+async def test_o_menu_nao_tem_mais_opcao_de_ouvir() -> None:
     m, _, _ = _com_audio()
-    await m.diz("stall | the talks stalled")
-    m.channel.ordem.clear()
 
-    await m.diz("1")
+    (card,) = await m.diz("stall | the talks stalled")
+
+    assert "1️⃣" not in card and "Hear" not in card
+    assert "2️⃣ See more examples" in card and "5️⃣ Ignore this word, try another" in card
+
+
+async def test_a_ordem_e_o_texto_antes_das_duas_vozes() -> None:
+    m, _, _ = _com_audio()
+
+    await m.diz("stall | the talks stalled")
 
     # 3 mensagens: cabe no limite de 3 seguidas sem resposta (seção 5.6)
-    assert m.channel.ordem == ["voz", "voz", "texto"]
-    (texto,) = [t for _, t in m.channel.textos_enviados[-1:]]
-    assert "1️⃣" not in texto and "Hear" not in texto
+    assert m.channel.ordem == ["texto", "voz", "voz"]
 
 
-async def test_o_menu_depois_do_audio_troca_o_rotulo_dos_sinonimos_ja_vistos() -> None:
+async def test_a_conversa_continua_na_mesma_palavra_depois_do_audio_automatico() -> None:
     m, _, _ = _com_audio()
+
     await m.diz("stall | the talks stalled")
-    m.repo.salvar_sessao(m.repo.obter_sessao().model_copy(update={"sinonimos_mostrados": ["x"]}))
-
-    (menu,) = await m.diz("1")
-
-    assert "3️⃣ See more synonyms" in menu and "Check synonyms" not in menu
-
-
-async def test_a_conversa_continua_na_mesma_palavra_depois_do_audio() -> None:
-    m, _, _ = _com_audio()
-    await m.diz("stall | the talks stalled")
-
-    await m.diz("1")
 
     sessao = m.repo.obter_sessao()
     assert sessao.estado == Estado.AWAIT_ACTION and sessao.entry_id == "stall"
@@ -78,22 +69,10 @@ async def test_a_conversa_continua_na_mesma_palavra_depois_do_audio() -> None:
     assert fim.startswith("✅")  # "Just save" segue funcionando
 
 
-async def test_pedir_de_novo_vem_do_cache_sem_sintetizar() -> None:
-    m, sintetizador, _ = _com_audio()
-    await m.diz("stall | the talks stalled")
-    await m.diz("1")
-
-    await m.diz("1")
-
-    assert len(sintetizador.chamadas) == 2  # só a 1ª vez sintetizou
-    assert len(m.channel.vozes_enviadas) == 4
-
-
 async def test_o_link_dos_audios_fica_na_entrada() -> None:
     m, _, cache = _com_audio()
-    await m.diz("stall | the talks stalled")
 
-    await m.diz("1")
+    await m.diz("stall | the talks stalled")
 
     entrada = m.repo.obter_entrada("stall")
     assert entrada is not None
@@ -104,67 +83,62 @@ async def test_o_link_dos_audios_fica_na_entrada() -> None:
 
 async def test_falha_do_tts_avisa_sem_derrubar_a_conversa() -> None:
     m, _, _ = _com_audio(sintetizador=FakeSintetizador(falha=True))
-    await m.diz("stall | the talks stalled")
 
-    textos = await m.diz("1")
+    textos = await m.diz("stall | the talks stalled")
 
-    assert textos == ["🔊 I couldn't make the audio right now. Try again in a bit?"]  # sem menu
+    assert textos[-1] == ERRO
     assert m.channel.vozes_enviadas == []
     assert m.repo.obter_sessao().estado == Estado.AWAIT_ACTION
 
 
 async def test_falha_ao_enviar_a_voz_avisa_sem_derrubar_a_conversa() -> None:
     m, _, _ = _com_audio()
-    await m.diz("stall | the talks stalled")
     m.channel.falha_na_voz = True
 
-    textos = await m.diz("1")
+    textos = await m.diz("stall | the talks stalled")
 
-    assert textos[-1] == "🔊 I couldn't make the audio right now. Try again in a bit?"
+    assert textos[-1] == ERRO
     assert m.repo.obter_sessao().estado == Estado.AWAIT_ACTION
 
 
-async def test_sem_servico_de_audio_a_opcao_1_avisa() -> None:
-    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall()]))
-    await m.diz("stall | the talks stalled")
+async def test_sem_servico_de_audio_fica_em_silencio() -> None:
+    """M25: automático não avisa se o áudio não está configurado neste ambiente — ninguém pediu
+    áudio explicitamente, e a explicação já dita basta (diferente do /listen, que avisa)."""
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall()], expansoes=[expansoes()]))
 
-    textos = await m.diz("1")
+    (resposta,) = await m.diz("stall | the talks stalled")
 
-    assert textos == ["🔊 I couldn't make the audio right now. Try again in a bit?"]
+    assert ERRO not in resposta
+    assert m.channel.vozes_enviadas == []
 
 
-async def test_no_grupo_a_opcao_1_e_com_o_prefixo() -> None:
+async def test_no_grupo_o_audio_tambem_e_automatico() -> None:
     from tests.helpers import ANA
 
     m, _, _ = _com_audio()
-    await m.diz_no_grupo(ANA, "!add stall | the talks stalled")
 
-    textos = await m.diz_no_grupo(ANA, "!1")
+    (card,) = await m.diz_no_grupo(ANA, "!add stall | the talks stalled")
 
-    assert textos == [
-        "Now, write a sentence using *stall* (start it with !), or type:\n"
-        "2️⃣ !2 — See more examples\n"
-        "3️⃣ !3 — Check synonyms\n"
-        "4️⃣ !4 — Just save\n"
-        "5️⃣ !5 — Ignore this word, try another"
-    ]
+    assert "1️⃣" not in card and "2️⃣ !2 — See more examples" in card
     assert [c for c, _ in m.channel.vozes_enviadas] == [GRUPO, GRUPO]
 
 
-# ---- /listen ----------------------------------------------------------------------------------
+# ---- /listen: sob demanda, como sempre ---------------------------------------------------------
 
 
 async def test_listen_toca_uma_palavra_ja_salva() -> None:
     m, sintetizador, _ = _com_audio()
     await m.diz("stall | the talks stalled")
     await m.diz("4")  # salva e fecha o card
+    sintetizador.chamadas.clear()
 
     textos = await m.diz("/listen stall")
 
-    # /listen não abre a palavra: só o texto e as duas vozes, sem menu
+    # /listen não abre a palavra: só o texto e as duas vozes, sem menu; vem do cache (M25 já
+    # sintetizou ao explicar), então nenhuma chamada nova ao TTS.
     assert textos == ['🔊 *stall*\n"The talks stalled."']
-    assert len(m.channel.vozes_enviadas) == 2
-    assert len(sintetizador.chamadas) == 2
+    assert len(m.channel.vozes_enviadas) == 4  # 2 do áudio automático + 2 do /listen
+    assert sintetizador.chamadas == []
 
 
 async def test_listen_aceita_o_numero_da_lista() -> None:
@@ -174,7 +148,7 @@ async def test_listen_aceita_o_numero_da_lista() -> None:
 
     await m.diz("/listen 1")
 
-    assert m.channel.vozes_enviadas[0] == (CHAT, b"ogg:stall")
+    assert m.channel.vozes_enviadas[-2] == (CHAT, b"ogg:stall")
 
 
 async def test_listen_sem_palavra_explica_o_uso() -> None:
@@ -192,6 +166,15 @@ async def test_listen_de_palavra_que_nao_existe() -> None:
     (texto,) = await m.diz("/listen zebra")
 
     assert texto.startswith('I couldn\'t find "zebra"')
+
+
+async def test_sem_servico_de_audio_o_listen_avisa() -> None:
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall()]))
+    await m.diz("stall | the talks stalled")
+
+    (texto,) = await m.diz("/listen stall")
+
+    assert texto == ERRO
 
 
 async def test_entrada_sem_frase_do_bot_manda_so_o_termo() -> None:

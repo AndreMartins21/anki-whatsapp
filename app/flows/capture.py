@@ -1,7 +1,8 @@
 """Captura: o aluno manda uma palavra, o bot explica e já mostra o card com o menu único (M9).
 
 Desde o M9 a IA sempre escolhe um sentido (`sentido_do_contexto` nunca fica `null`), então não há
-mais uma pergunta separada de "qual sentido" — o card já sai pronto numa mensagem só.
+mais uma pergunta separada de "qual sentido" — o card já sai pronto numa mensagem só. Desde o M25
+(ADR-0026) a pronúncia em áudio vai junto, automática, sem precisar de opção no menu.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from app.domain.models import (
     Sessao,
     slugify,
 )
+from app.flows import pronuncia
 from app.flows.base import Deps, bloq
 from app.repo.base import EntradaJaExiste, resolver_slug
 
@@ -68,6 +70,7 @@ async def _comecar_pratica(
             grupo=d.grupo_prefixo,
         )
     )
+    await pronuncia.ouvir(d, entrada, anunciar=False)  # M25: áudio automático, sem opção no menu
     return d.sessao_vazia().model_copy(
         update={
             "estado": Estado.AWAIT_ACTION,
@@ -93,6 +96,7 @@ async def _avisar_que_ja_existe(d: Deps, entrada: Entry, sentido: Sense) -> Sess
             grupo=d.grupo_prefixo,
         )
     )
+    await pronuncia.ouvir(d, entrada, anunciar=False)  # M25: áudio automático, sem opção no menu
     return d.sessao_vazia().model_copy(
         update={
             "estado": Estado.AWAIT_ACTION,

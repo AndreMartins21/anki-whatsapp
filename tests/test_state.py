@@ -19,9 +19,9 @@ TRANSICOES = [
         "stall | the talks stalled",
         Transicao(Estado.AWAIT_ACTION, Acao.EXPLICAR, "stall | the talks stalled"),
     ),
-    # AWAIT_ACTION: o menu único.
-    (Estado.AWAIT_ACTION, "1", Transicao(Estado.AWAIT_ACTION, Acao.OUVIR)),
-    (Estado.AWAIT_ACTION, "hear it", Transicao(Estado.AWAIT_ACTION, Acao.OUVIR)),
+    # AWAIT_ACTION: o menu único, sem opção 1 (M25: o áudio virou automático, não é mais escolha).
+    (Estado.AWAIT_ACTION, "1", Transicao(Estado.AWAIT_ACTION, Acao.ROTEAR, "1")),
+    (Estado.AWAIT_ACTION, "hear it", Transicao(Estado.AWAIT_ACTION, Acao.ROTEAR, "hear it")),
     (Estado.AWAIT_ACTION, "2", Transicao(Estado.AWAIT_ACTION, Acao.GERAR_EXEMPLOS)),
     (Estado.AWAIT_ACTION, "see more examples", Transicao(Estado.AWAIT_ACTION, Acao.GERAR_EXEMPLOS)),
     (Estado.AWAIT_ACTION, "3", Transicao(Estado.AWAIT_ACTION, Acao.GERAR_SINONIMOS)),

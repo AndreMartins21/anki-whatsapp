@@ -35,6 +35,7 @@ operacional: numeração, status e o índice.
 | [0023](0023-identidade-da-palavra-nao-depende-do-texto-da-traducao.md) | A identidade da palavra não depende do texto da tradução que a IA devolve | Aceito | 2026-09-25 |
 | [0024](0024-pronuncia-em-audio-com-google-cloud-tts.md) | Pronúncia em áudio sob demanda, com Google Cloud TTS e cache permanente no GCS | Aceito | 2026-09-26 |
 | [0025](0025-lembretes-ligados-por-padrao-e-fila-de-revisao-configuravel.md) | Lembretes ligados por padrão (1x às 12h, só perfil novo) e tamanho da fila de revisão configurável | Aceito | 2026-09-27 |
+| [0026](0026-pronuncia-automatica-substitui-a-opcao-de-ouvir.md) | Pronúncia automática ao explicar a palavra, substituindo a opção de ouvir no menu | Aceito | 2026-09-27 |
 
 ## Quando escrever um
 
