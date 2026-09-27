@@ -369,7 +369,8 @@ julgamento da IA sobre a resposta em texto livre do aluno, não de 4 botões.
 **Configuração:** `/reminders` mostra o estado; `/reminders N` liga N vezes por dia na janela
 padrão (9h–21h); `/reminders N INICIOh-FIMh` usa uma janela própria (N de 1 a 8, `0 <= início <
 fim <= 23`); `/reminders off` desliga. `/reminders` aceita um último parâmetro opcional, o tamanho
-da fila de revisão (ver abaixo) — omitido, vira 7. **Ligado por padrão (M24, ADR-0025): 1x por dia,
+da fila de revisão (ver abaixo) — **omitido, não mexe no que já estava configurado** (nunca reseta
+um `/reviewsize` anterior sem a pessoa pedir). **Ligado por padrão (M24, ADR-0025): 1x por dia,
 às 12h** — só para perfil novo; quem já tinha conta antes do M24 não muda sozinho. Quando os
 lembretes estão desligados, a primeira palavra salva mostra uma dica de uma linha sobre o comando,
 uma única vez. Os horários se distribuem igualmente dentro da janela
@@ -377,7 +378,8 @@ uma única vez. Os horários se distribuem igualmente dentro da janela
 
 **Tamanho da fila (M24):** por padrão, dinâmico — `MIN(palavras do aluno, 7)`. `/reviewsize N` fixa
 um valor (1 a 20); `/reviewsize auto` volta ao dinâmico; `/reviewsize` sozinho mostra o atual. O
-último parâmetro de `/reminders` faz a mesma coisa, para configurar tudo de uma vez. Um valor fixo
+último parâmetro de `/reminders`, **quando dado**, faz a mesma coisa, para configurar tudo de uma
+vez; omitido, o `/reminders` mexe só nos lembretes, sem tocar no tamanho da fila. Um valor fixo
 vale tanto no privado quanto no grupo (que por padrão usa `LIMITE_POR_SESSAO_GRUPO`, 5). `/profile`
 mostra o tamanho efetivo da sessão.
 

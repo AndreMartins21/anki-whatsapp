@@ -77,12 +77,14 @@ def proximo_a_exibir(perfil: Profile, agora: datetime, fuso: ZoneInfo) -> dateti
     )
 
 
-def parse_lembretes(argumento: str) -> tuple[int, int, int, int] | None:
-    """`"3"` -> `(3, 9, 21, 7)` (janela e tamanho da fila padrão); `"3 9h-22h"` -> `(3, 9, 22, 7)`;
-    `"3 9h-22h 10"` -> `(3, 9, 22, 10)`; `"3 10"` -> `(3, 9, 21, 10)` (tamanho sem mudar a janela).
-    `None` se o formato, a quantidade (1-8), a janela (`0 <= inicio < fim <= 23`) ou o tamanho da
-    fila (1-20) forem inválidos."""
+def parse_lembretes(argumento: str) -> tuple[int, int, int, int | None] | None:
+    """`"3"` -> `(3, 9, 21, None)` (janela padrão; `None` no tamanho = não veio no comando, quem
+    chama não mexe no que já estava); `"3 9h-22h"` -> `(3, 9, 22, None)`; `"3 9h-22h 10"` ->
+    `(3, 9, 22, 10)`; `"3 10"` -> `(3, 9, 21, 10)` (tamanho sem mudar a janela). `None` geral
+    (não a tupla) se o formato, a quantidade (1-8), a janela (`0 <= inicio < fim <= 23`) ou o
+    tamanho da fila (1-20, quando veio) forem inválidos."""
     texto = argumento.strip().lower()
+    tamanho: int | None
     casamento_completo = _QUANTIDADE_JANELA_E_TAMANHO.match(texto)
     if casamento_completo:
         quantidade = int(casamento_completo[1])
@@ -95,7 +97,7 @@ def parse_lembretes(argumento: str) -> tuple[int, int, int, int] | None:
             quantidade = int(casamento_com_janela[1])
             inicio = int(casamento_com_janela[2])
             fim = int(casamento_com_janela[3])
-            tamanho = TAMANHO_REVISAO_PADRAO
+            tamanho = None
         else:
             casamento_com_tamanho = _QUANTIDADE_E_TAMANHO.match(texto)
             if casamento_com_tamanho:
@@ -108,13 +110,13 @@ def parse_lembretes(argumento: str) -> tuple[int, int, int, int] | None:
                     return None
                 quantidade = int(casamento_simples[1])
                 inicio, fim = JANELA_PADRAO_INICIO, JANELA_PADRAO_FIM
-                tamanho = TAMANHO_REVISAO_PADRAO
+                tamanho = None
 
     if not (MIN_LEMBRETES <= quantidade <= MAX_LEMBRETES):
         return None
     if not (0 <= inicio < fim <= 23):
         return None
-    if not (MIN_TAMANHO_REVISAO <= tamanho <= MAX_TAMANHO_REVISAO):
+    if tamanho is not None and not (MIN_TAMANHO_REVISAO <= tamanho <= MAX_TAMANHO_REVISAO):
         return None
     return quantidade, inicio, fim, tamanho
 
