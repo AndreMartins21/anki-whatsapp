@@ -334,21 +334,25 @@ async def test_reminder_configura_os_lembretes_do_grupo() -> None:
 async def test_reminder_sem_argumento_off_alias_e_invalido_citam_o_prefixo_do_grupo() -> None:
     m = _grupo()
 
-    atual = (await m.diz_no_grupo(ANA, "!reminder"))[0]
+    atual = (await m.diz_no_grupo(ANA, "!reminder"))[0]  # M24: ligado por padrão, 1x às 12h
     invalido = (await m.diz_no_grupo(ANA, "!reminders blah"))[0]
     await m.diz_no_grupo(ANA, "!reminders 2")
     desligado = (await m.diz_no_grupo(ANA, "!reminder off"))[0]
+    off_de_novo = (await m.diz_no_grupo(ANA, "!reminder"))[0]
 
-    assert "!reminder 3" in atual
+    assert "once a day, between 12h and 21h" in atual
+    assert "!reminder N" in atual
     assert "!reminder 3 9h-22h" in invalido
     assert "off" in desligado
-    _sem_comandos_do_privado([atual, invalido, desligado])
+    assert "!reminder 3" in off_de_novo
+    _sem_comandos_do_privado([atual, invalido, desligado, off_de_novo])
     perfil = m.banco.do_espaco(GRUPO).obter_perfil()
     assert perfil is not None and perfil.lembretes_por_dia == 0
 
 
 async def test_a_dica_de_lembretes_do_grupo_cita_o_comando_do_grupo() -> None:
     m = _grupo()
+    await m.diz_no_grupo(ANA, "!reminder off")
     await m.diz_no_grupo(ANA, "!add stall")
 
     (salvo,) = await m.diz_no_grupo(ANA, "!4")

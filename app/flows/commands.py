@@ -1,5 +1,5 @@
-"""Comandos (seção 5.2): /help /list /info /listen /pending /practice /review /song /reminders /profile
-/export /delete /level /cancel /status.
+"""Comandos (seção 5.2): /help /list /info /listen /pending /practice /review /reviewsize /song
+/reminders /profile /export /delete /level /cancel /status.
 
 Os nomes são em inglês (M12). Os apelidos em PT-BR que a spec sempre teve (`/praticar`, `/lista`,
 `/lembretes`...) continuam funcionando, mas nenhuma mensagem os divulga."""
@@ -12,7 +12,7 @@ from typing import Protocol, get_args
 
 from app import messages
 from app.domain.choices import normalizar
-from app.domain.lembretes import parse_lembretes, proximo_a_exibir
+from app.domain.lembretes import parse_lembretes, parse_tamanho_revisao, proximo_a_exibir
 from app.domain.models import Entry, Estado, NivelUsuario, Profile, Sessao, slugify
 from app.domain.srs import vencida
 from app.flows import capture, pronuncia, review, song
@@ -39,8 +39,10 @@ _OUVIR = {"listen", "ouvir"}
 _PERFIL = {"profile", "perfil"}
 _LEMBRETES = {"lembretes", "reminders"}
 _REVISAR = {"revisar", "review"}
+_TAMANHO_DE_REVISAO = {"reviewsize", "tamanhorevisao"}
 _MUSICA = {"song", "musica", "music"}
 _DESLIGAR = {"off", "desligar", "0"}
+_AUTOMATICO = {"auto", "default", "padrao"}
 
 
 class Exportador(Protocol):
@@ -104,7 +106,9 @@ async def executar(
     elif comando in _LEMBRETES:
         await lembretes(d, perfil, argumento)
     elif comando in _REVISAR:
-        return await revisar(d, sessao)
+        return await revisar(d, sessao, perfil)
+    elif comando in _TAMANHO_DE_REVISAO:
+        await tamanho_de_revisao(d, perfil, argumento)
     elif comando in _MUSICA:
         if not argumento:
             await conversa.enviar(messages.SONG_USO)
@@ -275,7 +279,8 @@ async def _status(d: Deps, status_da_sessao: StatusDaSessao | None) -> None:
 
 async def lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
     """`/reminders` mostra o estado atual; `/reminders off` desliga; `/reminders 3` ou
-    `/reminders 3 9h-22h` liga/muda (seção 5.7, M10)."""
+    `/reminders 3 9h-22h` liga/muda (seção 5.7, M10). O último parâmetro (M24), quando dado, fixa
+    o tamanho da fila de revisão; quando omitido aqui, vira 7 (`/reviewsize` muda só isso)."""
     if not argumento:
         proximo = proximo_a_exibir(perfil, d.agora(), d.fuso)
         await d.conversa.enviar(
@@ -292,12 +297,13 @@ async def lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
     if analisado is None:
         await d.conversa.enviar(messages.lembretes_invalidos(d.cmd_lembretes))
         return
-    quantidade, inicio, fim = analisado
+    quantidade, inicio, fim, tamanho_revisao = analisado
     novo = perfil.model_copy(
         update={
             "lembretes_por_dia": quantidade,
             "janela_inicio": inicio,
             "janela_fim": fim,
+            "tamanho_revisao": tamanho_revisao,
             "proximo_lembrete": None,  # o agendador recalcula no próximo tick
         }
     )
@@ -306,10 +312,30 @@ async def lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
     await d.conversa.enviar(messages.lembretes_alterados(novo, proximo, d.agora()))
 
 
-async def revisar(d: Deps, sessao: Sessao) -> Sessao:
+async def tamanho_de_revisao(d: Deps, perfil: Profile, argumento: str) -> None:
+    """`/reviewsize` mostra o tamanho atual da fila; `/reviewsize N` fixa um valor (1-20);
+    `/reviewsize auto` volta ao dinâmico (`MIN(palavras do aluno, 7)`, seção 5.7, M24)."""
+    if not argumento:
+        entradas = await bloq(d.repo.listar_entradas)
+        await d.conversa.enviar(messages.tamanho_de_revisao_atual(perfil, len(entradas)))
+        return
+    if normalizar(argumento) in _AUTOMATICO:
+        if perfil.tamanho_revisao is not None:
+            await bloq(d.repo.salvar_perfil, perfil.model_copy(update={"tamanho_revisao": None}))
+        await d.conversa.enviar(messages.tamanho_de_revisao_automatico())
+        return
+    tamanho = parse_tamanho_revisao(argumento)
+    if tamanho is None:
+        await d.conversa.enviar(messages.tamanho_de_revisao_invalido())
+        return
+    await bloq(d.repo.salvar_perfil, perfil.model_copy(update={"tamanho_revisao": tamanho}))
+    await d.conversa.enviar(messages.tamanho_de_revisao_alterado(tamanho))
+
+
+async def revisar(d: Deps, sessao: Sessao, perfil: Profile) -> Sessao:
     """`/review` começa a sessão de revisão na hora, em vez de esperar o próximo lembrete."""
     entradas = await bloq(d.repo.listar_entradas)
-    if not review.montar_fila(entradas, d.agora(), limite=review.limite(d)):
+    if not review.montar_fila(entradas, d.agora(), limite=review.limite(d, perfil, len(entradas))):
         await d.conversa.enviar(messages.SEM_NADA_PARA_REVISAR)
         return sessao
-    return await review.iniciar(d, avisar=True)
+    return await review.iniciar(d, perfil, avisar=True)

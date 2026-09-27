@@ -112,7 +112,6 @@ async def test_ciclo_completo_do_stall() -> None:
         "Practice it any time with /practice stall, or see everything with /list.\n"
         "You might like these too: *stall for time*, *stall out*, *stalled talks*.\n"
         "Send me another word or expression whenever you want."
-        "\n\n💡 Want daily practice reminders? Send /reminders 3"
     )
     assert m.repo.obter_sessao().estado == Estado.IDLE
     # Nenhuma entrada de expansão foi criada sozinha (M9: é só sugestão em texto).
@@ -120,6 +119,18 @@ async def test_ciclo_completo_do_stall() -> None:
 
     chamadas = dict(m.tutor.chamadas)
     assert chamadas["explain"] == ("stall | the talks stalled", "B1-B2")
+
+
+async def test_dica_de_lembretes_so_aparece_com_lembretes_desligados() -> None:
+    """M24: os lembretes agora vêm ligados por padrão, então a dica de uma linha só faz sentido
+    para quem desligou antes de salvar a primeira palavra."""
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall()], expansoes=[expansoes()]))
+    await m.diz("stall")
+    await m.diz("/reminders off")
+
+    (salvo,) = await m.diz("4")
+
+    assert "Want daily practice reminders? Send /reminders 3" in salvo
 
 
 async def test_frase_logo_apos_o_card_e_roteada_sem_passar_pelo_menu() -> None:

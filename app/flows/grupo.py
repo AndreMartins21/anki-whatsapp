@@ -96,7 +96,7 @@ async def _executar(
     elif comando == "practice":
         return await commands.praticar(d, sessao, perfil, argumento)
     elif comando == "review":
-        return await commands.revisar(d, sessao)
+        return await commands.revisar(d, sessao, perfil)
     elif comando in {"reminder", "reminders"}:
         await commands.lembretes(d, perfil, argumento)
     elif comando == "group":

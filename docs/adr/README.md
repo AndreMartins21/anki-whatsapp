@@ -34,6 +34,7 @@ operacional: numeração, status e o índice.
 | [0022](0022-retentativa-do-gemini-e-erro-de-provedor-como-llmerror.md) | Retentativa do Gemini no próprio SDK e erro do provedor tratado como `LLMError` | Aceito | 2026-09-25 |
 | [0023](0023-identidade-da-palavra-nao-depende-do-texto-da-traducao.md) | A identidade da palavra não depende do texto da tradução que a IA devolve | Aceito | 2026-09-25 |
 | [0024](0024-pronuncia-em-audio-com-google-cloud-tts.md) | Pronúncia em áudio sob demanda, com Google Cloud TTS e cache permanente no GCS | Aceito | 2026-09-26 |
+| [0025](0025-lembretes-ligados-por-padrao-e-fila-de-revisao-configuravel.md) | Lembretes ligados por padrão (1x às 12h, só perfil novo) e tamanho da fila de revisão configurável | Aceito | 2026-09-27 |
 
 ## Quando escrever um
 

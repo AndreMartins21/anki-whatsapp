@@ -375,12 +375,12 @@ async def test_exportar_sem_exportador_configurado() -> None:
 # ---- /lembretes (M10) --------------------------------------------------------------------------
 
 
-async def test_lembretes_desligados_por_padrao() -> None:
+async def test_lembretes_ligados_por_padrao() -> None:
     m = montar()
 
     (resposta,) = await m.diz("/lembretes")
 
-    assert "off" in resposta.lower()
+    assert "once a day" in resposta and "12h" in resposta
 
 
 async def test_lembretes_liga_com_a_janela_padrao() -> None:
@@ -426,7 +426,7 @@ async def test_lembretes_argumento_invalido() -> None:
     assert "couldn't understand" in resposta
     perfil = m.repo.obter_perfil()
     assert perfil is not None
-    assert perfil.lembretes_por_dia == 0
+    assert perfil.lembretes_por_dia == 1  # o padrão (M24) não muda com um argumento inválido
 
 
 async def test_lembretes_atuais_mostra_o_que_esta_configurado() -> None:
@@ -437,6 +437,52 @@ async def test_lembretes_atuais_mostra_o_que_esta_configurado() -> None:
 
     assert "3x a day" in resposta
     assert "9h" in resposta and "22h" in resposta
+
+
+# ---- /reviewsize (M24) --------------------------------------------------------------------------
+
+
+async def test_reviewsize_mostra_o_padrao_dinamico_sem_argumento() -> None:
+    m = montar()
+
+    (resposta,) = await m.diz("/reviewsize")
+
+    assert "automatic" in resposta.lower()
+    assert "/reviewsize N" in resposta
+
+
+async def test_reviewsize_fixa_um_valor() -> None:
+    m = montar()
+
+    (resposta,) = await m.diz("/reviewsize 10")
+
+    assert "up to 10 words" in resposta
+    perfil = m.repo.obter_perfil()
+    assert perfil is not None
+    assert perfil.tamanho_revisao == 10
+
+
+async def test_reviewsize_auto_reseta_para_dinamico() -> None:
+    m = montar()
+    await m.diz("/reviewsize 10")
+
+    (resposta,) = await m.diz("/reviewsize auto")
+
+    assert "automatic" in resposta.lower()
+    perfil = m.repo.obter_perfil()
+    assert perfil is not None
+    assert perfil.tamanho_revisao is None
+
+
+async def test_reviewsize_argumento_invalido() -> None:
+    m = montar()
+
+    (resposta,) = await m.diz("/reviewsize 21")
+
+    assert "couldn't understand" in resposta
+    perfil = m.repo.obter_perfil()
+    assert perfil is not None
+    assert perfil.tamanho_revisao is None
 
 
 # ---- /list paginado, /info e /profile (M12) --------------------------------------------------
@@ -583,6 +629,7 @@ async def test_practice_e_delete_aceitam_o_numero_da_lista() -> None:
 
 async def test_profile_com_lembretes_desligados() -> None:
     m = await _stall_e_hedge()
+    await m.diz("/reminders off")
 
     (resposta,) = await m.diz("/profile")
 
@@ -590,6 +637,14 @@ async def test_profile_com_lembretes_desligados() -> None:
     assert "Words: 2 (1 practiced, 1 pending)" in resposta
     assert "Due for review: 2" in resposta
     assert "Reminders: off — turn them on with /reminders 3" in resposta
+
+
+async def test_profile_com_lembretes_ligados_por_padrao() -> None:
+    m = montar()
+
+    (resposta,) = await m.diz("/profile")
+
+    assert "Reminders: every day, once between 12h and 21h" in resposta
 
 
 async def test_profile_com_lembretes_ligados_mostra_todo_dia() -> None:
@@ -657,6 +712,7 @@ async def test_proximo_lembrete_usa_o_horario_ja_agendado() -> None:
 
 async def test_profile_sem_lembretes_nao_mostra_proximo() -> None:
     m = montar()
+    await m.diz("/reminders off")
 
     (resposta,) = await m.diz("/profile")
 

@@ -76,7 +76,7 @@ A VM tem só 1 GB de RAM. Crie um **swap de 2 GB**, limite a memória dos contai
 | `OWNER_NUMBER` | `.env.infra` (opcional) | O dono do bot; padrão o primeiro número da lista (o `ALLOWED_NUMBER`, se definido) |
 | `MAX_GROUPS` | `.env.infra` (opcional) | Padrão `10`: teto de grupos ativados por admin (M15, ADR-0018); os de `ALLOWED_GROUPS` não contam |
 | `GROUP_PREFIX` | `.env.infra` (opcional) | Padrão `!`: em grupo o bot só lê mensagens que começam com isto (M16, ADR-0019); 1 ou 2 símbolos, sem letras, números nem a barra |
-| `LIMITE_POR_SESSAO_GRUPO` | `.env.infra` (opcional) | Padrão `5`: palavras por rodada de revisão em grupo (M17, ADR-0020); no privado são 20 |
+| `LIMITE_POR_SESSAO_GRUPO` | `.env.infra` (opcional) | Padrão `5`: palavras por rodada de revisão em grupo (M17, ADR-0020); no privado é dinâmico, `MIN(palavras do aluno, 7)` (M24), a menos que `/reviewsize`/`/reminders` fixe outro valor |
 | `TIMEOUT_MARCACAO_HORAS` | `.env.infra` (opcional) | Padrão `3`: quanto esperar a pessoa marcada numa revisão em grupo antes de passar o card ao próximo aluno |
 | `CONTACT_EMAIL` | `.env.infra` (opcional) | E-mail que o aviso "você não tem um plano" mostra a quem não está na lista (M15) |
 | `BOT_NUMBER` | `.env.infra` | Número Vivo do bot, só dígitos (informativo/logs) |
@@ -163,7 +163,8 @@ Regras:
 ### 5.2 Comandos
 
 `/help`, `/list [página]`, `/info N|palavra`, `/pending`, `/practice [N|palavra]`, `/review`,
-`/listen N|palavra`, `/song nome [- artista]`, `/reminders [N [INICIOh-FIMh] | off]`, `/profile`, `/export`, `/delete N|palavra`,
+`/reviewsize [N|auto]`, `/listen N|palavra`, `/song nome [- artista]`,
+`/reminders [N [INICIOh-FIMh] [TAMANHO] | off]`, `/profile`, `/export`, `/delete N|palavra`,
 `/level A2-B1|B1-B2|B2-C1`, `/cancel`, `/status`. Todos os nomes são em inglês (M12, ADR-0014). Os
 apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/praticar`,
 `/exportar [tudo]`, `/apagar`, `/nivel`, `/cancelar`, `/reminders`, `/review`, `/perfil`, `/musica`)
@@ -183,7 +184,7 @@ apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/pr
   é aceito e faz o mesmo. Sem nenhuma palavra, o bot avisa que não há o que exportar.
 - `/practice` sem argumento pega a pendente mais antiga.
 - `/level` aceita A2-B1, B1-B2 e B2-C1.
-- `/reminders` e `/review`: ver seção 5.7.
+- `/reminders`, `/review` e `/reviewsize`: ver seção 5.7.
 - `/song`: ver seção 5.8. Sem argumento, mostra como usar.
 - `/profile` mostra o nível, o total de palavras (praticadas e pendentes), quantas estão vencidas
   para revisão e os lembretes (`every day, 3x between 9h and 21h` ou `off`) e, com os lembretes ligados, **quando o
@@ -355,17 +356,26 @@ Send me another word or expression whenever you want.
   bot **sai dele depois de 24 h**, sem mandar mensagem. Configure no celular do bot: Privacidade →
   Grupos → "Meus contatos".
 
-### 5.7 Revisão espaçada e lembretes (M10, ADR-0011, ADR-0012)
+### 5.7 Revisão espaçada e lembretes (M10, ADR-0011, ADR-0012, ADR-0025)
 
-O bot também **inicia** conversas: no horário combinado, escolhe até 20 palavras vencidas e faz
-uma sessão de revisão. Espaçamento estilo Anki (SM-2 simplificado, `app/domain/srs.py`), mas a
-nota vem do julgamento da IA sobre a resposta em texto livre do aluno, não de 4 botões.
+O bot também **inicia** conversas: no horário combinado, faz uma sessão de revisão com as palavras
+vencidas. Espaçamento estilo Anki (SM-2 simplificado, `app/domain/srs.py`), mas a nota vem do
+julgamento da IA sobre a resposta em texto livre do aluno, não de 4 botões.
 
 **Configuração:** `/reminders` mostra o estado; `/reminders N` liga N vezes por dia na janela
 padrão (9h–21h); `/reminders N INICIOh-FIMh` usa uma janela própria (N de 1 a 8, `0 <= início <
-fim <= 23`); `/reminders off` desliga. Desligado por padrão; a primeira palavra salva mostra uma
-dica de uma linha sobre o comando, uma única vez. Os horários se distribuem igualmente dentro da
-janela (`app/domain/lembretes.py:horarios_do_dia`).
+fim <= 23`); `/reminders off` desliga. `/reminders` aceita um último parâmetro opcional, o tamanho
+da fila de revisão (ver abaixo) — omitido, vira 7. **Ligado por padrão (M24, ADR-0025): 1x por dia,
+às 12h** — só para perfil novo; quem já tinha conta antes do M24 não muda sozinho. Quando os
+lembretes estão desligados, a primeira palavra salva mostra uma dica de uma linha sobre o comando,
+uma única vez. Os horários se distribuem igualmente dentro da janela
+(`app/domain/lembretes.py:horarios_do_dia`).
+
+**Tamanho da fila (M24):** por padrão, dinâmico — `MIN(palavras do aluno, 7)`. `/reviewsize N` fixa
+um valor (1 a 20); `/reviewsize auto` volta ao dinâmico; `/reviewsize` sozinho mostra o atual. O
+último parâmetro de `/reminders` faz a mesma coisa, para configurar tudo de uma vez. Um valor fixo
+vale tanto no privado quanto no grupo (que por padrão usa `LIMITE_POR_SESSAO_GRUPO`, 5). `/profile`
+mostra o tamanho efetivo da sessão.
 
 **Máquina de estados:** um novo estado, `REVIEWING`. Durante ele, qualquer texto que não seja
 "sair" (`0`, `stop`, `quit`, `exit`, `leave`) é a resposta à palavra atual — sem roteamento por IA
@@ -377,6 +387,7 @@ sessão com o resumo, como `0` faria.
 
 🔁 1/12 · *stall*
 Explain it in English in your own words, or write a sentence using it.
+
 _Type 0 to leave the practice._
 ```
 Cada turno seguinte é **uma mensagem só**, com o feedback da resposta anterior e o próximo card
@@ -387,6 +398,7 @@ juntos (respeita o limite de 3 mensagens seguidas, seção 5.6):
 
 🔁 2/12 · *deadline*
 Explain it in English in your own words, or write a sentence using it.
+
 _Type 0 to leave the practice._
 ```
 Ao acabar a fila, digitar `0` ou `/cancelar`:
@@ -398,8 +410,9 @@ Send me a new word or expression whenever you want.
 ```
 
 **Fila de uma sessão** (`app/flows/review.py:montar_fila`): as vencidas primeiro (mais antiga
-primeiro; `proxima_revisao=None` = cartão novo, vencido desde já), completando até 20 com as que
-vencem mais cedo entre as que ainda não venceram. Sem nada vencido, o agendador fica em silêncio —
+primeiro; `proxima_revisao=None` = cartão novo, vencido desde já), completando até o tamanho da
+fila (`app/flows/review.py:limite`, M24: ver seção 5.7 acima) com as que vencem mais cedo entre as
+que ainda não venceram. Sem nada vencido, o agendador fica em silêncio —
 nunca manda "nada para revisar" sem o aluno pedir (só `/review`, chamado explicitamente, avisa).
 Uma resposta `de_novo` volta a palavra para o **fim da fila desta sessão** (como no Anki) e conta
 um lapso; as demais notas (`dificil`/`bom`/`facil`) avançam o agendamento.
@@ -707,6 +720,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, enviar voz, marcar com
 | M17 | Revisão em grupo com menção em rodízio (ADR-0020, seção 5.2b): `send_text(mentions=)`, participantes do grupo, `domain/rodizio.py`, marcação por card, resposta do marcado vs. de outro, timeout no agendador (uma consulta por tick), `respostas/` | Rodízio (distribuição justa, professores excluídos, sem repetição seguida); resposta de não marcado sem nota; timeout com relógio controlado; menções no `FakeChannel`; rodada completa no `sim --grupo` |
 | M11 | Deploy contínuo via GitHub Actions (seção 10.9, ADR-0013): branch protection na `main` (PR + checks obrigatórios), job `deploy` automático no merge, autenticado por Workload Identity Federation | Push direto na `main` é bloqueado pelo GitHub; um PR com CI verde, ao ser mergeado, dispara o job `deploy` e o bot responde `/help` depois do smoke test |
 | M23 | Pronúncia em áudio sob demanda (seção 7.4, ADR-0024): opção 1 e `/listen`, `Sintetizador` (Google Cloud TTS) atrás de interface, cache por hash em bucket permanente, `Channel.send_voice` | Cache miss sintetiza e grava, hit não chama o TTS; duas vozes (termo e frase) na ordem; falha do TTS/envio só avisa; `send_voice` sem retentativa; `Entry` persiste os links; `make check` verde; `sim` grava os `.ogg` |
+| M24 | Lembretes ligados por padrão, 1x às 12h, só para perfil novo (seção 5.7, ADR-0025); tamanho da fila de revisão configurável (`/reviewsize`, ou o último parâmetro de `/reminders`), padrão dinâmico `MIN(palavras do aluno, 7)` | `make check` passa; perfil novo nasce com lembrete ligado, perfil existente não muda sozinho; `/reviewsize`/`/reminders` fixam e resetam o tamanho da fila; `/profile` mostra o tamanho efetivo |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 

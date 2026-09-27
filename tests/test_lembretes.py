@@ -6,7 +6,12 @@ from datetime import UTC, datetime, time
 
 import pytest
 
-from app.domain.lembretes import horarios_do_dia, parse_lembretes, proximo_horario
+from app.domain.lembretes import (
+    horarios_do_dia,
+    parse_lembretes,
+    parse_tamanho_revisao,
+    proximo_horario,
+)
 
 
 @pytest.mark.parametrize(
@@ -43,14 +48,18 @@ def test_proximo_horario_exatamente_no_ultimo_horario_vira_o_dia() -> None:
 @pytest.mark.parametrize(
     ("argumento", "esperado"),
     [
-        ("3", (3, 9, 21)),
-        (" 3 ", (3, 9, 21)),
-        ("3 9h-22h", (3, 9, 22)),
-        ("1 20h-23h", (1, 20, 23)),
-        ("8", (8, 9, 21)),
+        ("3", (3, 9, 21, 7)),
+        (" 3 ", (3, 9, 21, 7)),
+        ("3 9h-22h", (3, 9, 22, 7)),
+        ("1 20h-23h", (1, 20, 23, 7)),
+        ("8", (8, 9, 21, 7)),
+        ("3 10", (3, 9, 21, 10)),  # quantidade + tamanho da fila, sem mudar a janela
+        ("3 9h-22h 10", (3, 9, 22, 10)),  # os três juntos (M24)
+        ("3 9h-22h 1", (3, 9, 22, 1)),  # tamanho no mínimo
+        ("3 9h-22h 20", (3, 9, 22, 20)),  # tamanho no máximo
     ],
 )
-def test_parse_lembretes_valido(argumento: str, esperado: tuple[int, int, int]) -> None:
+def test_parse_lembretes_valido(argumento: str, esperado: tuple[int, int, int, int]) -> None:
     assert parse_lembretes(argumento) == esperado
 
 
@@ -65,7 +74,22 @@ def test_parse_lembretes_valido(argumento: str, esperado: tuple[int, int, int]) 
         "",
         "tres",
         "3 9-22",  # sem o "h"
+        "3 9h-22h 0",  # tamanho da fila abaixo do mínimo
+        "3 9h-22h 21",  # tamanho da fila acima do máximo
     ],
 )
 def test_parse_lembretes_invalido(argumento: str) -> None:
     assert parse_lembretes(argumento) is None
+
+
+@pytest.mark.parametrize(
+    ("argumento", "esperado"),
+    [("7", 7), ("1", 1), ("20", 20)],
+)
+def test_parse_tamanho_revisao_valido(argumento: str, esperado: int) -> None:
+    assert parse_tamanho_revisao(argumento) == esperado
+
+
+@pytest.mark.parametrize("argumento", ["0", "21", "", "sete", "-1"])
+def test_parse_tamanho_revisao_invalido(argumento: str) -> None:
+    assert parse_tamanho_revisao(argumento) is None

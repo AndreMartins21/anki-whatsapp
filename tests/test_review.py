@@ -90,7 +90,7 @@ async def test_ciclo_completo_de_revisao() -> None:
     assert primeira == (
         "⏰ *Practice time* — 2 words to review.\n\n"
         "🔁 1/2 · *stall*\n"
-        "Explain it in English in your own words, or write a sentence using it.\n"
+        "Explain it in English in your own words, or write a sentence using it.\n\n"
         "_Type 0 to leave the practice._"
     )
     assert m.repo.obter_sessao().estado == Estado.REVIEWING
@@ -103,7 +103,7 @@ async def test_ciclo_completo_de_revisao() -> None:
     assert segunda == (
         "✅ That's exactly right.\n\n"
         "🔁 2/2 · *hedge*\n"
-        "Explain it in English in your own words, or write a sentence using it.\n"
+        "Explain it in English in your own words, or write a sentence using it.\n\n"
         "_Type 0 to leave the practice._"
     )
     entrada_stall = m.repo.obter_entrada("stall")
@@ -183,3 +183,49 @@ async def test_frase_da_revisao_guarda_a_versao_corrigida() -> None:
     (frase,) = m.repo.listar_frases("stall")
     assert frase.autor == "usuario"
     assert frase.versao_natural == "The talks [[stalled]] for weeks."
+
+
+# ---- tamanho da fila (M24, seção 5.7) -----------------------------------------------------------
+
+
+async def _com_dez_palavras_vencidas() -> Montagem:
+    m = montar(tutor=FakeTutor())
+    for i in range(10):
+        m.repo.criar_entrada(_entrada(f"palavra{i}", criado_em=T0 + timedelta(minutes=i)))
+    return m
+
+
+async def test_tamanho_dinamico_da_fila_e_o_menor_entre_as_palavras_e_sete() -> None:
+    m = await _com_dez_palavras_vencidas()
+
+    (primeira,) = await m.diz("/revisar")
+
+    assert primeira.startswith("⏰ *Practice time* — 7 words to review.")
+
+
+async def test_reviewsize_fixa_um_tamanho_menor_que_o_padrao() -> None:
+    m = await _com_dez_palavras_vencidas()
+    await m.diz("/reviewsize 3")
+
+    (primeira,) = await m.diz("/revisar")
+
+    assert primeira.startswith("⏰ *Practice time* — 3 words to review.")
+
+
+async def test_reviewsize_fixa_um_tamanho_maior_que_o_padrao_dinamico() -> None:
+    m = await _com_dez_palavras_vencidas()
+    await m.diz("/reviewsize 9")
+
+    (primeira,) = await m.diz("/revisar")
+
+    assert primeira.startswith("⏰ *Practice time* — 9 words to review.")
+
+
+async def test_reviewsize_auto_volta_ao_dinamico() -> None:
+    m = await _com_dez_palavras_vencidas()
+    await m.diz("/reviewsize 3")
+    await m.diz("/reviewsize auto")
+
+    (primeira,) = await m.diz("/revisar")
+
+    assert primeira.startswith("⏰ *Practice time* — 7 words to review.")

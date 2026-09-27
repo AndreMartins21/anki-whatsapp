@@ -243,7 +243,7 @@ class Router:
             sessao = await bloq(d.repo.obter_sessao)
             if sessao.estado != Estado.IDLE:
                 return
-            nova = await review.iniciar(d)
+            nova = await review.iniciar(d, perfil)
             await bloq(d.repo.salvar_sessao, nova.model_copy(update={"atualizado_em": d.agora()}))
 
     async def expirar_marcacao(self, chat_id: str, forcar: bool = False) -> None:

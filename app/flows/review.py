@@ -15,6 +15,7 @@ from datetime import datetime
 
 from app import messages
 from app.channel.parser import numero_esta_na_lista
+from app.domain.lembretes import TAMANHO_REVISAO_PADRAO
 from app.domain.models import Entry, Estado, Membro, Profile, Resposta, Sentence, Sessao
 from app.domain.rodizio import Candidato, escolher
 from app.domain.srs import reagendar, vencida
@@ -44,9 +45,15 @@ def montar_fila(
     return [e.slug for e in (*vencidas, *completar)]
 
 
-def limite(d: Deps) -> int:
-    """Palavras por rodada: 20 no privado, `LIMITE_POR_SESSAO_GRUPO` (5) no grupo."""
-    return d.grupo_cfg.limite if d.em_grupo else LIMITE_POR_SESSAO
+def limite(d: Deps, perfil: Profile, total_palavras: int) -> int:
+    """Palavras por rodada (M24): um `tamanho_revisao` fixo (`/reviewsize`, ou o último parâmetro
+    de `/reminders`) sobrepõe tudo; sem ele, `LIMITE_POR_SESSAO_GRUPO` (5) no grupo, ou
+    `MIN(palavras do aluno, TAMANHO_REVISAO_PADRAO)` no privado."""
+    if perfil.tamanho_revisao is not None:
+        return perfil.tamanho_revisao
+    if d.em_grupo:
+        return d.grupo_cfg.limite
+    return min(total_palavras, TAMANHO_REVISAO_PADRAO)
 
 
 # --- quem é marcado (grupo) -------------------------------------------------------------------
@@ -107,11 +114,11 @@ async def _marcar(
 # --- a rodada ---------------------------------------------------------------------------------
 
 
-async def iniciar(d: Deps, *, avisar: bool = False) -> Sessao:
+async def iniciar(d: Deps, perfil: Profile, *, avisar: bool = False) -> Sessao:
     """Começa a rodada. `avisar`: num grupo sem aluno para marcar, diz por que não começou (o
     `!review`); o lembrete agendado (`avisar=False`) fica em silêncio."""
     entradas = await bloq(d.repo.listar_entradas)
-    fila = montar_fila(entradas, d.agora(), limite=limite(d))
+    fila = montar_fila(entradas, d.agora(), limite=limite(d, perfil, len(entradas)))
     if not fila:
         return d.sessao_vazia()
     alunos: list[tuple[str, Membro]] | None = None
