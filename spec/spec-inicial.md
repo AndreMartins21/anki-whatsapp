@@ -386,6 +386,11 @@ mostra o tamanho efetivo da sessão.
 aqui (seria ambiguidade e custo à toa). Comandos (`/`) continuam funcionando; `/cancelar` fecha a
 sessão com o resumo, como `0` faria.
 
+**Pronúncia automática do termo (M26, ADR-0027, seção 7.4):** no privado, cada card vem seguido da
+voz do termo (sem a frase — é sobre lembrar o som, não reouvir o exemplo). No grupo não: o
+orçamento de 3 mensagens seguidas já é disputado pelo repasse e pelo fechamento da rodada
+(ADR-0020), e áudio ali arriscaria derrubar um dos dois em silêncio.
+
 ```
 ⏰ *Practice time* — 12 words to review.
 
@@ -650,20 +655,26 @@ VM precisa do papel `roles/iam.serviceAccountTokenCreator` **sobre ela mesma**, 
 `service_account_email` + `access_token` no `generate_signed_url`. O bucket tem uma regra de ciclo de
 vida que apaga objetos após 7 dias.
 
-### 7.4 Pronúncia em áudio (M23/M25, ADR-0024, ADR-0026)
+### 7.4 Pronúncia em áudio (M23/M25/M26, ADR-0024, ADR-0026, ADR-0027)
 
-`app/flows/pronuncia.py:ouvir` manda duas notas de voz, na ordem: o termo, depois a frase do card (a
-do bot mais antiga da entrada, sem os `[[ ]]`). Entrada sem frase do bot recebe só a voz do termo.
-Duas formas de chamar, pelo parâmetro `anunciar`:
+`app/flows/pronuncia.py:ouvir` manda a voz do termo e, com `com_frase=True` (padrão), a da frase do
+card (a do bot mais antiga da entrada, sem os `[[ ]]`). Entrada sem frase do bot recebe só a voz do
+termo. Três formas de chamar, pelos parâmetros `anunciar`/`com_frase`:
 
-- **Automático** (M25, `anunciar=False`, logo depois de explicar a palavra — nova ou já existente,
-  seção 5.1): as duas vozes, sem texto antes nem depois (a explicação + o menu, já mandados, bastam).
-  Sem serviço de áudio configurado neste ambiente, fica **em silêncio** — ninguém pediu áudio
-  explicitamente. Uma falha de verdade (TTS, Storage, WhatsApp) ainda avisa (`ERRO_AUDIO`): quebrar
-  em silêncio pareceria o bot ignorando o aluno.
-- **Sob demanda** (`/listen N|palavra`, `anunciar=True`, não abre a palavra): um texto antes,
-  `🔊 *termo*` com a frase de exemplo, e as duas vozes. Sem serviço de áudio configurado, avisa
-  (`ERRO_AUDIO`) — aqui a pessoa pediu explicitamente, então o silêncio seria confuso.
+- **Automático ao explicar** (M25, `anunciar=False, com_frase=True`, logo depois de explicar a
+  palavra — nova ou já existente, seção 5.1): as duas vozes, sem texto antes nem depois (a
+  explicação + o menu, já mandados, bastam). Sem serviço de áudio configurado neste ambiente, fica
+  **em silêncio** — ninguém pediu áudio explicitamente. Uma falha de verdade (TTS, Storage,
+  WhatsApp) ainda avisa (`ERRO_AUDIO`): quebrar em silêncio pareceria o bot ignorando o aluno.
+- **Automático na revisão** (M26, `anunciar=False, com_frase=False`, seção 5.7, só no privado):
+  cada card vem seguido só da voz do termo — a frase de exemplo não repete, o objetivo é lembrar o
+  som, não reouvir o card inteiro. Mesma regra de silêncio/aviso do automático ao explicar. No
+  grupo não roda: o orçamento de 3 mensagens já é disputado pelo repasse e pelo fechamento da
+  rodada (ADR-0020).
+- **Sob demanda** (`/listen N|palavra`, `anunciar=True, com_frase=True`, não abre a palavra): um
+  texto antes, `🔊 *termo*` com a frase de exemplo, e as duas vozes. Sem serviço de áudio
+  configurado, avisa (`ERRO_AUDIO`) — aqui a pessoa pediu explicitamente, então o silêncio seria
+  confuso.
 
 **Síntese:** interface `Sintetizador` (`app/services/tts.py`), implementada por `GoogleTts`
 (Cloud Text-to-Speech, `AudioEncoding.OGG_OPUS`, voz de `TTS_VOICE`, conta de serviço da VM) e por
@@ -731,6 +742,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, enviar voz, marcar com
 | M23 | Pronúncia em áudio sob demanda (seção 7.4, ADR-0024): opção 1 e `/listen`, `Sintetizador` (Google Cloud TTS) atrás de interface, cache por hash em bucket permanente, `Channel.send_voice` | Cache miss sintetiza e grava, hit não chama o TTS; duas vozes (termo e frase) na ordem; falha do TTS/envio só avisa; `send_voice` sem retentativa; `Entry` persiste os links; `make check` verde; `sim` grava os `.ogg` |
 | M24 | Lembretes ligados por padrão, 1x às 12h, só para perfil novo (seção 5.7, ADR-0025); tamanho da fila de revisão configurável (`/reviewsize`, ou o último parâmetro de `/reminders`), padrão dinâmico `MIN(palavras do aluno, 7)` | `make check` passa; perfil novo nasce com lembrete ligado, perfil existente não muda sozinho; `/reviewsize`/`/reminders` fixam e resetam o tamanho da fila; `/profile` mostra o tamanho efetivo |
 | M25 | Pronúncia automática ao explicar a palavra, nova ou já existente (seção 5.1/7.4, ADR-0026): sai a opção 1 (ouvir) do menu, que passa a começar no 2 sem renumerar as demais; `/listen` continua sob demanda | `make check` passa; explicar uma palavra manda a explicação/menu e, na sequência, as duas vozes (sem serviço de áudio configurado, fica em silêncio); `/listen` continua avisando se não há áudio; nenhuma opção "1" sobra no menu |
+| M26 | Pronúncia automática do termo em cada card de revisão, só no privado (seção 5.7/7.4, ADR-0027) | `make check` passa; cada card no privado manda a voz do termo, sem a frase; o grupo não manda áudio na revisão (orçamento de 3 mensagens preservado para repasse/fechamento) |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 

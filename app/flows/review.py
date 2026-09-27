@@ -1,6 +1,7 @@
 """Revisão espaçada (M10, seção 5.7, ADR-0011): monta a fila de palavras vencidas, faz um turno
 por vez (pergunta → resposta → feedback + próxima) e fecha com o resumo. `montar_fila` é pura
-(testável sem repo); `iniciar`/`responder`/`encerrar` fazem I/O, como os demais fluxos.
+(testável sem repo); `iniciar`/`responder`/`encerrar` fazem I/O, como os demais fluxos. Cada card
+vem seguido da pronúncia automática do termo, sem a frase (M26, ADR-0027).
 
 Em grupo (M17, ADR-0020) cada card **marca um aluno**, escolhido por rodízio (`domain/rodizio.py`):
 só a resposta da pessoa marcada vale a nota; a de outra pessoa recebe feedback sem mudar o card; e
@@ -19,6 +20,7 @@ from app.domain.lembretes import TAMANHO_REVISAO_PADRAO
 from app.domain.models import Entry, Estado, Membro, Profile, Resposta, Sentence, Sessao
 from app.domain.rodizio import Candidato, escolher
 from app.domain.srs import reagendar, vencida
+from app.flows import pronuncia
 from app.flows.base import Deps, bloq
 
 logger = logging.getLogger(__name__)
@@ -286,6 +288,11 @@ async def _mostrar_proxima(
         await d.conversa.enviar(
             f"{feedback}\n\n{card}" if feedback else card, mentions=[marcado] if marcado else None
         )
+        if not d.em_grupo:
+            # M26: só o termo, só no privado — no grupo o orçamento de 3 mensagens já é disputado
+            # pelo repasse e pelo fechamento da rodada (ADR-0020); áudio ali arrisca derrubar um
+            # dos dois em silêncio.
+            await pronuncia.ouvir(d, entrada, anunciar=False, com_frase=False)
         return Sessao(
             estado=Estado.REVIEWING,
             revisao_fila=restante,
