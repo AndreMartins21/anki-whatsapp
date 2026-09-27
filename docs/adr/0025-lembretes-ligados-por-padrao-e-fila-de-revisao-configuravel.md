@@ -26,8 +26,10 @@ original tentava evitar.
 
 **Tamanho da fila de revisão dinâmico**: `MIN(palavras do aluno, 7)` por padrão, no lugar do `20`
 fixo. `/reviewsize N` (1 a 20) fixa um valor; `/reviewsize auto` volta ao dinâmico; o último
-parâmetro de `/reminders` faz a mesma coisa, para configurar tudo de uma vez sem precisar de dois
-comandos. Um valor fixo vale também no grupo, sobrepondo o `LIMITE_POR_SESSAO_GRUPO` padrão.
+parâmetro de `/reminders`, **quando dado**, faz a mesma coisa, para configurar tudo de uma vez sem
+precisar de dois comandos — **omitido, `/reminders` não mexe no tamanho da fila**, para não resetar
+sem querer um `/reviewsize` configurado antes só porque a pessoa quis mudar o horário do lembrete.
+Um valor fixo vale também no grupo, sobrepondo o `LIMITE_POR_SESSAO_GRUPO` padrão.
 
 A dica de uma linha depois da primeira palavra salva (`avisou_lembretes`) só aparece agora quando
 os lembretes estão de fato desligados (quem desligou antes de salvar a primeira palavra) — com o
@@ -46,6 +48,12 @@ padrão ligado, a dica deixou de fazer sentido para a maioria.
   dinâmico, mas trata igual quem tem 3 palavras e quem tem 300; o dinâmico degrada bem para quem
   está começando (sessão do tamanho que a pessoa tem) sem abrir mão de um teto sensato para quem já
   tem muitas.
+- **`/reminders` sem o último parâmetro sempre reseta o tamanho para 7** — foi a primeira versão
+  implementada, descartada em revisão: qualquer `/reminders N INICIOh-FIMh` para só mudar o horário
+  apagava, sem aviso, um `/reviewsize` fixado antes. Omitido passar a significar "não mexe" evita
+  esse efeito colateral, ao custo de `/reminders` e `/reviewsize` poderem divergir do que a pessoa
+  via da última vez que configurou os dois juntos — aceitável, porque cada comando mexe só no que
+  diz que mexe.
 
 ## Consequências
 

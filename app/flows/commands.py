@@ -280,7 +280,8 @@ async def _status(d: Deps, status_da_sessao: StatusDaSessao | None) -> None:
 async def lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
     """`/reminders` mostra o estado atual; `/reminders off` desliga; `/reminders 3` ou
     `/reminders 3 9h-22h` liga/muda (seção 5.7, M10). O último parâmetro (M24), quando dado, fixa
-    o tamanho da fila de revisão; quando omitido aqui, vira 7 (`/reviewsize` muda só isso)."""
+    o tamanho da fila de revisão; omitido, não mexe no que já estava (`/reviewsize` cuida só disso,
+    sem precisar repetir a cada `/reminders`)."""
     if not argumento:
         proximo = proximo_a_exibir(perfil, d.agora(), d.fuso)
         await d.conversa.enviar(
@@ -298,15 +299,15 @@ async def lembretes(d: Deps, perfil: Profile, argumento: str) -> None:
         await d.conversa.enviar(messages.lembretes_invalidos(d.cmd_lembretes))
         return
     quantidade, inicio, fim, tamanho_revisao = analisado
-    novo = perfil.model_copy(
-        update={
-            "lembretes_por_dia": quantidade,
-            "janela_inicio": inicio,
-            "janela_fim": fim,
-            "tamanho_revisao": tamanho_revisao,
-            "proximo_lembrete": None,  # o agendador recalcula no próximo tick
-        }
-    )
+    atualizacoes: dict[str, object] = {
+        "lembretes_por_dia": quantidade,
+        "janela_inicio": inicio,
+        "janela_fim": fim,
+        "proximo_lembrete": None,  # o agendador recalcula no próximo tick
+    }
+    if tamanho_revisao is not None:
+        atualizacoes["tamanho_revisao"] = tamanho_revisao
+    novo = perfil.model_copy(update=atualizacoes)
     await bloq(d.repo.salvar_perfil, novo)
     proximo = proximo_a_exibir(novo, d.agora(), d.fuso)
     await d.conversa.enviar(messages.lembretes_alterados(novo, proximo, d.agora()))

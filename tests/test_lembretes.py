@@ -48,18 +48,18 @@ def test_proximo_horario_exatamente_no_ultimo_horario_vira_o_dia() -> None:
 @pytest.mark.parametrize(
     ("argumento", "esperado"),
     [
-        ("3", (3, 9, 21, 7)),
-        (" 3 ", (3, 9, 21, 7)),
-        ("3 9h-22h", (3, 9, 22, 7)),
-        ("1 20h-23h", (1, 20, 23, 7)),
-        ("8", (8, 9, 21, 7)),
+        ("3", (3, 9, 21, None)),  # sem tamanho: não mexe no que já estava
+        (" 3 ", (3, 9, 21, None)),
+        ("3 9h-22h", (3, 9, 22, None)),
+        ("1 20h-23h", (1, 20, 23, None)),
+        ("8", (8, 9, 21, None)),
         ("3 10", (3, 9, 21, 10)),  # quantidade + tamanho da fila, sem mudar a janela
         ("3 9h-22h 10", (3, 9, 22, 10)),  # os três juntos (M24)
         ("3 9h-22h 1", (3, 9, 22, 1)),  # tamanho no mínimo
         ("3 9h-22h 20", (3, 9, 22, 20)),  # tamanho no máximo
     ],
 )
-def test_parse_lembretes_valido(argumento: str, esperado: tuple[int, int, int, int]) -> None:
+def test_parse_lembretes_valido(argumento: str, esperado: tuple[int, int, int, int | None]) -> None:
     assert parse_lembretes(argumento) == esperado
 
 

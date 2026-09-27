@@ -485,6 +485,30 @@ async def test_reviewsize_argumento_invalido() -> None:
     assert perfil.tamanho_revisao is None
 
 
+async def test_reminders_sem_o_ultimo_parametro_nao_mexe_no_reviewsize() -> None:
+    """Achado numa revisão: `/reminders N INICIOh-FIMh`, sem o tamanho, não pode apagar um
+    `/reviewsize` configurado antes só porque a pessoa quis mudar o horário do lembrete."""
+    m = montar()
+    await m.diz("/reviewsize 15")
+
+    await m.diz("/reminders 3 9h-22h")
+
+    perfil = m.repo.obter_perfil()
+    assert perfil is not None
+    assert perfil.tamanho_revisao == 15
+
+
+async def test_reminders_com_o_ultimo_parametro_ainda_fixa_o_reviewsize() -> None:
+    m = montar()
+    await m.diz("/reviewsize 15")
+
+    await m.diz("/reminders 3 9h-22h 5")
+
+    perfil = m.repo.obter_perfil()
+    assert perfil is not None
+    assert perfil.tamanho_revisao == 5
+
+
 # ---- /list paginado, /info e /profile (M12) --------------------------------------------------
 
 
