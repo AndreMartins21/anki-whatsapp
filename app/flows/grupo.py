@@ -3,7 +3,7 @@ de comandos; o resto é conversa entre pessoas, que ele não lê nem grava.
 
 Camada por cima da máquina de estados, sem IA fora de atividade:
 
-- **Comandos** (`!add`, `!list`, `!practice`, `!review`, `!reminder`, `!group`, `!help`), mais
+- **Comandos** (`!add`, `!delete`, `!list`, `!practice`, `!review`, `!reminder`, `!group`, `!help`), mais
   `!teacher`/`!student` (escondidos do `!help`).
 - **Dentro de uma atividade** (`AWAIT_ACTION`, `REVIEWING`), `!1`, `!2`, `!3` e `!texto` são as
   respostas, entregues à mesma máquina de estados do privado (`conversar`).
@@ -28,7 +28,17 @@ from app.flows.base import Autor, Deps, bloq
 logger = logging.getLogger(__name__)
 
 # Fecha o conjunto: nada além disto é comando no grupo.
-COMANDOS = {"add", "list", "practice", "review", "reminder", "reminders", "group", "help"}
+COMANDOS = {
+    "add",
+    "list",
+    "practice",
+    "review",
+    "reminder",
+    "reminders",
+    "group",
+    "help",
+    "delete",
+}
 _PAPEIS = {"teacher": "professor", "student": "aluno"}
 
 Conversar = Callable[[Deps, Sessao, Profile, str], Awaitable[Sessao]]
@@ -103,6 +113,8 @@ async def _executar(
         await _perfil_do_grupo(d, perfil)
     elif comando == "add":
         return await _adicionar(d, sessao, perfil, argumento)
+    elif comando == "delete":
+        return await commands.apagar(d, sessao, argumento)
     return sessao
 
 

@@ -28,7 +28,17 @@ from tests.test_flows import EXEMPLOS, SINONIMOS, _roteamento_frase
 # `/comando` colado a uma palavra: um comando do privado citado (URLs e "and/or" não contam).
 _CITA_COMANDO_DO_PRIVADO = re.compile(r"(?<![\w/])/[a-z]{3,}")
 _COMANDOS_CITADOS = re.compile(r"(?<![\w!])!([a-z]{3,})")
-_DO_GRUPO = {"add", "list", "practice", "review", "reminder", "reminders", "group", "help"}
+_DO_GRUPO = {
+    "add",
+    "delete",
+    "list",
+    "practice",
+    "review",
+    "reminder",
+    "reminders",
+    "group",
+    "help",
+}
 
 
 def _tutor() -> FakeTutor:
@@ -277,7 +287,6 @@ async def test_texto_com_prefixo_fora_de_atividade_recebe_a_ajuda_sem_chamar_a_i
         "!song paper plane",
         "!info 1",
         "!status",
-        "!delete stall",
         "!cancel",
         "!pending",
         "!profile",
@@ -306,11 +315,11 @@ async def test_a_ajuda_do_grupo_so_cita_comandos_do_grupo() -> None:
     (ajuda,) = await m.diz_no_grupo(ANA, "!help")
 
     _sem_comandos_do_privado([ajuda])
-    for comando in ("add", "list", "practice", "review", "reminder", "group"):
+    for comando in ("add", "delete", "list", "practice", "review", "reminder", "group"):
         assert f"!{comando}" in ajuda
     for escondido in ("teacher", "student", "activate"):
         assert escondido not in ajuda
-    for do_privado in ("export", "song", "level", "delete", "cancel", "status", "pending"):
+    for do_privado in ("export", "song", "level", "cancel", "status", "pending"):
         assert f"!{do_privado}" not in ajuda and f"/{do_privado}" not in ajuda
 
 
@@ -360,6 +369,46 @@ async def test_practice_por_numero_e_palavra_inexistente() -> None:
     nao_achou = (await m.diz_no_grupo(BIA, "!practice zzz"))[0]
     assert "the class's words" in nao_achou and "!list" in nao_achou
     _sem_comandos_do_privado([nao_achou])
+
+
+# --- !delete ----------------------------------------------------------------------------------
+
+
+async def test_delete_por_palavra_e_por_numero_remove_da_lista_da_turma() -> None:
+    m = _grupo()
+    turma = m.banco.do_espaco(GRUPO)
+    await m.diz_no_grupo(ANA, "!add stall")
+    await m.diz_no_grupo(ANA, "!4")
+    m.tutor.explicacoes[:] = [explicacao_stall().model_copy(update={"palavra": "hedge"})]
+    await m.diz_no_grupo(ANA, "!add hedge")
+    await m.diz_no_grupo(ANA, "!0")
+
+    assert await m.diz_no_grupo(BIA, "!delete stall") == ["🗑️ *stall* deleted."]
+    assert [e.slug for e in turma.listar_entradas()] == ["hedge"]
+    assert await m.diz_no_grupo(BIA, "!delete 1") == ["🗑️ *hedge* deleted."]
+    assert turma.listar_entradas() == []
+
+
+async def test_delete_inexistente_e_sem_argumento_citam_o_prefixo_do_grupo() -> None:
+    m = _grupo()
+
+    (uso,) = await m.diz_no_grupo(ANA, "!delete")
+    (nao_achou,) = await m.diz_no_grupo(ANA, "!delete zzz")
+
+    assert uso == messages.grupo_delete_uso("!")
+    assert "the class's words" in nao_achou and "!list" in nao_achou
+    _sem_comandos_do_privado([uso, nao_achou])
+
+
+async def test_delete_da_palavra_aberta_zera_a_sessao() -> None:
+    m = _grupo()
+    turma = m.banco.do_espaco(GRUPO)
+    await m.diz_no_grupo(ANA, "!add stall")
+
+    await m.diz_no_grupo(ANA, "!delete stall")
+
+    assert turma.listar_entradas() == []
+    assert Estado(turma.obter_sessao().estado) == Estado.IDLE
 
 
 # --- !reminder --------------------------------------------------------------------------------
