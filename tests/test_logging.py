@@ -102,6 +102,29 @@ def test_configurar_logs_liga_o_handler_extra(capsys: pytest.CaptureFixture[str]
     assert json.loads(capsys.readouterr().out.strip())["message"] == "também vai para a nuvem"
 
 
+def test_handler_extra_recebe_o_mesmo_json_formatter(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Reproduz um bug visto em produção (M27): o `CloudLoggingHandler` monta o `jsonPayload`
+    chamando `self.format(record)` — não `record.getMessage()`. Sem o `JsonFormatter` no handler
+    extra, a mensagem formatada era só o texto do evento (`"lembrete_adiado"`), e os campos extras
+    (`espaco`, `motivo`...) nunca chegavam à nuvem, virando `textPayload` em vez de `jsonPayload`."""
+    linhas_do_extra: list[str] = []
+
+    class HandlerDeTeste(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            linhas_do_extra.append(self.format(record))  # como o CloudLoggingHandler faz
+
+    configurar_logs("INFO", handler_extra=HandlerDeTeste())
+    registrar_evento(logging.getLogger("teste"), "lembrete_adiado", espaco="abcd1234")
+    capsys.readouterr()  # limpa o stdout desta chamada
+
+    (linha,) = linhas_do_extra
+    formatado = json.loads(linha)  # tem que dar para parsear como JSON (jsonPayload de verdade)
+    assert formatado["evento"] == "lembrete_adiado"
+    assert formatado["espaco"] == "abcd1234"
+
+
 def test_mascarar_numero() -> None:
     assert mascarar_numero("5531999998888") == "55*******8888"
     assert mascarar_numero("12345") == "*****"

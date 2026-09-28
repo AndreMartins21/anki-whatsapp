@@ -66,9 +66,14 @@ def configurar_logs(nivel: str = "INFO", *, handler_extra: logging.Handler | Non
 
     `handler_extra` (M27): um segundo handler para mandar os mesmos registros à nuvem (o
     `CloudLoggingHandler` da lib `google-cloud-logging`, montado por quem chama — nunca aqui, para
-    este módulo continuar sem rede nem credencial nos testes)."""
+    este módulo continuar sem rede nem credencial nos testes). Leva o mesmo `JsonFormatter`: o
+    `CloudLoggingHandler` só produz `jsonPayload` estruturado (campo `evento` etc.) quando a
+    mensagem formatada já chega como uma string JSON — sem isto, vira `textPayload` só com a
+    mensagem, e os campos extras (`espaco`, `motivo`...) se perdem (visto em produção, M27)."""
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
+    if handler_extra is not None:
+        handler_extra.setFormatter(JsonFormatter())
     raiz = logging.getLogger()
     raiz.handlers[:] = [handler, *([handler_extra] if handler_extra is not None else [])]
     raiz.setLevel(nivel.upper())
