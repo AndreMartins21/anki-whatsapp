@@ -60,10 +60,16 @@ sem arriscar o runbook de depuração que já existe. `waha` continua só localm
 falhas relevantes já aparecem via `waha_status` (o bot loga a própria mudança de status da sessão)
 e via as exceções que o bot registra ao redor de cada chamada ao canal.
 
-Fica difícil/pendente: falta confirmar em produção o formato exato do `jsonPayload` que o
-`CloudLoggingHandler` produz (se os campos extras chegam como `jsonPayload` estruturado ou só como
-texto — ver `spec/plano-dashboard.md` seção 2.3); a biblioteca `google-cloud-logging` é uma
-dependência nova (`uv add`), a acompanhar no tamanho da imagem do bot (limite de RAM da VM). Se o
-formato chegar ruim, o ajuste é só na construção do handler (uma função), não no catálogo de
-eventos. Revisitar quando o M28 (snapshot no BigQuery) e o M30 (painel) forem implementados — é
-quando o formato real dos eventos passa a ser consultado de verdade.
+Fica difícil/pendente: a biblioteca `google-cloud-logging` é uma dependência nova (`uv add`), a
+acompanhar no tamanho da imagem do bot (limite de RAM da VM).
+
+**Confirmado em produção, no mesmo dia do deploy do M27:** sem o `JsonFormatter` também no
+`handler_extra`, o `CloudLoggingHandler` manda só o texto do evento (`textPayload:
+"lembrete_adiado"`), sem os campos extras — ele monta o `jsonPayload` chamando `self.format(record)`
+e tentando decodificar o resultado como JSON (`google.cloud.logging_v2.handlers.handlers._format_and_parse_message`),
+não lendo os atributos do `LogRecord` diretamente. Corrigido no mesmo commit: `configurar_logs`
+agora põe o mesmo `JsonFormatter` no `handler_extra`, e um teste de regressão
+(`test_handler_extra_recebe_o_mesmo_json_formatter`) simula exatamente esse caminho (`self.format`,
+não `record.getMessage()`), para o bug não voltar em silêncio. Revisitar quando o M28 (snapshot no
+BigQuery) e o M30 (painel) forem implementados — é quando os campos de `jsonPayload` passam a ser
+consultados de verdade.

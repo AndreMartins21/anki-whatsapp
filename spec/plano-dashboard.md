@@ -161,17 +161,15 @@ registra ao redor de cada chamada ao canal.
 
 - `configurar_logs(nivel, handler_extra=None)`: parâmetro opcional para o handler da nuvem, para os
   testes nunca precisarem de credencial nem rede (convenção do projeto). Handler extra usa o mesmo
-  `JsonFormatter`? **Não** — o `CloudLoggingHandler` da biblioteca constrói o `LogEntry` sozinho; a
-  estrutura (campo `evento` etc.) chega como `jsonPayload` passando um **dict** como `msg` do
-  registro (`logger.info({"evento": ..., ...})`), não uma string. `registrar_evento` (2.1) então
-  loga a mensagem-texto (para o stdout, formatado por `JsonFormatter`) — o `CloudLoggingHandler`
-  ignora structured extras não declarados, então o app manda os dois: continua chamando
-  `logger.log(nivel, evento, extra={...})` para o stdout, e o handler da nuvem usa o
-  `labels`/`resource` padrão da biblioteca (severidade batendo com o nível do Python automaticamente
-  — isso a biblioteca já garante). **[confirmar]** ao ligar em produção: se o `jsonPayload` do
-  Cloud Logging ficar só com a mensagem-texto (sem os campos extras), o ajuste fino de como passar
-  `json_fields`/`labels` ao `CloudLoggingHandler` fica para depois de ver o formato real chegando —
-  o catálogo de eventos (2.2) já funciona local e nos testes de qualquer forma.
+  `JsonFormatter`? **Sim** — confirmado em produção no dia do deploy (2026-09-27): sem isso, o
+  `CloudLoggingHandler` manda só `textPayload: "lembrete_adiado"` (a mensagem sem os campos extras).
+  O motivo: ele monta o `jsonPayload` chamando `self.format(record)` (o formatter do próprio
+  handler) e, se o resultado começar com `{`, tenta decodificar como JSON
+  (`google.cloud.logging_v2.handlers.handlers._format_and_parse_message`) — não lê os atributos do
+  `LogRecord` diretamente. Com o mesmo `JsonFormatter` no handler extra, a string que ele formata já
+  é o JSON de sempre, e vira `jsonPayload` estruturado de graça, sem precisar do parâmetro
+  `json_fields` da biblioteca. Teste de regressão simula exatamente esse caminho (chama
+  `handler.format(record)`, não `record.getMessage()`).
 - `google.cloud.logging.Client().get_default_handler()` usa `BackgroundThreadTransport` por padrão:
   não bloqueia a resposta ao WAHA esperando a rede.
 - Credencial: a mesma conta de serviço da VM (`vocabot-vm`, já tem `roles/logging.logWriter`),
@@ -551,7 +549,8 @@ parar e relatar (regras do `CLAUDE.md`).
 ## 9. Itens a confirmar antes de começar (resumo dos [confirmar])
 
 1. ~~Formato do `gcplogs`~~ — **descartado** (não implementa leitura, quebraria `docker logs`); ver
-   2.3. Falta confirmar o formato do `jsonPayload` que o `CloudLoggingHandler` produz em produção.
+   2.3. ~~Formato do `jsonPayload` do `CloudLoggingHandler`~~ — **confirmado e corrigido** em
+   produção (2026-09-27): precisa do mesmo `JsonFormatter` no handler extra, ver 2.3.
 2. `usage_metadata` do `google-genai` no Vertex e preço por token do modelo em uso.
 3. Endpoint de listagem/contagem de grupos no WAHA GOWS `2026.8.2`.
 4. Existência de métrica de armazenamento do Firestore no Cloud Monitoring; se o uso dentro da
