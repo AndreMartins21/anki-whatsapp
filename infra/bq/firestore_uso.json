@@ -1,0 +1,6 @@
+[
+  {"name": "dt", "type": "DATE", "mode": "REQUIRED"},
+  {"name": "colecao", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "n_docs", "type": "INTEGER", "mode": "REQUIRED"},
+  {"name": "bytes_estimados", "type": "INTEGER", "mode": "REQUIRED"}
+]

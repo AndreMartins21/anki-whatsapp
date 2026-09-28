@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from app.domain.models import Estado, Explanation, Roteamento, Sense, Synonym
+from app.flows.base import Autor
 from app.services.fake_llm import FakeTutor
 from app.services.llm import LLMError
 from tests.helpers import CHAT, avaliacao, expansoes, explicacao_stall, montar
@@ -377,6 +378,25 @@ async def test_o_nivel_do_perfil_vai_para_a_ia() -> None:
     await m.diz("stall")
 
     assert m.tutor.chamadas[0] == ("explain", ("stall", "A2-B1"))
+
+
+async def test_perfil_privado_guarda_o_nome_do_whatsapp() -> None:
+    """M28 (spec 12): `Profile.nome` (nunca o telefone), atualizado se o nome mudar."""
+    m = montar()
+
+    await m.router.processar("/ajuda", CHAT, Autor(numero="5531999998888", nome="Ana"))
+    await m.router.processar("/ajuda", CHAT, Autor(numero="5531999998888", nome="Ana Nova"))
+
+    assert m.repo.obter_perfil().nome == "Ana Nova"  # type: ignore[union-attr]
+
+
+async def test_entrada_no_privado_nunca_tem_autor_id() -> None:
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall()]))
+
+    await m.router.processar("stall", CHAT, Autor(numero="5531999998888", nome="Ana"))
+
+    (entrada,) = m.repo.listar_entradas()
+    assert entrada.autor_id is None
 
 
 async def test_a_resposta_vai_para_o_chat_de_quem_escreveu() -> None:

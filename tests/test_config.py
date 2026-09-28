@@ -353,3 +353,19 @@ def test_audio_bucket_e_voz_configurados(monkeypatch: pytest.MonkeyPatch) -> Non
 
     assert settings.audio_bucket == "proj-vocabot-audio"
     assert settings.tts_voice == "en-US-Neural2-D"
+
+
+def test_metrics_bucket_e_opcional(monkeypatch: pytest.MonkeyPatch) -> None:
+    _com_env(monkeypatch, METRICS_BUCKET="")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.metrics_bucket is None  # vazio = snapshot desligado, o bot sobe igual
+
+
+def test_metrics_bucket_configurado(monkeypatch: pytest.MonkeyPatch) -> None:
+    _com_env(monkeypatch, METRICS_BUCKET="proj-vocabot-metrics")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.metrics_bucket == "proj-vocabot-metrics"

@@ -201,6 +201,15 @@ consulta a view `_AllLogs`. **[confirmar]** a localização do dataset linkado d
 
 ## 3. Marco M28 — Snapshot diário do Firestore (o "ETL")
 
+> **Implementado em 2026-09-28** (ADR-0029). Diferenças do rascunho abaixo, descobertas na
+> implementação: a tabela `whatsapp` (contagem de grupos pelo WAHA) e o campo `n_marcada` da
+> tabela de pessoas **não entraram** — o primeiro precisaria de uma chamada assíncrona ao canal
+> dentro de uma função que é deliberadamente pura e síncrona; o segundo não tem de onde vir (só
+> existe `Membro.marcado_em`, a última vez, não uma contagem). `n_respondeu_marcada` (via
+> `Resposta.marcado`) cobre a métrica de engajamento equivalente. As tabelas externas do BigQuery
+> e as views (3.6) ainda **não foram criadas** — só o bucket/dataset (`infra/setup_metricas.sh`,
+> ainda não executado) e o esquema versionado (`infra/bq/*.json`, já com teste de sincronia).
+
 ### 3.1 Onde roda
 
 Nova tarefa no `Agendador` (mesmo laço, ADR-0012): uma vez por dia, às **04:00 de
@@ -534,8 +543,8 @@ passaram a ser cobradas antes de criar.
 
 | Marco | Entrega | Comandos de GCP (usuário aprova e roda com `!`) | Commit/ADR |
 |---|---|---|---|
-| **M27** | eventos estruturados, handler do bot para o Cloud Logging, Log Analytics | `logging buckets update --enable-analytics`, `logging links create` | ADR-0028, spec seção 12 |
-| **M28** | `Banco.listar_espacos`, `autor_id`/`nome`, snapshot diário, bucket + dataset + tabelas externas + views | `services enable bigquery`, bucket, IAM do bucket, `bq mk`, `infra/setup_metricas.sh` | ADR-0029, spec 7.1 e 12 |
+| **M27** | ✅ eventos estruturados, handler do bot para o Cloud Logging — **pendente:** Log Analytics | `logging buckets update --enable-analytics`, `logging links create` | ADR-0028, spec seção 12 |
+| **M28** | ✅ `Banco.listar_espacos`, `autor_id`/`nome`, `montar_snapshot`, `scripts.snapshot` — **pendente:** bucket + dataset + tabelas externas + views | `infra/setup_metricas.sh` (bucket + dataset), `bq mk --external_table_definition` × 6, views | ADR-0029, spec 7.1 e 12 |
 | **M29** | export de Billing, orçamento, views de custo | console de Billing; `billing budgets create` | spec 12 |
 | **M30** | `dash/`, SA `vocabot-dash`, Cloud Run + IAP, painel completo | `services enable run/artifactregistry/cloudbuild`, SA + papéis, `run deploy --iap`, `iap web add-iam-policy-binding` | ADR-0030 |
 
@@ -565,10 +574,9 @@ parar e relatar (regras do `CLAUDE.md`).
 
 ## 10. Decisões em aberto (do usuário)
 
-1. Número completo dos admins no BigQuery (opção a) ou só mascarado com apelido (opção b) — seção 7.
+1. ~~Número completo dos admins no BigQuery~~ — **decidido (2026-09-27): completo** (opção a).
 2. Grafana com acesso anônimo atrás do IAP ou `auth.proxy` com o e-mail do IAP.
-3. Adicionar `Entry.autor_id` e `Profile.nome` (recomendado; sem eles as tabelas por pessoa ficam
-   parciais).
+3. ~~Adicionar `Entry.autor_id` e `Profile.nome`~~ — **feito no M28.**
 4. Alertas por e-mail agora ou depois.
 5. Deploy do painel pela CI ou só manual.
 

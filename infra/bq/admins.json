@@ -1,0 +1,12 @@
+[
+  {"name": "dt", "type": "DATE", "mode": "REQUIRED"},
+  {"name": "admin_numero", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "admin_mascarado", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "adicionado_em", "type": "TIMESTAMP", "mode": "REQUIRED"},
+  {"name": "adicionado_por_mascarado", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "n_grupos_ativos", "type": "INTEGER", "mode": "REQUIRED"},
+  {"name": "n_grupos_ativados_total", "type": "INTEGER", "mode": "REQUIRED"},
+  {"name": "grupos", "type": "STRING", "mode": "REPEATED"},
+  {"name": "n_termos_nos_grupos", "type": "INTEGER", "mode": "REQUIRED"},
+  {"name": "n_membros_nos_grupos", "type": "INTEGER", "mode": "REQUIRED"}
+]

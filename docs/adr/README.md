@@ -38,6 +38,7 @@ operacional: numeração, status e o índice.
 | [0026](0026-pronuncia-automatica-substitui-a-opcao-de-ouvir.md) | Pronúncia automática ao explicar a palavra, substituindo a opção de ouvir no menu | Aceito | 2026-09-27 |
 | [0027](0027-pronuncia-automatica-na-revisao-so-no-privado.md) | Pronúncia automática do termo em cada card de revisão, só no privado | Aceito | 2026-09-27 |
 | [0028](0028-logs-estruturados-com-eventos-e-handler-para-o-cloud-logging.md) | Logs estruturados com eventos e um handler para o Cloud Logging (não o driver `gcplogs`) | Aceito | 2026-09-27 |
+| [0029](0029-snapshot-diario-do-firestore-em-ndjson-no-gcs-lido-pelo-bigquery.md) | Snapshot diário do Firestore em NDJSON no GCS, lido pelo BigQuery como tabela externa | Aceito | 2026-09-28 |
 
 ## Quando escrever um
 

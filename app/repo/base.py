@@ -11,7 +11,7 @@ cliente do Firestore também é síncrono.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Protocol
 
 from app.domain.models import (
@@ -99,6 +99,32 @@ class GrupoAtivo:
     ativado_em: datetime
 
 
+@dataclass(frozen=True)
+class EspacoResumo:
+    """Uma linha de `espacos/{id}` (seção 7.1), para o snapshot de métricas (M28, seção 12) —
+    não passa pelo `Repository` porque é sobre TODOS os espaços, não sobre um só. `criado_em` só
+    existe depois da primeira `salvar_perfil` (ex.: um grupo recém-`!activate`d, sem ninguém
+    tendo escrito ainda, ainda não tem); os campos de ativação só existem em grupo."""
+
+    id: str
+    tipo: str  # "privado" | "grupo" (tipo_do_espaco)
+    criado_em: datetime | None
+    ativo: bool = False
+    nome: str | None = None
+    ativado_por: str | None = None  # número (só dígitos) do admin que ativou por último
+    ativado_em: datetime | None = None
+
+
+@dataclass(frozen=True)
+class AdminDetalhado:
+    """Uma linha de `admins/{numero}` (M15, ADR-0018), com quem adicionou e quando — para o
+    snapshot de métricas (M28, seção 12): `Banco.listar_admins` só devolve os números."""
+
+    numero: str
+    adicionado_por: str
+    adicionado_em: datetime
+
+
 class Banco(Protocol):
     def do_espaco(self, espaco_id: str) -> Repository:
         """O caderno do espaço (`NUMERO@c.us` no privado, `...@g.us` no grupo). Nada é lido nem
@@ -157,6 +183,24 @@ class Banco(Protocol):
     def listar_grupos_pendentes(self) -> list[tuple[str, datetime]]: ...
 
     def remover_grupo_pendente(self, grupo_id: str) -> None: ...
+
+    # --- Snapshot de métricas (M28, seção 12) -----------------------------------------------
+
+    def listar_espacos(self) -> list[EspacoResumo]:
+        """Todos os espaços que já tiveram alguma escrita (perfil salvo ou grupo ativado),
+        privados e grupos, ativos e desativados — para o snapshot diário, não para o webhook."""
+        ...
+
+    def listar_admins_detalhado(self) -> list[AdminDetalhado]:
+        """Como `listar_admins`, mas com quem adicionou e quando."""
+        ...
+
+    def obter_ultimo_snapshot(self) -> date | None:
+        """O dia (UTC) do último snapshot que terminou — para o `Agendador` não repetir depois
+        de um restart (M28)."""
+        ...
+
+    def marcar_snapshot(self, dia: date) -> None: ...
 
 
 def tipo_do_espaco(espaco_id: str) -> str:

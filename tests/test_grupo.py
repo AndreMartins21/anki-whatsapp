@@ -167,6 +167,17 @@ async def test_a_frase_guarda_quem_escreveu() -> None:
     assert all(f.autor_id is None for f in frases if f.autor == "bot")
 
 
+async def test_a_entrada_guarda_quem_salvou_no_grupo() -> None:
+    """M28 (spec 12): `Entry.autor_id` só existe em grupo (é o que torna "termos por pessoa"
+    possível dentro de um grupo)."""
+    m = _grupo()
+
+    await m.diz_no_grupo(ANA, "!add stall")
+
+    (entrada,) = m.banco.do_espaco(GRUPO).listar_entradas()
+    assert entrada.autor_id == ANA.numero
+
+
 async def test_sinonimos_pelo_menu_3() -> None:
     m = _grupo()
     await m.diz_no_grupo(ANA, "!add stall")

@@ -7,7 +7,8 @@ salvar não muda o que está guardado.
 
 from __future__ import annotations
 
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import date, datetime
 
 from app.domain.models import (
     Entry,
@@ -19,25 +20,53 @@ from app.domain.models import (
     Sessao,
     StatusEntrada,
 )
-from app.repo.base import EntradaJaExiste, GrupoAtivo, Repository, proximo_tick
+from app.repo.base import (
+    AdminDetalhado,
+    EntradaJaExiste,
+    EspacoResumo,
+    GrupoAtivo,
+    Repository,
+    proximo_tick,
+    tipo_do_espaco,
+)
+
+
+@dataclass
+class _EspacoMeta:
+    """O espelho mutável de `espacos/{id}` (M28): como o `_espaco` (DocumentReference) que
+    `FirestoreRepository` recebe, mas em memória. Só existe de verdade (aparece em
+    `listar_espacos`) depois de uma escrita real — `salvar_perfil` ou `ativar_grupo`."""
+
+    tipo: str
+    criado_em: datetime | None = None
+    ativo: bool = False
+    nome: str | None = None
+    ativado_por: str | None = None
+    ativado_em: datetime | None = None
+
+    def escrita(self) -> bool:
+        return self.criado_em is not None or self.ativado_em is not None
 
 
 class MemoryRepository:
     """O caderno de um espaço. Sozinho (`MemoryRepository()`) serve de origem dos scripts."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, espaco: _EspacoMeta | None = None) -> None:
         self._perfil: Profile | None = None
         self._sessao: Sessao | None = None
         self._entradas: dict[str, Entry] = {}
         self._frases: dict[str, list[Sentence]] = {}
         self._membros: dict[str, Membro] = {}
         self._respostas: list[Resposta] = []
+        self._espaco = espaco  # M28: espelho para `Banco.listar_espacos`
 
     def obter_perfil(self) -> Profile | None:
         return self._perfil.model_copy(deep=True) if self._perfil else None
 
     def salvar_perfil(self, perfil: Profile) -> None:
         self._perfil = perfil.model_copy(deep=True)
+        if self._espaco is not None:
+            self._espaco.criado_em = perfil.criado_em
 
     def obter_sessao(self) -> Sessao:
         return self._sessao.model_copy(deep=True) if self._sessao else Sessao()
@@ -103,15 +132,22 @@ class MemoryRepository:
 class MemoryBanco:
     def __init__(self) -> None:
         self._espacos: dict[str, MemoryRepository] = {}
+        self._espacos_meta: dict[str, _EspacoMeta] = {}  # M28: espelho de `espacos/{id}`
         self._processadas: set[str] = set()
         self._lids: dict[str, str] = {}
-        self._admins: dict[str, datetime] = {}
+        self._admins: dict[str, tuple[str, datetime]] = {}  # numero -> (por, agora)
         self._grupos_ativos: dict[str, GrupoAtivo] = {}
         self._pendentes: dict[str, datetime] = {}
         self._grupos_sem_lembrete: set[str] = set()  # desativados: o agendador os ignora
+        self._ultimo_snapshot: date | None = None  # M28
+
+    def _meta_do_espaco(self, espaco_id: str) -> _EspacoMeta:
+        return self._espacos_meta.setdefault(espaco_id, _EspacoMeta(tipo=tipo_do_espaco(espaco_id)))
 
     def do_espaco(self, espaco_id: str) -> Repository:
-        return self._espacos.setdefault(espaco_id, MemoryRepository())
+        if espaco_id not in self._espacos:
+            self._espacos[espaco_id] = MemoryRepository(espaco=self._meta_do_espaco(espaco_id))
+        return self._espacos[espaco_id]
 
     def listar_espacos_com_lembrete(self, agora: datetime) -> list[str]:
         vencidos: list[str] = []
@@ -148,12 +184,12 @@ class MemoryBanco:
         self._lids[lid] = numero
 
     def listar_admins(self) -> list[str]:
-        return [n for n, _ in sorted(self._admins.items(), key=lambda par: par[1])]
+        return [n for n, _ in sorted(self._admins.items(), key=lambda par: par[1][1])]
 
-    def adicionar_admin(self, numero: str, *, por: str, agora: datetime) -> bool:  # noqa: ARG002
+    def adicionar_admin(self, numero: str, *, por: str, agora: datetime) -> bool:
         if numero in self._admins:
             return False
-        self._admins[numero] = agora
+        self._admins[numero] = (por, agora)
         return True
 
     def remover_admin(self, numero: str) -> bool:
@@ -164,12 +200,17 @@ class MemoryBanco:
 
     def ativar_grupo(self, grupo_id: str, *, nome: str | None, por: str, agora: datetime) -> None:
         self._grupos_ativos[grupo_id] = GrupoAtivo(grupo_id, nome, por, agora)
+        meta = self._meta_do_espaco(grupo_id)
+        meta.ativo, meta.nome, meta.ativado_por, meta.ativado_em = True, nome, por, agora
         self._pendentes.pop(grupo_id, None)
         self._grupos_sem_lembrete.discard(grupo_id)
 
     def desativar_grupo(self, grupo_id: str) -> bool:
         if self._grupos_ativos.pop(grupo_id, None) is None:
             return False
+        meta = self._espacos_meta.get(grupo_id)
+        if meta is not None:
+            meta.ativo = False
         self._grupos_sem_lembrete.add(grupo_id)
         return True
 
@@ -187,3 +228,34 @@ class MemoryBanco:
 
     def remover_grupo_pendente(self, grupo_id: str) -> None:
         self._pendentes.pop(grupo_id, None)
+
+    # --- Snapshot de métricas (M28, seção 12) -----------------------------------------------
+
+    def listar_espacos(self) -> list[EspacoResumo]:
+        resumos = [
+            EspacoResumo(
+                id=espaco_id,
+                tipo=meta.tipo,
+                criado_em=meta.criado_em,
+                ativo=meta.ativo,
+                nome=meta.nome,
+                ativado_por=meta.ativado_por,
+                ativado_em=meta.ativado_em,
+            )
+            for espaco_id, meta in self._espacos_meta.items()
+            if meta.escrita()
+        ]
+        return sorted(resumos, key=lambda e: e.id)
+
+    def listar_admins_detalhado(self) -> list[AdminDetalhado]:
+        itens = [
+            AdminDetalhado(numero=numero, adicionado_por=por, adicionado_em=agora)
+            for numero, (por, agora) in self._admins.items()
+        ]
+        return sorted(itens, key=lambda a: (a.adicionado_em, a.numero))
+
+    def obter_ultimo_snapshot(self) -> date | None:
+        return self._ultimo_snapshot
+
+    def marcar_snapshot(self, dia: date) -> None:
+        self._ultimo_snapshot = dia

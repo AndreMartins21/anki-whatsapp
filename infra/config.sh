@@ -37,6 +37,12 @@ AUDIO_BUCKET="${AUDIO_BUCKET:-${PROJECT_ID}-vocabot-audio}"
 TTS_VOICE="${TTS_VOICE:-en-US-Neural2-F}"
 LLM_PROVIDER="${LLM_PROVIDER:-vertex_gemini}"
 
+# Snapshot de métricas (M28, ADR-0029, infra/setup_metricas.sh). Dataset em US (multi-região):
+# junta com o export do Billing (também US) numa mesma consulta, sem índice composto.
+METRICS_BUCKET="${METRICS_BUCKET:-${PROJECT_ID}-vocabot-metrics}"
+METRICS_DATASET="${METRICS_DATASET:-vocabot_metrics}"
+METRICS_LOCATION="${METRICS_LOCATION:-US}"
+
 # Segredos que o setup.sh gera (openssl rand) sem mostrar na tela.
 SEGREDOS_GERADOS=(WAHA_API_KEY WAHA_DASHBOARD_PASSWORD WAHA_HOOK_HMAC_KEY)
 

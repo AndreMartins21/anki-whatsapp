@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     # Letras de música do /song (M13, seção 5.8, ADR-0016): API pública do LRCLIB, sem chave.
     lyrics_url: str = "https://lrclib.net"
 
+    # Snapshot diário de métricas (M28, ADR-0029): sem `METRICS_BUCKET` o bot sobe normalmente e
+    # o Agendador simplesmente não roda o snapshot (nenhum destino configurado).
+    metrics_bucket: str | None = None
+
     @field_validator(
         "waha_hook_hmac_key",
         "anthropic_api_key",
@@ -89,6 +93,7 @@ class Settings(BaseSettings):
         "gemini_model_eval",
         "owner_number",
         "audio_bucket",
+        "metrics_bucket",
         mode="before",
     )
     @classmethod

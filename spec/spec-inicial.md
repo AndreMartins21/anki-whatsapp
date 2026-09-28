@@ -590,11 +590,12 @@ documento `espacos/{espaco_id}` guarda `{tipo:"privado"|"grupo", criado_em, prox
 `proximo_tick` espelha o perfil para o agendador achar os lembretes vencidos com uma consulta só.
 `processed/` e `lids/` continuam globais. Os caminhos abaixo são relativos ao espaço.
 ```
-profile/me                 { nivel, criado_em,
+profile/me                 { nivel, criado_em, nome?,
                              lembretes_por_dia, janela_inicio, janela_fim, chat_id?,
                              proximo_lembrete?, lembrete_sem_resposta, avisou_lembretes }
                            # M10 (seção 5.7): lembretes_por_dia=0 é desligado (padrão); chat_id é o
                            # destino real, aprendido de uma mensagem recebida (nunca o .env direto)
+                           # M28 (seção 12): nome é o "push name" do WhatsApp, só no privado
 session/current            { estado, entry_id, sentido_id, sinonimos_mostrados, entrada_criada_agora, atualizado_em,
                              revisao_fila, revisao_atual?, revisao_feitas, revisao_lapsos, revisao_total,
                              musica_opcoes, musica_titulo?, musica_artista?, musica_versos,
@@ -607,14 +608,15 @@ session/current            { estado, entry_id, sentido_id, sinonimos_mostrados, 
                            # musica_versos/indice em SONG_PRACTICE; musica_expressoes =
                            # [{texto, verso}] acumuladas e oferecidas para salvar em SONG_SAVING
 entries/{slug}             { palavra, classe, cefr_estimado, sentido:{traducao,definicao}, outros_sentidos,
-                             sinonimos, nota, tags, origem_texto, origem:"usuario"|"expansao", pai?, status:"nova"|"praticada",
-                             exportado, criado_em, atualizado_em,
+                             sinonimos, nota, tags, origem_texto, origem:"usuario"|"expansao", pai?, autor_id?,
+                             status:"nova"|"praticada", exportado, criado_em, atualizado_em,
                              repeticoes, intervalo_dias, facilidade, lapsos, proxima_revisao?, revisada_em?,
                              audio_palavra?, audio_exemplo? }
                            # M23: links (gs://) dos áudios de pronúncia; só registro, o cache por hash manda
                            # M12: sinonimos = [{expressao, significado, exemplo}] já mostrados ao aluno
                            # M10: campos de SM-2 simplificado (ADR-0011); proxima_revisao=None
                            # é um cartão novo, vencido desde já
+                           # M28 (seção 12): autor_id é quem salvou, só em grupo (None no privado)
 entries/{slug}/sentences/{auto}  { texto, autor:"usuario"|"bot", autor_id?, veredito?, correcoes?, versao_natural?, explicacao?, criado_em }
                            # M12: versao_natural é a frase do aluno já corrigida pela IA (também nas revisões)
 processed/{message_id}     { criado_em, expira_em }     # deduplicação; política de TTL de 7 dias
@@ -627,9 +629,10 @@ espacos/{grupo}/respostas/{auto}  { entry, autor_id, marcado, qualidade, criado_
                            # M17: session/current ganha marcado_id, marcacao_expira_em, marcacao_tentativas; espacos/{grupo}
                            # ganha timeout_em (espelho do prazo, para o agendador)
 lids/{lid}                 { numero }                   # cache LID -> número (seção 8.2), evita consultar o WAHA a cada mensagem
+meta/snapshot               { ultimo_dia }              # M28: último dia (AAAA-MM-DD) do snapshot diário de métricas
 ```
 - `slug`: minúsculas, `[^a-z0-9]+` → `-`. Se o mesmo slug surgir com outro sentido, use o sufixo `--s2`. "Outro sentido" só vale com frase de contexto e com traduções sem nenhuma opção em comum (separadas por `,`, `;`, `/` ou `ou`, ignorando acento e o que está entre parênteses); a IA reescreve a tradução a cada chamada, e a palavra sozinha, sem frase, nunca abre um sentido novo (ADR-0023).
-- Duas interfaces (Protocol): o `Repository`, o caderno de um espaço, e o `Banco`, a raiz, que entrega o caderno em `do_espaco(espaco_id)` e guarda a deduplicação (`create()`, que falha se o ID já existe), o cache de LIDs e `listar_espacos_com_lembrete`. Implementações: `FirestoreBanco`/`FirestoreRepository` e `MemoryBanco`/`MemoryRepository`, com o mesmo teste de contrato.
+- Duas interfaces (Protocol): o `Repository`, o caderno de um espaço, e o `Banco`, a raiz, que entrega o caderno em `do_espaco(espaco_id)` e guarda a deduplicação (`create()`, que falha se o ID já existe), o cache de LIDs, `listar_espacos_com_lembrete` e, para o snapshot de métricas (M28, seção 12), `listar_espacos` (todos os espaços já escritos, ativos e desativados), `listar_admins_detalhado` e `obter_ultimo_snapshot`/`marcar_snapshot`. Implementações: `FirestoreBanco`/`FirestoreRepository` e `MemoryBanco`/`MemoryRepository`, com o mesmo teste de contrato.
 - Migração do formato antigo (raiz do banco): `python -m scripts.migrar_multiusuario` (dry run por padrão, `--executar`, `--limpar-origem`), roda na máquina local com as credenciais padrão.
 
 ### 7.2 Status e frase do cartão
@@ -746,6 +749,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, enviar voz, marcar com
 | M25 | Pronúncia automática ao explicar a palavra, nova ou já existente (seção 5.1/7.4, ADR-0026): sai a opção 1 (ouvir) do menu, que passa a começar no 2 sem renumerar as demais; `/listen` continua sob demanda | `make check` passa; explicar uma palavra manda a explicação/menu e, na sequência, as duas vozes (sem serviço de áudio configurado, fica em silêncio); `/listen` continua avisando se não há áudio; nenhuma opção "1" sobra no menu |
 | M26 | Pronúncia automática do termo em cada card de revisão, só no privado (seção 5.7/7.4, ADR-0027) | `make check` passa; cada card no privado manda a voz do termo, sem a frase; o grupo não manda áudio na revisão (orçamento de 3 mensagens preservado para repasse/fechamento) |
 | M27 | Eventos estruturados nos logs e handler para o Cloud Logging (seção 12, ADR-0028, `spec/plano-dashboard.md`) | `make check` passa; catálogo de eventos emitido nos pontos da seção 12; nenhum evento carrega número completo nem texto do aluno; `configurar_logs` sem `handler_extra` continua igual (dev/CI nunca falam com a nuvem) |
+| M28 | Snapshot diário de métricas em NDJSON no GCS (seção 7.1/12, ADR-0029, `spec/plano-dashboard.md`): `Entry.autor_id`, `Profile.nome`, `Banco.listar_espacos`/`listar_admins_detalhado`/`obter_ultimo_snapshot`, `services/snapshot.py`, `services/metricas_destino.py`, `python -m scripts.snapshot`, `infra/bq/*.json`, `infra/setup_metricas.sh` | `make check` e `make test-emulador` passam; `montar_snapshot` testado com `MemoryBanco` (espaço vazio, privado com termos/frases, grupo com autor_id, admins × grupos); esquema de `infra/bq/*.json` bate com as dataclasses (teste reprova divergência); `scripts.snapshot --dry-run` só lê, `--executar` grava e marca o dia; snapshot falhando nunca derruba os lembretes |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 
@@ -870,18 +874,23 @@ vocabot/
     domain/   models.py  state.py  choices.py  srs.py  lembretes.py  musica.py
     flows/    router.py  capture.py  practice.py  pronuncia.py  expansion.py  synonyms.py  freeform.py  review.py  song.py  commands.py
     services/ llm.py  prompts.py  planilha.py  storage.py  lembretes.py  letras.py  tts.py  audio.py
+              log_handler.py  snapshot.py  metricas_destino.py   # M27/M28
     repo/     base.py  memory.py  firestore.py   # Banco (a raiz) + Repository (um espaço), M14
   sim/        __main__.py  tutor.py  letras.py
   scripts/    migrar_multiusuario.py   # M14: raiz antiga -> espacos/{chat}
+              snapshot.py                        # M28: snapshot de métricas sob demanda
   evals/      sentencas.yaml  roteamento.yaml  run.py
   infra/      config.sh  setup.sh  secrets.sh  deploy.sh  pair.sh  logs.sh  ssh.sh  smoke_test.sh
+              setup_metricas.sh  lifecycle-metricas.json   # M28
               .env.infra.example  vm/startup.sh
+              bq/  espacos.json  pessoas.json  admins.json  termos.json
+                   grupos_pendentes.json  firestore_uso.json  views/*.sql  # M28/M30
   tests/      fixtures/*.json  test_*.py
   docs/adr/   README.md  0000-template.md  NNNN-*.md
 ```
 Se existir `referencia/`, ela contém um MVP anterior, feito para a Cloud API oficial (webhook da Meta, export etc.). Use-a só como consulta: o canal agora é o WAHA.
 
-## 12. Observabilidade (M27, ADR-0028, `spec/plano-dashboard.md`)
+## 12. Observabilidade (M27/M28, ADR-0028/ADR-0029, `spec/plano-dashboard.md`)
 
 Base do dashboard de saúde e uso (`spec/plano-dashboard.md`, M27–M30): pontos de negócio
 importantes chamam `registrar_evento(logger, nome, **campos)` (`app/logging_config.py`), que grava
@@ -914,3 +923,16 @@ Catálogo de eventos:
 | `numero_sem_plano` | `main.py:_avisar_sem_plano` | — | demanda reprimida |
 | `waha_status` | `main.py:_tratar_status_sessao` | `ok`, `motivo` (o status) | disponibilidade do WhatsApp |
 | `inicio` | `main.py:_lifespan` | — | reinícios/crash loop |
+| `snapshot_ok` | `Agendador._rodar_snapshot_se_for_a_hora` | `n` (linhas gravadas), `latencia_ms` | o painel sabe se o próprio dado está fresco |
+| `snapshot_falhou` | `Agendador._rodar_snapshot_se_for_a_hora` | `latencia_ms` | snapshot desatualizado (`METRICS_BUCKET` inexistente, Firestore fora do ar...) |
+
+**Snapshot diário de métricas (M28, ADR-0029):** uma vez por dia às 04:00 no fuso configurado, o
+`Agendador` chama `montar_snapshot(banco, agora)` (`app/services/snapshot.py`, função pura) e grava
+NDJSON particionado por dia (`services/metricas_destino.py`) em `METRICS_BUCKET` — sem esse
+`.env`, o passo fica desligado (nenhum ambiente de dev/CI fala com o GCS). `Banco.obter_ultimo_
+snapshot`/`marcar_snapshot` (`meta/snapshot`, seção 7.1) garante uma execução por dia mesmo com
+restart. `python -m scripts.snapshot` roda o mesmo snapshot sob demanda (`--dry-run` só conta).
+Tabelas (`espacos`, `pessoas`, `admins`, `termos`, `grupos_pendentes`, `firestore_uso`), com o
+esquema de cada uma versionado em `infra/bq/*.json` — um teste reprova se o código e o esquema
+divergirem. Número completo só nas tabelas `espacos`/`admins` (admins); alunos só como
+`id_curto`/mascarado (decisão do usuário, seção 7 do plano).
