@@ -800,6 +800,7 @@ def ajuda_do_grupo(p: str = "!") -> str:
         "*Commands*\n"
         f"{p}add word — add a word or expression (with context: {p}add stall | the talks stalled)\n"
         f"{p}list [page] — the class's words, numbered\n"
+        f"{p}delete [word or number] — remove a word from the class's list\n"
         f"{p}practice [word or number] — practice one (no word: the oldest pending one)\n"
         f"{p}review — start a review round right now\n"
         f"{p}reminder 3 9h-22h — daily practice reminders (or {p}reminder off)\n"
@@ -814,6 +815,10 @@ def grupo_add_uso(p: str = "!") -> str:
         f"Tell me which word: {p}add stall — or with the sentence where you saw it: "
         f"{p}add stall | the talks stalled."
     )
+
+
+def grupo_delete_uso(p: str = "!") -> str:
+    return f"Tell me which word to remove: {p}delete stall — or its number in {p}list: {p}delete 3."
 
 
 def nova_palavra_no_grupo(p: str = "!") -> str:

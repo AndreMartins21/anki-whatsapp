@@ -89,7 +89,7 @@ async def executar(
     elif comando in _EXPORTAR:
         await _exportar(d, exportador)
     elif comando in _APAGAR:
-        return await _apagar(d, sessao, argumento)
+        return await apagar(d, sessao, argumento)
     elif comando in _NIVEL:
         await _nivel(d, perfil, argumento)
     elif comando in _CANCELAR:
@@ -239,13 +239,16 @@ async def _exportar(d: Deps, exportador: Exportador | None) -> None:
         await d.conversa.enviar(messages.exportacao_com_link(link, resultado.quantidade))
 
 
-async def _apagar(d: Deps, sessao: Sessao, palavra: str) -> Sessao:
+async def apagar(d: Deps, sessao: Sessao, palavra: str) -> Sessao:
+    """`/delete N|palavra` (no grupo, `!delete`, M32): o número é o da lista do espaço."""
     if not palavra:
-        await d.conversa.enviar(messages.COMANDO_DESCONHECIDO)
+        await d.conversa.enviar(
+            messages.grupo_delete_uso(d.p) if d.em_grupo else messages.COMANDO_DESCONHECIDO
+        )
         return sessao
     entrada = await bloq(_achar_entrada, d.repo, palavra)
     if entrada is None:
-        await d.conversa.enviar(messages.palavra_nao_encontrada(palavra))
+        await d.conversa.enviar(messages.palavra_nao_encontrada(palavra, d.p, grupo=d.em_grupo))
         return sessao
     await bloq(d.repo.apagar_entrada, entrada.slug)
     await d.conversa.enviar(messages.apagada(entrada.palavra))
