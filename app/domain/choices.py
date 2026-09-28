@@ -51,6 +51,14 @@ def normalizar(texto: str) -> str:
     return " ".join(so_palavras.split())
 
 
+def separar_contexto(texto: str) -> tuple[str, str | None]:
+    """`palavra | contexto` → (`palavra`, `contexto`). O contexto é a frase onde o aluno viu a
+    palavra ou o sentido que ele quer; sem `|`, ou com o lado direito vazio, é `None`."""
+    termo, barra, contexto = texto.partition("|")
+    contexto = contexto.strip()
+    return termo.strip(), (contexto if barra and contexto else None)
+
+
 def _como_numero(token: str) -> int | None:
     if token.isdigit():
         return int(token)

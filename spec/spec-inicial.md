@@ -12,8 +12,8 @@ Um bot de WhatsApp, de uso pessoal e com um único usuário, para praticar vocab
 
 Ciclo principal:
 
-1. O usuário manda uma palavra ou expressão em inglês, opcionalmente com a frase onde a viu (ex.: `stall | the talks stalled`).
-2. O bot explica a palavra numa única mensagem (o "card"): tradução, definição curta, uma dica e uma frase de exemplo — a IA já escolhe o sentido mais provável, sem perguntar.
+1. O usuário manda uma palavra ou expressão em inglês, opcionalmente com a frase onde a viu (`stall | the talks stalled`) **ou com o sentido que quer aprender** (`stall | to delay on purpose`, M31). Qualquer palavra vale, de qualquer nível, inclusive gíria e inglês de rua.
+2. O bot explica a palavra numa única mensagem (o "card"): tradução, definição curta, uma dica e uma frase de exemplo — a IA já escolhe o sentido mais provável, sem perguntar, e o card avisa quando a palavra tem outros sentidos e como pedir um deles (M31).
 3. O card termina no **menu único**: 1 ver mais exemplos, 2 ver sinônimos, 3 só salvar, 4 ignorar a palavra e seguir com outra — sempre com o convite a já escrever uma frase. Se a palavra **já está na lista**, o bot avisa, mostra o que o aluno já tem (sentido e exemplo salvos) e oferece só 1, 2 e a frase, além de `0`/`skip` para mandar outra palavra ou comando (seção 5.1).
 4. Texto livre (frase, pedido de ajuda, palavra nova, ou fora do escopo) é roteado por uma única chamada de IA (seção 5.1) que classifica e já responde. Frase de prática: avalia se usa a palavra corretamente, naquele sentido, e se é natural; o usuário pode tentar de novo.
 5. Ao concluir, tudo fica salvo no Firestore: a palavra, o sentido, as frases do usuário com as avaliações e os exemplos.
@@ -109,6 +109,7 @@ AWAIT_ACTION  ── 2 "see more examples" ──▶ gerar exemplos   ──▶ 
               ── 4 "just save"         ──▶ salvar e sugerir ──▶ IDLE
               ── 5 "ignore this word"  ──▶ descartar a palavra recém-criada ──▶ IDLE
               ── 0 / skip              ──▶ sair da palavra (fica salva), sem IA ──▶ IDLE
+              ── `palavra | algo`      ──▶ (M31) sem IA de roteamento: mesma palavra = outro sentido; outra = palavra nova ──▶ AWAIT_ACTION
               ── qualquer outro texto  ──▶ rotear pela IA (abaixo) ──▶ AWAIT_ACTION (ou IDLE)
 ```
 
@@ -154,10 +155,16 @@ Regras:
   existindo à parte, para tocar de novo qualquer palavra já salva.
 - **`0` / `skip` em `AWAIT_ACTION`** (e só eles: `stop`, `leave` etc. seguem indo para o roteamento,
   pois podem ser a palavra a aprender) saem da palavra aberta sem chamar a IA e sem apagar nada.
-- **Palavra que já existe** (ADR-0023: palavra sem frase de contexto já salva, em qualquer sentido; com
-  frase, mesmo `slug` e mesmo sentido — traduções com alguma opção em comum contam como o mesmo): em vez do card completo,
+- **`palavra | frase ou sentido` em `AWAIT_ACTION` (M31, ADR-0030):** texto com `|` e algo dos dois
+  lados **não** passa pelo roteamento de IA. Se o termo é o da palavra aberta, é um **pedido de outro
+  sentido**: se a entrada foi criada por esta captura e o aluno ainda não escreveu frase nela, o novo
+  card **substitui** o anterior (a IA responde primeiro; se falhar, nada é apagado); caso contrário o
+  novo sentido vira outra entrada (`--sN`), sem "Saved" no meio. Se o termo é outro, é uma palavra
+  nova (salva a atual e explica a nova; no grupo, só a dica de `!add`).
+- **Palavra que já existe** (ADR-0023: palavra sem frase de contexto **nem sentido pedido** já salva, em qualquer sentido; com
+  frase ou sentido pedido, mesmo `slug` e mesmo sentido — traduções com alguma opção em comum contam como o mesmo): em vez do card completo,
   o bot manda `📌 You already have *X* in your list.` com título, 🇧🇷, 📖 e o exemplo **salvos**,
-  o convite a escrever uma frase, as opções 1 a 3 (ouvir, exemplos e sinônimos) e a linha
+  os outros sentidos (`↔️`) com a dica de como pedi-los, o convite a escrever uma frase, as opções 1 a 3 (ouvir, exemplos e sinônimos) e a linha
   `To send another word or command, type 0 or skip.` (no grupo, `!0 or !skip`). Nada é regravado;
   a sessão fica em `AWAIT_ACTION` sobre aquela entrada (`entrada_criada_agora=false`).
 - **Sempre** reenvie o menu de ações ao final de cada resposta em `AWAIT_ACTION` — inclusive nas
@@ -209,8 +216,8 @@ Em grupo ativo (5.6, ADR-0018) o bot **só lê mensagens que começam com o pref
 padrão `!`, com uma letra ou número logo depois); o resto é conversa entre pessoas e não é lido,
 gravado nem marcado como lido (o filtro vem antes da deduplicação e do `sendSeen`). Mídia é ignorada.
 
-- **Comandos (conjunto fechado):** `!add palavra [| contexto]` (a **única** forma de trazer uma palavra
-  nova), `!list [página]` (palavras da turma, mesma regra do `/list`), `!practice [palavra|número]`,
+- **Comandos (conjunto fechado):** `!add palavra [| contexto ou sentido]` (a **única** forma de trazer uma palavra
+  nova; com a palavra aberta, `!add` do mesmo termo com `|` troca o sentido, como no privado — M31), `!list [página]` (palavras da turma, mesma regra do `/list`), `!practice [palavra|número]`,
   `!review`, `!reminder [N [INICIOh-FIMh] | off]` (aceita `!reminders`), `!group` (nível, palavras,
   vencidas, lembretes e os membros com o papel, só nomes e sem menção) e `!help` (só os comandos do
   grupo). `!teacher`/`!student` (um professor da turma ou o dono) mudam o papel, escondidos do `!help`;
@@ -253,6 +260,7 @@ em silêncio; o `!review` avisa).
 
 - **Exemplos:** vocabulário de apoio no máximo B2 (a palavra-alvo pode ser de qualquer nível), 8 a 18 palavras por frase, contextos variados (empresa internacional, dia a dia, informal).
 - **Avaliação:** tolerante com frases simples e corretas. Prioridade: sentido, depois gramática e colocação, depois naturalidade. Explicação em inglês, com no máximo 4 linhas (M9: só a linha 🇧🇷 do card fica em PT-BR).
+- **Palavra-alvo de qualquer nível (M31, ADR-0030):** o nível do espaço calibra só o vocabulário de apoio (definições, dicas, exemplos). Nenhum nível é motivo de recusar uma palavra: raras, técnicas, gírias, inglês de rua, abreviações (`gonna`, `ain't`, `no cap`) e palavrões entram, com a `nota` avisando o registro. A IA só devolve `ok=false` para o que não é inglês.
 - **Expansões:** colocações e expressões frequentes de nível B1-B2, ligadas ao sentido escolhido. Evite idiomatismos raros (C2).
 - Cada entrada guarda `cefr_estimado`.
 
@@ -271,18 +279,24 @@ fica em PT-BR — e o menu de ações (seção 5.1) termina praticamente toda re
 exemplo calibrada, reaproveitando palavras que o aluno já salvou quando der):
 ```
 *stall* (verb) — B2
-🇧🇷 travar, emperrar; enrolar
+🇧🇷 travar, emperrar
 📖 to stop making progress
 💡 Think of a car engine that dies in traffic.
-"The project [[stalled]] because the client didn't send the documents."
+"The project stalled because the client didn't send the documents."
+
+↔️ enrolar — to delay on purpose
+Want another meaning? Send *stall | to delay on purpose*
 
 Now, you can write one or more sentences using *stall*, or type:
-1️⃣ Hear how it sounds 🔊
 2️⃣ See more examples
 3️⃣ Check synonyms
 4️⃣ Just save
 5️⃣ Ignore this word, try another
 ```
+Os outros sentidos (`Explanation.sentidos` menos o escolhido, no mesmo formato do `/info`) aparecem
+depois do exemplo; sem outros sentidos, o card não muda. A dica usa a definição do primeiro outro
+sentido (no grupo, `*!add stall | to delay on purpose*`). Mandar `stall | to delay on purpose`
+(ou `stall | enrolar`) faz a IA explicar **aquele** sentido, em vez do mais popular.
 
 **Case A — texto livre** (roteado pela IA, seção 5.1). Frase de prática avaliada:
 ```
@@ -523,9 +537,9 @@ class Explanation(BaseModel):
     palavra: str                    # forma base, minúsculas
     classe: str                     # em inglês (verb, noun, adjective...)
     cefr_estimado: Literal["A2","B1","B2","C1","C2"]
-    sentidos: list[Sense]           # 1 a 4, só os comuns
-    sentido_do_contexto: str | None # M9: a IA sempre escolhe um id (nunca null)
-    frase_contexto: str | None      # frase do usuário corrigida, alvo entre [[ ]]
+    sentidos: list[Sense]           # 1 a 4, só os comuns, do mais popular ao menos (M31); um sentido pedido fora dos comuns entra na lista
+    sentido_do_contexto: str | None # M9: a IA sempre escolhe um id (nunca null): o da frase, o pedido ou o mais popular
+    frase_contexto: str | None      # frase do usuário corrigida, alvo entre [[ ]]; null se não houve frase (M31: também quando o que veio após `|` foi um pedido de sentido)
     nota: str                       # em inglês
     tags: list[Literal["trabalho","phrasal_verb","expressao"]]
 
@@ -750,6 +764,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, enviar voz, marcar com
 | M26 | Pronúncia automática do termo em cada card de revisão, só no privado (seção 5.7/7.4, ADR-0027) | `make check` passa; cada card no privado manda a voz do termo, sem a frase; o grupo não manda áudio na revisão (orçamento de 3 mensagens preservado para repasse/fechamento) |
 | M27 | Eventos estruturados nos logs e handler para o Cloud Logging (seção 12, ADR-0028, `spec/plano-dashboard.md`) | `make check` passa; catálogo de eventos emitido nos pontos da seção 12; nenhum evento carrega número completo nem texto do aluno; `configurar_logs` sem `handler_extra` continua igual (dev/CI nunca falam com a nuvem) |
 | M28 | Snapshot diário de métricas em NDJSON no GCS (seção 7.1/12, ADR-0029, `spec/plano-dashboard.md`): `Entry.autor_id`, `Profile.nome`, `Banco.listar_espacos`/`listar_admins_detalhado`/`obter_ultimo_snapshot`, `services/snapshot.py`, `services/metricas_destino.py`, `python -m scripts.snapshot`, `infra/bq/*.json`, `infra/setup_metricas.sh` | `make check` e `make test-emulador` passam; `montar_snapshot` testado com `MemoryBanco` (espaço vazio, privado com termos/frases, grupo com autor_id, admins × grupos); esquema de `infra/bq/*.json` bate com as dataclasses (teste reprova divergência); `scripts.snapshot --dry-run` só lê, `--executar` grava e marca o dia; snapshot falhando nunca derruba os lembretes |
+| M31 | Palavra de qualquer nível/gíria e pedido de sentido `palavra | sentido` (seções 5.1/5.2b/5.3/5.5, ADR-0030): prompt de `explain` sem recusa por nível, card com `↔️` e dica, `Acao.EXPLICAR_COM_CONTEXTO` sem IA de roteamento, troca do card recém-criado, `!add` do mesmo termo com `|` | `make check` passa; card com outros sentidos lista `↔️` e a dica (com `!add` no grupo), com um sentido só não muda; `palavra | sentido` logo após o card troca o card (só depois de a IA responder; com frase do aluno vira `--s2`); em `IDLE`, pedido de sentido de palavra já salva abre outro card em vez de "já existe"; `palavra | x` com outra palavra salva a atual e explica a nova, sem `route` |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 

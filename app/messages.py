@@ -128,6 +128,21 @@ def _titulo(palavra: str, classe: str, cefr: str) -> str:
     return f"*{palavra}* ({classe}) — {cefr}"
 
 
+def _outros_sentidos(
+    palavra: str, outros: Sequence[Sense | SentidoSalvo], grupo: str | None
+) -> list[str]:
+    """Os outros sentidos da palavra (no formato do `/info`) e como pedir um deles: a mesma
+    palavra com `|` e o sentido, no grupo pelo `!add` (M31). Vazio se a palavra tem um só."""
+    if not outros:
+        return []
+    comando = f"{grupo}add " if grupo is not None else ""
+    return [
+        "",
+        *(f"↔️ {o.traducao} — {o.definicao}" for o in outros),
+        f"Want another meaning? Send *{comando}{palavra} | {outros[0].definicao}*",
+    ]
+
+
 def explicacao(
     palavra: str,
     classe: str,
@@ -136,6 +151,7 @@ def explicacao(
     dica: str,
     exemplo: str,
     *,
+    outros_sentidos: Sequence[Sense | SentidoSalvo] = (),
     ja_viu_sinonimos: bool = False,
     grupo: str | None = None,
 ) -> str:
@@ -144,6 +160,7 @@ def explicacao(
         linhas.append(f"💡 {dica}")
     if exemplo:
         linhas.append(f'"{sem_marcas(exemplo)}"')
+    linhas += _outros_sentidos(palavra, outros_sentidos, grupo)
     return (
         "\n".join(linhas)
         + "\n\n"
@@ -158,6 +175,7 @@ def ja_existe(
     sentido: Sense | SentidoSalvo,
     exemplo: str,
     *,
+    outros_sentidos: Sequence[Sense | SentidoSalvo] = (),
     grupo: str | None = None,
 ) -> str:
     """O aluno mandou uma palavra que já está na lista: avisa, mostra o que já tem e oferece só o
@@ -173,6 +191,7 @@ def ja_existe(
     ]
     if exemplo:
         linhas.append(f'"{sem_marcas(exemplo)}"')
+    linhas += _outros_sentidos(palavra, outros_sentidos, grupo)
     opcoes = ["See more examples", "Check synonyms"]
     return (
         "\n".join(linhas)

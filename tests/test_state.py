@@ -30,6 +30,14 @@ TRANSICOES = [
     (Estado.AWAIT_ACTION, "just save", Transicao(Estado.IDLE, Acao.SALVAR)),
     (Estado.AWAIT_ACTION, "5", Transicao(Estado.IDLE, Acao.IGNORAR)),
     (Estado.AWAIT_ACTION, "ignore this word", Transicao(Estado.IDLE, Acao.IGNORAR)),
+    # `palavra | contexto` no meio de uma palavra: a IA de roteamento não entra, é uma explicação.
+    (
+        Estado.AWAIT_ACTION,
+        "stall | to delay on purpose",
+        Transicao(Estado.AWAIT_ACTION, Acao.EXPLICAR_COM_CONTEXTO, "stall | to delay on purpose"),
+    ),
+    (Estado.AWAIT_ACTION, "stall |", Transicao(Estado.AWAIT_ACTION, Acao.ROTEAR, "stall |")),
+    (Estado.AWAIT_ACTION, "| stall", Transicao(Estado.AWAIT_ACTION, Acao.ROTEAR, "| stall")),
     # 0/skip abrem caminho para outra palavra ou comando, sem passar pela IA.
     (Estado.AWAIT_ACTION, "0", Transicao(Estado.IDLE, Acao.PULAR)),
     (Estado.AWAIT_ACTION, "skip", Transicao(Estado.IDLE, Acao.PULAR)),

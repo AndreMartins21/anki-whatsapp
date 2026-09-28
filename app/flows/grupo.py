@@ -114,6 +114,8 @@ async def _adicionar(d: Deps, sessao: Sessao, perfil: Profile, palavra: str) -> 
         await d.conversa.enviar(messages.grupo_add_uso(d.p))
         return sessao
     if Estado(sessao.estado) == Estado.AWAIT_ACTION and sessao.entry_id:
+        if await capture.eh_a_palavra_aberta(d, sessao, palavra) and "|" in palavra:
+            return await capture.trocar_sentido(d, sessao, perfil, palavra)  # M31: outro sentido
         await practice.concluir(d, sessao, perfil)
     return await capture.explicar(d, perfil, palavra)
 
