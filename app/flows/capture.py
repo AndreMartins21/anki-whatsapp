@@ -166,6 +166,7 @@ def gravar_entrada(
         nota=explicacao.nota,
         tags=explicacao.tags,
         origem_texto=explicacao.frase_contexto,
+        autor_id=d.autor_id if d.em_grupo else None,  # M28: quem salvou, só faz sentido em grupo
         criado_em=agora,
         atualizado_em=agora,
     )

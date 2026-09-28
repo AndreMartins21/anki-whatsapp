@@ -1,0 +1,14 @@
+[
+  {"name": "dt", "type": "DATE", "mode": "REQUIRED"},
+  {"name": "pessoa", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "numero_mascarado", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "nome", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "tem_privado", "type": "BOOLEAN", "mode": "REQUIRED"},
+  {"name": "n_termos_privado", "type": "INTEGER", "mode": "REQUIRED"},
+  {"name": "n_termos_em_grupos", "type": "INTEGER", "mode": "REQUIRED"},
+  {"name": "n_frases", "type": "INTEGER", "mode": "REQUIRED"},
+  {"name": "n_respostas_grupo", "type": "INTEGER", "mode": "REQUIRED"},
+  {"name": "n_respondeu_marcada", "type": "INTEGER", "mode": "REQUIRED"},
+  {"name": "n_grupos", "type": "INTEGER", "mode": "REQUIRED"},
+  {"name": "lembretes_por_dia_privado", "type": "INTEGER", "mode": "NULLABLE"}
+]

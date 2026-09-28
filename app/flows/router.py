@@ -180,9 +180,14 @@ class Router:
         return limpo
 
     def _perfil(self, d: Deps) -> Profile:
+        # M28: só no privado — em grupo, `d.autor` é quem escreveu a mensagem, não o espaço.
+        nome = d.autor.nome if (d.autor is not None and not d.em_grupo) else None
         perfil = d.repo.obter_perfil()
         if perfil is None:
-            perfil = Profile(nivel=self._nivel_padrao, criado_em=d.agora())
+            perfil = Profile(nivel=self._nivel_padrao, criado_em=d.agora(), nome=nome)
+            d.repo.salvar_perfil(perfil)
+        elif nome and perfil.nome != nome:
+            perfil = perfil.model_copy(update={"nome": nome})
             d.repo.salvar_perfil(perfil)
         return perfil
 

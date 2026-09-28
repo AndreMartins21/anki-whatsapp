@@ -55,6 +55,7 @@ from app.services.lembretes import Agendador
 from app.services.letras import LrclibProvider
 from app.services.llm import criar_tutor
 from app.services.log_handler import criar_handler_da_nuvem
+from app.services.metricas_destino import DestinoDeMetricas, criar_destino_gcs
 from app.services.planilha import ExportadorExcel
 from app.services.storage import (
     Armazenamento,
@@ -123,6 +124,14 @@ def _criar_audio(settings: Settings) -> ServicoAudio | None:
     )
 
 
+def _criar_destino_metricas(settings: Settings) -> DestinoDeMetricas | None:
+    """M28: sem `METRICS_BUCKET` (ou fora de produção), o snapshot diário simplesmente não roda —
+    o `Agendador` confere isto sozinho (`destino_de_metricas=None`)."""
+    if settings.app_env != "prod" or not settings.metrics_bucket:
+        return None
+    return criar_destino_gcs(projeto=settings.gcp_project_id, bucket=settings.metrics_bucket)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
@@ -169,6 +178,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         grupo_autorizado=lambda grupo_id: admin.grupo_autorizado(
             _acesso(settings, canal, banco), grupo_id
         ),
+        destino_de_metricas=_criar_destino_metricas(settings),
     )
     app.state.agendador = agendador
     tarefa_do_agendador = asyncio.create_task(agendador.rodar())
@@ -377,7 +387,10 @@ async def _responder(
         if payload.has_media:
             await router.midia_nao_suportada(chat_destino)
         else:
-            await router.processar(payload.body, chat_destino)
+            # M28: leva o nome do WhatsApp para o `Profile.nome` (nunca o telefone) — `Autor` num
+            # espaço privado não muda o roteamento (só grupo confere `grupo_prefixo`).
+            autor = Autor(numero=numero, nome=payload.nome_do_remetente())
+            await router.processar(payload.body, chat_destino, autor)
     except Exception:
         logger.exception("falha ao processar mensagem")
         with contextlib.suppress(Exception):

@@ -48,6 +48,7 @@ chmod 700 "$TMP"
   printf 'EXPORT_BUCKET=%s\n' "$EXPORT_BUCKET"
   printf 'AUDIO_BUCKET=%s\n' "$AUDIO_BUCKET"
   printf 'TTS_VOICE=%s\n' "$TTS_VOICE"
+  printf 'METRICS_BUCKET=%s\n' "$METRICS_BUCKET"
 } > "$TMP/vocabot.env.base"
 
 echo "==> Copiando para $VM_NAME (via IAP)"

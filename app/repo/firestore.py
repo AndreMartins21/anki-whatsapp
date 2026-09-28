@@ -15,7 +15,7 @@ Antes do M14 (multiusuário) `profile`, `session` e `entries` ficavam na raiz do
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from google.api_core.exceptions import AlreadyExists
@@ -34,7 +34,9 @@ from app.domain.models import (
 )
 from app.repo.base import (
     PROCESSED_TTL,
+    AdminDetalhado,
     EntradaJaExiste,
+    EspacoResumo,
     GrupoAtivo,
     Repository,
     proximo_tick,
@@ -277,3 +279,40 @@ class FirestoreBanco:
 
     def remover_grupo_pendente(self, grupo_id: str) -> None:
         self._db.collection("grupos_pendentes").document(grupo_id).delete()
+
+    # --- Snapshot de métricas (M28, seção 12) -----------------------------------------------
+
+    def listar_espacos(self) -> list[EspacoResumo]:
+        resumos = [
+            EspacoResumo(
+                id=d.id,
+                tipo=dados.get("tipo", tipo_do_espaco(d.id)),
+                criado_em=dados.get("criado_em"),
+                ativo=bool(dados.get("ativo", False)),
+                nome=dados.get("nome"),
+                ativado_por=dados.get("ativado_por"),
+                ativado_em=dados.get("ativado_em"),
+            )
+            for d in self._db.collection("espacos").stream()
+            if (dados := d.to_dict())
+        ]
+        return sorted(resumos, key=lambda e: e.id)
+
+    def listar_admins_detalhado(self) -> list[AdminDetalhado]:
+        documentos = self._db.collection("admins").order_by("adicionado_em").stream()
+        return [
+            AdminDetalhado(
+                numero=d.id,
+                adicionado_por=dados["adicionado_por"],
+                adicionado_em=dados["adicionado_em"],
+            )
+            for d in documentos
+            if (dados := d.to_dict())
+        ]
+
+    def obter_ultimo_snapshot(self) -> date | None:
+        dados = self._db.collection("meta").document("snapshot").get().to_dict()
+        return date.fromisoformat(dados["ultimo_dia"]) if dados else None
+
+    def marcar_snapshot(self, dia: date) -> None:
+        self._db.collection("meta").document("snapshot").set({"ultimo_dia": dia.isoformat()})

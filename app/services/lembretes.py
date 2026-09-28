@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -25,6 +26,8 @@ from app.flows.base import bloq
 from app.flows.router import Router
 from app.logging_config import id_curto, registrar_evento
 from app.repo.base import Banco, Repository, tipo_do_espaco
+from app.services.metricas_destino import DestinoDeMetricas
+from app.services.snapshot import montar_snapshot, tabelas
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +35,7 @@ INTERVALO_PADRAO_SEGUNDOS = 60
 LIMITE_DE_ATRASO = timedelta(hours=2)
 # Se o `leave` continua falhando (o bot já foi removido do grupo), para de tentar depois disto.
 DESISTIR_DE_SAIR_APOS = timedelta(hours=72)
+HORA_PADRAO_DO_SNAPSHOT = 4  # 04:00 no fuso do aluno (M28, seção 12 da spec)
 
 
 class Agendador:
@@ -46,6 +50,8 @@ class Agendador:
         intervalo_segundos: float = INTERVALO_PADRAO_SEGUNDOS,
         sair_do_grupo: Callable[[str], Awaitable[None]] | None = None,
         grupo_autorizado: Callable[[str], bool] | None = None,
+        destino_de_metricas: DestinoDeMetricas | None = None,
+        hora_do_snapshot: int = HORA_PADRAO_DO_SNAPSHOT,
     ) -> None:
         self._router = router
         self._banco = banco
@@ -56,6 +62,10 @@ class Agendador:
         self._sair_do_grupo = sair_do_grupo
         # M16: grupo desativado por um admin não recebe lembrete (None = não confere).
         self._grupo_autorizado = grupo_autorizado
+        # M28: `None` (padrão) desliga o snapshot — nenhum ambiente manda métricas sem um destino
+        # explícito (o `dev`/CI nunca configuram um).
+        self._destino_de_metricas = destino_de_metricas
+        self._hora_do_snapshot = hora_do_snapshot
         self._parar = False
 
     def parar(self) -> None:
@@ -86,6 +96,44 @@ class Agendador:
             await self._sair_de_grupos_pendentes()
         except Exception:  # o Firestore falhando aqui não pode calar os lembretes do próximo tick
             logger.exception("falha ao sair de grupos pendentes")
+        try:
+            await self._rodar_snapshot_se_for_a_hora(agora_utc)
+        except Exception:  # o snapshot nunca pode calar os lembretes (M28)
+            logger.exception("falha no snapshot diário; os lembretes seguem")
+
+    async def _rodar_snapshot_se_for_a_hora(self, agora_utc: datetime) -> None:
+        """Uma vez por dia, na janela de `_hora_do_snapshot` (M28, seção 12 da spec): sem
+        destino configurado, fica desligado. `obter_ultimo_snapshot` sobrevive a um restart do
+        container, então um tick perdido não faz o snapshot rodar duas vezes no mesmo dia."""
+        if self._destino_de_metricas is None:
+            return
+        agora_local = agora_utc.astimezone(self._fuso)
+        if agora_local.hour != self._hora_do_snapshot:
+            return
+        hoje = agora_local.date()
+        ultimo = await bloq(self._banco.obter_ultimo_snapshot)
+        if ultimo is not None and ultimo >= hoje:
+            return
+
+        inicio = time.monotonic()
+        try:
+            snapshot = await bloq(montar_snapshot, self._banco, agora_utc)
+            total = 0
+            for tabela, linhas in tabelas(snapshot):
+                await bloq(self._destino_de_metricas.gravar, tabela, hoje, linhas)
+                total += len(linhas)
+        except Exception:
+            registrar_evento(
+                logger,
+                "snapshot_falhou",
+                latencia_ms=round((time.monotonic() - inicio) * 1000),
+            )
+            raise
+
+        await bloq(self._banco.marcar_snapshot, hoje)
+        registrar_evento(
+            logger, "snapshot_ok", n=total, latencia_ms=round((time.monotonic() - inicio) * 1000)
+        )
 
     async def _tick_espaco(self, espaco_id: str) -> None:
         if (

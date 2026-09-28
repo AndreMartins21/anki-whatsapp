@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import pytest
@@ -416,6 +416,18 @@ def test_remover_admin_que_nao_existe_devolve_falso(banco: Banco) -> None:
     assert banco.remover_admin("5531999998888") is False
 
 
+def test_listar_admins_detalhado_traz_quem_adicionou_e_quando(banco: Banco) -> None:
+    banco.adicionar_admin("5531999998888", por="5511988887777", agora=T0)
+    banco.adicionar_admin("5521977776666", por="5531999998888", agora=T1)
+
+    detalhado = banco.listar_admins_detalhado()
+
+    assert [(a.numero, a.adicionado_por, a.adicionado_em) for a in detalhado] == [
+        ("5531999998888", "5511988887777", T0),
+        ("5521977776666", "5531999998888", T1),
+    ]
+
+
 def test_grupo_comeca_inativo_e_ativar_desativar(banco: Banco) -> None:
     assert banco.grupo_esta_ativo(GRUPO) is False
 
@@ -467,6 +479,54 @@ def test_grupo_ativado_com_perfil_nao_perde_o_espelho_dos_lembretes(banco: Banco
     assert banco.grupo_esta_ativo(GRUPO) is True
     espaco.salvar_perfil(_lembretes(GRUPO, T1))
     assert banco.grupo_esta_ativo(GRUPO) is True
+
+
+def test_listar_espacos_ignora_o_que_nunca_foi_escrito(banco: Banco) -> None:
+    banco.do_espaco(ALUNO_A).obter_perfil()  # só leitura: não deveria criar nada
+
+    assert banco.listar_espacos() == []
+
+
+def test_listar_espacos_traz_privado_e_grupo(banco: Banco) -> None:
+    banco.do_espaco(ALUNO_A).salvar_perfil(Profile(nivel="B1-B2", criado_em=T0))
+    banco.ativar_grupo(GRUPO, nome="Turma A", por="5531999998888", agora=T1)
+
+    espacos = {e.id: e for e in banco.listar_espacos()}
+
+    assert espacos[ALUNO_A].tipo == "privado"
+    assert espacos[ALUNO_A].criado_em == T0
+    assert espacos[ALUNO_A].ativo is False
+    assert espacos[GRUPO].tipo == "grupo"
+    assert espacos[GRUPO].ativo is True
+    assert (espacos[GRUPO].nome, espacos[GRUPO].ativado_por, espacos[GRUPO].ativado_em) == (
+        "Turma A",
+        "5531999998888",
+        T1,
+    )
+
+
+def test_listar_espacos_mantem_o_grupo_desativado_visivel(banco: Banco) -> None:
+    """Ao contrário de `listar_grupos_ativos`: o snapshot (M28) precisa ver os desativados
+    também, para o painel mostrar o histórico completo, não só quem está ativo agora."""
+    banco.ativar_grupo(GRUPO, nome="Turma A", por="5531999998888", agora=T0)
+
+    banco.desativar_grupo(GRUPO)
+
+    (espaco,) = banco.listar_espacos()
+    assert espaco.ativo is False
+    assert espaco.nome == "Turma A"  # o histórico não some
+
+
+def test_ultimo_snapshot_e_none_e_depois_persiste(banco: Banco) -> None:
+    assert banco.obter_ultimo_snapshot() is None
+
+    banco.marcar_snapshot(date(2026, 9, 28))
+
+    assert banco.obter_ultimo_snapshot() == date(2026, 9, 28)
+
+    banco.marcar_snapshot(date(2026, 9, 29))
+
+    assert banco.obter_ultimo_snapshot() == date(2026, 9, 29)
 
 
 def test_grupo_pendente_registra_uma_vez_e_guarda_o_primeiro_horario(banco: Banco) -> None:

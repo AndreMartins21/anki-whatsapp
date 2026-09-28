@@ -298,6 +298,9 @@ class Entry(BaseModel):
     origem_texto: str | None = None
     origem: Literal["usuario", "expansao"] = "usuario"
     pai: str | None = None
+    # M28 (snapshot de métricas, spec 12): quem salvou, quando a entrada é de um grupo — só assim
+    # "termos por pessoa" existe dentro de grupos (frases e respostas já têm autor_id há mais tempo).
+    autor_id: str | None = None
     status: StatusEntrada = "nova"
     exportado: bool = False
     criado_em: datetime = Field(default_factory=agora_utc)
@@ -322,6 +325,9 @@ class Profile(BaseModel):
 
     nivel: NivelUsuario
     criado_em: datetime = Field(default_factory=agora_utc)
+    # M28 (snapshot de métricas, spec 12): o nome que o WhatsApp informa (o "push name"), como já
+    # é feito em `Membro`; nunca o telefone. `None` até a primeira mensagem trazer um.
+    nome: str | None = None
     # Lembretes de revisão espaçada (M10, seção 5.7). `lembretes_por_dia=0` = desligado; o padrão
     # (M24, ADR-0025) é ligado, 1x/dia às 12h — só vale para perfil novo, não muda quem já existe.
     lembretes_por_dia: int = 1
