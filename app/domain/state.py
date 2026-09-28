@@ -18,6 +18,7 @@ from app.domain.choices import (
     eh_sair,
     eh_todos,
     parse_escolha,
+    separar_contexto,
     so_numeros,
 )
 from app.domain.models import Estado
@@ -27,6 +28,7 @@ SESSAO_EXPIRA_APOS = timedelta(hours=3)
 
 class Acao(StrEnum):
     EXPLICAR = "EXPLICAR"
+    EXPLICAR_COM_CONTEXTO = "EXPLICAR_COM_CONTEXTO"
     GERAR_EXEMPLOS = "GERAR_EXEMPLOS"
     GERAR_SINONIMOS = "GERAR_SINONIMOS"
     SALVAR = "SALVAR"
@@ -92,6 +94,10 @@ def _await_action(texto: str) -> Transicao:
         return Transicao(estado, acao)
     if eh_pular(texto):
         return Transicao(Estado.IDLE, Acao.PULAR)
+    termo, contexto = separar_contexto(texto)
+    # `palavra | sentido ou frase`: é um pedido de explicação, sem roteamento
+    if termo and contexto:
+        return Transicao(Estado.AWAIT_ACTION, Acao.EXPLICAR_COM_CONTEXTO, texto)
     return Transicao(Estado.AWAIT_ACTION, Acao.ROTEAR, texto)
 
 

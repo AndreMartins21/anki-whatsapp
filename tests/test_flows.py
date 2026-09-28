@@ -63,6 +63,9 @@ async def test_ciclo_completo_do_stall() -> None:
         '💡 "the car stalled" = the car died\n'
         '"The talks stalled."\n'
         "\n"
+        "↔️ enrolar — to delay on purpose\n"
+        "Want another meaning? Send *stall | to delay on purpose*\n"
+        "\n"
         "Now, you can write one or more sentences using *stall*, or type:\n"
         "2️⃣ See more examples\n"
         "3️⃣ Check synonyms\n"
@@ -446,6 +449,9 @@ async def test_palavra_que_ja_existe_avisa_e_mostra_o_que_o_aluno_tem() -> None:
         "📖 to stop making progress\n"
         '"The talks stalled."\n'
         "\n"
+        "↔️ enrolar — to delay on purpose\n"
+        "Want another meaning? Send *stall | to delay on purpose*\n"
+        "\n"
         "Now, you can write one or more sentences using *stall*, or type:\n"
         "2️⃣ See more examples\n"
         "3️⃣ Check synonyms\n"
@@ -581,3 +587,99 @@ async def test_palavra_com_frase_e_outro_sentido_de_verdade_vira_um_novo_cartao(
 
     assert resposta.startswith("*stall*")  # card novo, não o aviso
     assert [e.slug for e in m.repo.listar_entradas()] == ["stall", "stall--s2"]
+
+
+# ---- M31: outro sentido da mesma palavra (`palavra | sentido`) -------------------------------
+
+
+def _stall_no_sentido_s2() -> Explanation:
+    """A IA respondendo a `stall | to delay on purpose`: o sentido pedido, sem frase de contexto."""
+    return explicacao_stall(sentido_do_contexto="s2").model_copy(update={"frase_contexto": None})
+
+
+async def test_card_de_palavra_com_um_so_sentido_nao_lista_outros() -> None:
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(dois_sentidos=False)]))
+
+    (card,) = await m.diz("stall")
+
+    assert "↔️" not in card
+    assert "another meaning" not in card
+
+
+async def test_pedir_outro_sentido_troca_o_card_recem_criado() -> None:
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(), _stall_no_sentido_s2()]))
+    await m.diz("stall")
+
+    (card,) = await m.diz("stall | to delay on purpose")
+
+    assert card.startswith("*stall* (verb) — B2\n🇧🇷 enrolar\n📖 to delay on purpose")
+    assert "↔️ travar, emperrar — to stop making progress" in card
+    assert "Saved" not in card
+    (entrada,) = m.repo.listar_entradas()
+    assert entrada.slug == "stall" and entrada.sentido.traducao == "enrolar"
+    assert [c[0] for c in m.tutor.chamadas] == ["explain", "explain"]  # nada de roteamento
+    assert m.repo.obter_sessao().estado == Estado.AWAIT_ACTION
+
+
+async def test_pedir_outro_sentido_depois_de_escrever_frase_mantem_o_primeiro() -> None:
+    tutor = FakeTutor(
+        explicacoes=[explicacao_stall(), _stall_no_sentido_s2()],
+        roteamentos=[_roteamento_frase("quase")],
+    )
+    m = montar(tutor=tutor)
+    await m.diz("stall")
+    await m.diz("the project stalled last week")
+
+    (card,) = await m.diz("stall | to delay on purpose")
+
+    assert card.startswith("*stall* (verb) — B2\n🇧🇷 enrolar")
+    assert [e.slug for e in m.repo.listar_entradas()] == ["stall", "stall--s2"]
+
+
+async def test_pedir_outro_sentido_com_a_ia_fora_do_ar_nao_perde_o_card() -> None:
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(), LLMError("fora do ar")]))
+    await m.diz("stall")
+
+    (resposta,) = await m.diz("stall | to delay on purpose")
+
+    assert "I couldn't reach the AI" in resposta
+    assert [e.slug for e in m.repo.listar_entradas()] == ["stall"]
+    assert m.repo.obter_sessao().estado == Estado.AWAIT_ACTION
+
+
+async def test_pedir_outro_sentido_de_palavra_ja_salva_abre_um_novo_cartao() -> None:
+    """Regressão: sem frase de contexto o ADR-0023 tratava o pedido como "a palavra de novo" e
+    devolvia o aviso de que já existe, com o sentido antigo."""
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(), _stall_no_sentido_s2()]))
+    await m.diz("stall")
+    await m.diz("0")
+
+    (card,) = await m.diz("stall | to delay on purpose")
+
+    assert card.startswith("*stall*") and "🇧🇷 enrolar" in card
+    assert [e.slug for e in m.repo.listar_entradas()] == ["stall", "stall--s2"]
+
+
+async def test_palavra_diferente_com_contexto_no_meio_da_pratica_salva_e_explica_a_nova() -> None:
+    hedge = explicacao_stall().model_copy(update={"palavra": "hedge"})
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(), hedge], expansoes=[expansoes()]))
+    await m.diz("stall")
+
+    salvo, card = await m.diz("hedge | to avoid committing")
+
+    assert salvo.startswith("✅ Saved: *stall*")
+    assert card.startswith("*hedge*")
+    assert "route" not in [c[0] for c in m.tutor.chamadas]
+
+
+async def test_aviso_de_palavra_que_ja_existe_lista_os_outros_sentidos() -> None:
+    sem_frase = explicacao_stall().model_copy(update={"frase_contexto": None})
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(), sem_frase]))
+    await m.diz("stall")
+    await m.diz("0")
+
+    (resposta,) = await m.diz("stall")
+
+    assert resposta.startswith("📌 You already have *stall* in your list.")
+    assert "↔️ enrolar — to delay on purpose" in resposta
+    assert "Want another meaning? Send *stall | to delay on purpose*" in resposta

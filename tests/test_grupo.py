@@ -126,6 +126,40 @@ async def test_add_de_palavra_que_ja_existe_avisa_com_o_prefixo_e_0_libera() -> 
     assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.IDLE
 
 
+async def test_card_do_grupo_ensina_a_pedir_outro_sentido_com_o_add() -> None:
+    m = _grupo()
+
+    (card,) = await m.diz_no_grupo(ANA, "!add stall")
+
+    assert "Want another meaning? Send *!add stall | to delay on purpose*" in card
+    _sem_comandos_do_privado([card])
+
+
+async def test_add_do_mesmo_termo_com_sentido_troca_o_card_sem_salvar() -> None:
+    sentido_s2 = explicacao_stall(sentido_do_contexto="s2").model_copy(
+        update={"frase_contexto": None}
+    )
+    m = montar(tutor=FakeTutor(explicacoes=[explicacao_stall(), sentido_s2]))
+    await m.diz_no_grupo(ANA, "!add stall")
+
+    (card,) = await m.diz_no_grupo(BIA, "!add stall | to delay on purpose")
+
+    assert "🇧🇷 enrolar" in card
+    assert "Saved" not in card
+    (entrada,) = m.banco.do_espaco(GRUPO).listar_entradas()
+    assert entrada.sentido.traducao == "enrolar"
+
+
+async def test_termo_diferente_com_barra_no_grupo_devolve_a_dica_do_add() -> None:
+    m = _grupo()
+    await m.diz_no_grupo(ANA, "!add stall")
+
+    (dica,) = await m.diz_no_grupo(BIA, "!hedge | to avoid committing")
+
+    assert dica == messages.nova_palavra_no_grupo("!")
+    assert [e.slug for e in m.banco.do_espaco(GRUPO).listar_entradas()] == ["stall"]
+
+
 async def test_opcao_4_no_grupo_descarta_a_palavra_recem_criada() -> None:
     m = _grupo()
     await m.diz_no_grupo(ANA, "!add stall")

@@ -15,6 +15,7 @@ from app.domain.choices import (
     parse_escolha,
     parse_numero,
     parse_numeros,
+    separar_contexto,
     so_numeros,
 )
 
@@ -173,3 +174,18 @@ def test_eh_todos() -> None:
     assert eh_todos("All")
     assert eh_todos("todas")
     assert not eh_todos("1")
+
+
+@pytest.mark.parametrize(
+    ("texto", "esperado"),
+    [
+        ("stall", ("stall", None)),
+        ("stall | the talks stalled", ("stall", "the talks stalled")),
+        ("  stall|to delay on purpose ", ("stall", "to delay on purpose")),
+        ("stall |", ("stall", None)),
+        ("stall | a | b", ("stall", "a | b")),
+        ("| stall", ("", "stall")),
+    ],
+)
+def test_separar_contexto(texto: str, esperado: tuple[str, str | None]) -> None:
+    assert separar_contexto(texto) == esperado

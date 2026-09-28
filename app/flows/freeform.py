@@ -18,6 +18,23 @@ def _quantidade(n: int) -> int:
     return max(_MIN_QUANTIDADE, min(_MAX_QUANTIDADE, n))
 
 
+async def _nova_palavra(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Sessao:
+    if d.em_grupo:
+        # M16: no grupo toda palavra nova entra por `!add`; aqui nada é aberto nem salvo.
+        await d.conversa.enviar(messages.nova_palavra_no_grupo(d.p))
+        return sessao
+    await practice.concluir(d, sessao, perfil)
+    return await capture.explicar(d, perfil, texto)
+
+
+async def palavra_com_contexto(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Sessao:
+    """`palavra | frase ou sentido` com uma palavra aberta (M31, ADR-0030), sem passar pela IA de
+    roteamento: a mesma palavra pede outro sentido; outra palavra é uma palavra nova."""
+    if await capture.eh_a_palavra_aberta(d, sessao, texto):
+        return await capture.trocar_sentido(d, sessao, perfil, texto)
+    return await _nova_palavra(d, sessao, perfil, texto)
+
+
 async def rotear(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Sessao:
     entrada = await entrada_atual(d, sessao)
     async with d.conversa.digitando():
@@ -37,12 +54,7 @@ async def rotear(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Sessao
         case "salvar":
             return await practice.concluir(d, sessao, perfil)
         case "nova_palavra":
-            if d.em_grupo:
-                # M16: no grupo toda palavra nova entra por `!add`; aqui nada é aberto nem salvo.
-                await d.conversa.enviar(messages.nova_palavra_no_grupo(d.p))
-                return sessao
-            await practice.concluir(d, sessao, perfil)
-            return await capture.explicar(d, perfil, roteamento.palavra)
+            return await _nova_palavra(d, sessao, perfil, roteamento.palavra)
         case "pedido" | "fora_do_escopo":
             await d.conversa.enviar(
                 messages.resposta_livre(

@@ -432,7 +432,7 @@ quando `dash/**` ou `infra/bq/**` mudar (exige papéis novos na `vocabot-deploy`
 A CI já pode validar: JSON dos painéis parseia, `uid` únicos, toda view referenciada existe em
 `infra/bq/views/`, nenhum número de telefone literal nos arquivos (repo é público).
 
-**ADR-0030 — Painel no Grafana OSS em Cloud Run com IAP** (tabela 1.2; auth anônima vs auth.proxy).
+**ADR-0031 — Painel no Grafana OSS em Cloud Run com IAP** (tabela 1.2; auth anônima vs auth.proxy).
 
 ## 6. O painel (`dash/dashboards/vocabot.json`)
 
@@ -546,7 +546,7 @@ passaram a ser cobradas antes de criar.
 | **M27** | ✅ eventos estruturados, handler do bot para o Cloud Logging — **pendente:** Log Analytics | `logging buckets update --enable-analytics`, `logging links create` | ADR-0028, spec seção 12 |
 | **M28** | ✅ `Banco.listar_espacos`, `autor_id`/`nome`, `montar_snapshot`, `scripts.snapshot` — **pendente:** bucket + dataset + tabelas externas + views | `infra/setup_metricas.sh` (bucket + dataset), `bq mk --external_table_definition` × 6, views | ADR-0029, spec 7.1 e 12 |
 | **M29** | export de Billing, orçamento, views de custo | console de Billing; `billing budgets create` | spec 12 |
-| **M30** | `dash/`, SA `vocabot-dash`, Cloud Run + IAP, painel completo | `services enable run/artifactregistry/cloudbuild`, SA + papéis, `run deploy --iap`, `iap web add-iam-policy-binding` | ADR-0030 |
+| **M30** | `dash/`, SA `vocabot-dash`, Cloud Run + IAP, painel completo | `services enable run/artifactregistry/cloudbuild`, SA + papéis, `run deploy --iap`, `iap web add-iam-policy-binding` | ADR-0031 |
 
 Dá para ter valor cedo: ao fim do **M27** já se vê falhas no Log Analytics da própria GCP (sem
 painel); ao fim do **M28**, as tabelas de grupos/pessoas/admins podem ser consultadas no BigQuery

@@ -213,6 +213,8 @@ class Router:
                 return await practice.ignorar(d, sessao)
             case Acao.ROTEAR:
                 return await freeform.rotear(d, sessao, perfil, str(argumento))
+            case Acao.EXPLICAR_COM_CONTEXTO:
+                return await freeform.palavra_com_contexto(d, sessao, perfil, str(argumento))
             case Acao.RESPONDER_REVISAO:
                 return await review.responder(d, sessao, perfil, str(argumento))
             case Acao.ENCERRAR_REVISAO:
