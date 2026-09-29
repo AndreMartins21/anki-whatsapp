@@ -91,7 +91,7 @@ async def executar(
     elif comando in _APAGAR:
         return await apagar(d, sessao, argumento)
     elif comando in _NIVEL:
-        await _nivel(d, perfil, argumento)
+        await definir_nivel(d, perfil, argumento)
     elif comando in _CANCELAR:
         if Estado(sessao.estado) == Estado.REVIEWING:
             # M10: cancelar no meio de uma revisão fecha com o resumo, não o texto genérico.
@@ -256,9 +256,10 @@ async def apagar(d: Deps, sessao: Sessao, palavra: str) -> Sessao:
     return d.sessao_vazia() if sessao.entry_id == entrada.slug else sessao
 
 
-async def _nivel(d: Deps, perfil: Profile, argumento: str) -> None:
+async def definir_nivel(d: Deps, perfil: Profile, argumento: str) -> None:
+    """`/level` no privado e `!level` no grupo (quem pode mudar é decidido por quem chama)."""
     if not argumento:
-        await d.conversa.enviar(messages.nivel_atual(perfil.nivel))
+        await d.conversa.enviar(messages.nivel_atual(perfil.nivel, d.p))
         return
     escolhido = argumento.strip().upper()
     if escolhido not in _NIVEIS:

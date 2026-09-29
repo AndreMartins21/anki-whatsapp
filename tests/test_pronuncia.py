@@ -46,7 +46,7 @@ async def test_o_menu_nao_tem_mais_opcao_de_ouvir() -> None:
     (card,) = await m.diz("stall | the talks stalled")
 
     assert "1️⃣" not in card and "Hear" not in card
-    assert "2️⃣ See more examples" in card and "5️⃣ Ignore this word, try another" in card
+    assert "2️⃣ See more examples" in card and "5️⃣ Don't save" in card
 
 
 async def test_a_ordem_e_o_texto_antes_das_duas_vozes() -> None:

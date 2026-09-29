@@ -38,6 +38,7 @@ _DO_GRUPO = {
     "reminders",
     "group",
     "help",
+    "level",
 }
 
 
@@ -283,7 +284,6 @@ async def test_texto_com_prefixo_fora_de_atividade_recebe_a_ajuda_sem_chamar_a_i
     "comando",
     [
         "!export",
-        "!level B2-C1",
         "!song paper plane",
         "!info 1",
         "!status",
@@ -315,11 +315,11 @@ async def test_a_ajuda_do_grupo_so_cita_comandos_do_grupo() -> None:
     (ajuda,) = await m.diz_no_grupo(ANA, "!help")
 
     _sem_comandos_do_privado([ajuda])
-    for comando in ("add", "delete", "list", "practice", "review", "reminder", "group"):
+    for comando in ("add", "delete", "list", "practice", "review", "reminder", "group", "level"):
         assert f"!{comando}" in ajuda
     for escondido in ("teacher", "student", "activate"):
         assert escondido not in ajuda
-    for do_privado in ("export", "song", "level", "cancel", "status", "pending"):
+    for do_privado in ("export", "song", "cancel", "status", "pending"):
         assert f"!{do_privado}" not in ajuda and f"/{do_privado}" not in ajuda
 
 
@@ -688,3 +688,59 @@ async def test_o_lembrete_de_um_aluno_no_privado_continua_igual() -> None:
 
     ((chat, texto),) = m.channel.textos_enviados
     assert chat == CHAT and "Type 0 to leave the practice" in texto
+
+
+# --- !level (M33, ADR-0031) -------------------------------------------------------------------
+
+
+async def test_level_sem_argumento_mostra_o_nivel_da_turma_para_qualquer_membro() -> None:
+    m = _grupo()
+
+    (resposta,) = await m.diz_no_grupo(ANA, "!level")
+
+    nivel = m.banco.do_espaco(GRUPO).obter_perfil().nivel  # type: ignore[union-attr]
+    assert resposta == messages.nivel_atual(nivel, "!")
+    assert m.tutor.chamadas == []
+    _sem_comandos_do_privado([resposta])
+
+
+async def test_level_pelo_dono_muda_o_nivel_so_da_turma() -> None:
+    m = _grupo()
+    dono = Autor(DONO_NUMERO, "Dono")
+
+    (resposta,) = await m.diz_no_grupo(dono, "!level b2-c1")
+
+    assert resposta == messages.nivel_alterado("B2-C1")
+    assert m.banco.do_espaco(GRUPO).obter_perfil().nivel == "B2-C1"  # type: ignore[union-attr]
+    assert m.banco.do_espaco(CHAT).obter_perfil() is None  # o privado de ninguém mudou
+
+
+async def test_level_por_professor_da_turma_muda_o_nivel() -> None:
+    m = _grupo()
+    await m.diz_no_grupo(Autor(DONO_NUMERO, "Dono"), f"!teacher {BIA.numero}")
+
+    (resposta,) = await m.diz_no_grupo(BIA, "!level A2-B1")
+
+    assert resposta == messages.nivel_alterado("A2-B1")
+    assert m.banco.do_espaco(GRUPO).obter_perfil().nivel == "A2-B1"  # type: ignore[union-attr]
+
+
+async def test_aluno_nao_muda_o_nivel_e_o_nivel_fica_como_estava() -> None:
+    m = _grupo()
+    await m.diz_no_grupo(ANA, "!help")
+    antes = m.banco.do_espaco(GRUPO).obter_perfil().nivel  # type: ignore[union-attr]
+    outro = "B2-C1" if antes != "B2-C1" else "A2-B1"
+
+    (resposta,) = await m.diz_no_grupo(ANA, f"!level {outro}")
+
+    assert resposta == messages.nivel_so_professor("!")
+    assert m.banco.do_espaco(GRUPO).obter_perfil().nivel == antes  # type: ignore[union-attr]
+    _sem_comandos_do_privado([resposta])
+
+
+async def test_level_invalido_pelo_professor_cita_o_prefixo_do_grupo() -> None:
+    m = _grupo()
+
+    (resposta,) = await m.diz_no_grupo(Autor(DONO_NUMERO, "Dono"), "!level C2")
+
+    assert resposta == messages.nivel_invalido()

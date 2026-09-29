@@ -70,7 +70,7 @@ async def test_ciclo_completo_do_stall() -> None:
         "2️⃣ See more examples\n"
         "3️⃣ Check synonyms\n"
         "4️⃣ Just save\n"
-        "5️⃣ Ignore this word, try another"
+        "5️⃣ Don't save"
     )
     assert m.repo.obter_sessao().estado == Estado.AWAIT_ACTION
 
@@ -101,7 +101,7 @@ async def test_ciclo_completo_do_stall() -> None:
         "2️⃣ See more examples\n"
         "3️⃣ See more synonyms\n"
         "4️⃣ Just save\n"
-        "5️⃣ Ignore this word, try another"
+        "5️⃣ Don't save"
     )
     entrada = m.repo.obter_entrada("stall")
     assert entrada is not None

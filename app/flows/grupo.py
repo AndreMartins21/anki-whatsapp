@@ -3,7 +3,7 @@ de comandos; o resto é conversa entre pessoas, que ele não lê nem grava.
 
 Camada por cima da máquina de estados, sem IA fora de atividade:
 
-- **Comandos** (`!add`, `!delete`, `!list`, `!practice`, `!review`, `!reminder`, `!group`, `!help`), mais
+- **Comandos** (`!add`, `!delete`, `!list`, `!practice`, `!review`, `!reminder`, `!group`, `!level`, `!help`), mais
   `!teacher`/`!student` (escondidos do `!help`).
 - **Dentro de uma atividade** (`AWAIT_ACTION`, `REVIEWING`), `!1`, `!2`, `!3` e `!texto` são as
   respostas, entregues à mesma máquina de estados do privado (`conversar`).
@@ -38,6 +38,7 @@ COMANDOS = {
     "group",
     "help",
     "delete",
+    "level",
 }
 _PAPEIS = {"teacher": "professor", "student": "aluno"}
 
@@ -85,6 +86,10 @@ async def tratar(
             await d.conversa.enviar(messages.ajuda_do_grupo(d.p))
             return sessao
         return await conversar(d, sessao, perfil, texto)
+
+    if comando == "level":
+        await _nivel(d, perfil, autor, argumento, eh_dono)
+        return sessao
 
     if comando in COMANDOS:
         return await _executar(d, sessao, perfil, comando, argumento)
@@ -172,6 +177,23 @@ def _definir_papel(d: Deps, numero: str, papel: Papel) -> Membro:
     return novo
 
 
+def _pode_gerir(autor: Autor, membro: Membro | None, eh_dono: Callable[[str], bool]) -> bool:
+    """Professor da turma ou dono: quem muda papéis e o nível."""
+    return eh_dono(autor.numero) or (membro is not None and membro.papel == "professor")
+
+
+async def _nivel(
+    d: Deps, perfil: Profile, autor: Autor, argumento: str, eh_dono: Callable[[str], bool]
+) -> None:
+    """`!level`: qualquer membro vê o nível da turma; só professor ou dono o muda (M33)."""
+    if argumento:
+        quem = await bloq(d.repo.obter_membro, autor.numero)
+        if not _pode_gerir(autor, quem, eh_dono):
+            await d.conversa.enviar(messages.nivel_so_professor(d.p))
+            return
+    await commands.definir_nivel(d, perfil, argumento)
+
+
 async def _papel(
     d: Deps,
     sessao: Sessao,
@@ -183,8 +205,7 @@ async def _papel(
     """`!teacher`/`!student`: só um professor da turma ou o dono. Para qualquer outra pessoa o
     comando não existe: responde como a qualquer outro texto fora de comando (a ajuda)."""
     quem = await bloq(d.repo.obter_membro, autor.numero)
-    pode = eh_dono(autor.numero) or (quem is not None and quem.papel == "professor")
-    if not pode:
+    if not _pode_gerir(autor, quem, eh_dono):
         await d.conversa.enviar(messages.ajuda_do_grupo(d.p))
         return sessao
     alvos = _alvos(autor, argumento)
