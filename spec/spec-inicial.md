@@ -218,7 +218,7 @@ gravado nem marcado como lido (o filtro vem antes da deduplicação e do `sendSe
 
 - **Comandos (conjunto fechado):** `!delete palavra|número` (M32: remove um termo da lista da turma, igual ao `/delete` do privado; o número é o do `!list`; qualquer membro pode, como no `!add`), `!add palavra [| contexto ou sentido]` (a **única** forma de trazer uma palavra
   nova; com a palavra aberta, `!add` do mesmo termo com `|` troca o sentido, como no privado — M31), `!list [página]` (palavras da turma, mesma regra do `/list`), `!practice [palavra|número]`,
-  `!review`, `!reminder [N [INICIOh-FIMh] | off]` (aceita `!reminders`), `!group` (nível, palavras,
+  `!review`, `!reminder [N [INICIOh-FIMh] | off]` (aceita `!reminders`), `!level [A2-B1|B1-B2|B2-C1]` (M33, ADR-0031: sem argumento qualquer membro vê o nível da turma; com argumento só professor ou dono muda, e aluno recebe a recusa), `!group` (nível, palavras,
   vencidas, lembretes e os membros com o papel, só nomes e sem menção) e `!help` (só os comandos do
   grupo). `!teacher`/`!student` (um professor da turma ou o dono) mudam o papel, escondidos do `!help`;
   os alvos vêm das menções do payload ou do número escrito no texto.
@@ -226,7 +226,7 @@ gravado nem marcado como lido (o filtro vem antes da deduplicação e do `sendSe
   estados do privado; na revisão, `!texto` responde e `!0`/`!stop` sai. Um `nova_palavra` do roteamento
   só devolve a dica de `!add`.
 - **Fora de atividade**, qualquer outra coisa com o prefixo, inclusive comando do privado (`!export`,
-  `!level`...), recebe a ajuda do grupo, **sem chamar a IA**. Com a barra, a mensagem nem é lida.
+  `!export`, `!song`...), recebe a ajuda do grupo, **sem chamar a IA**. Com a barra, a mensagem nem é lida.
 - Os textos que citam comandos usam o prefixo do espaço e, no grupo, só citam comandos do grupo.
 - `espacos/{grupo}/membros/{numero}` guarda `{papel: aluno|professor, nome}` (quem manda a primeira
   mensagem com prefixo entra como aluno); `sentences.autor_id` guarda quem escreveu a frase.
@@ -291,7 +291,7 @@ Now, you can write one or more sentences using *stall*, or type:
 2️⃣ See more examples
 3️⃣ Check synonyms
 4️⃣ Just save
-5️⃣ Ignore this word, try another
+5️⃣ Don't save
 ```
 Os outros sentidos (`Explanation.sentidos` menos o escolhido, no mesmo formato do `/info`) aparecem
 depois do exemplo; sem outros sentidos, o card não muda. A dica usa a definição do primeiro outro
@@ -311,7 +311,7 @@ Now, you can write one or more sentences using *stall*, or type:
 2️⃣ See more examples
 3️⃣ See more synonyms
 4️⃣ Just save
-5️⃣ Ignore this word, try another
+5️⃣ Don't save
 ```
 Pedido de ajuda ou palavra fora do escopo: a resposta da IA (ou, fora do escopo, uma recusa
 gentil) seguida do mesmo menu. Palavra nova: salva a atual silenciosamente e manda o card da nova,
@@ -330,7 +330,7 @@ Now, you can write one or more sentences using *stall*, or type:
 2️⃣ See more examples
 3️⃣ Check synonyms
 4️⃣ Just save
-5️⃣ Ignore this word, try another
+5️⃣ Don't save
 ```
 
 **Case C — "3" / "check synonyms"** (padrão 3, máximo 10, sem repetir os já mostrados; a partir
@@ -346,7 +346,7 @@ Now, you can write one or more sentences using *stall*, or type:
 2️⃣ See more examples
 3️⃣ See more synonyms
 4️⃣ Just save
-5️⃣ Ignore this word, try another
+5️⃣ Don't save
 ```
 
 **Case D — "4" / "just save"** (fecha a palavra; sugere até 3 expressões relacionadas só como
@@ -766,6 +766,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, enviar voz, marcar com
 | M28 | Snapshot diário de métricas em NDJSON no GCS (seção 7.1/12, ADR-0029, `spec/plano-dashboard.md`): `Entry.autor_id`, `Profile.nome`, `Banco.listar_espacos`/`listar_admins_detalhado`/`obter_ultimo_snapshot`, `services/snapshot.py`, `services/metricas_destino.py`, `python -m scripts.snapshot`, `infra/bq/*.json`, `infra/setup_metricas.sh` | `make check` e `make test-emulador` passam; `montar_snapshot` testado com `MemoryBanco` (espaço vazio, privado com termos/frases, grupo com autor_id, admins × grupos); esquema de `infra/bq/*.json` bate com as dataclasses (teste reprova divergência); `scripts.snapshot --dry-run` só lê, `--executar` grava e marca o dia; snapshot falhando nunca derruba os lembretes |
 | M31 | Palavra de qualquer nível/gíria e pedido de sentido `palavra | sentido` (seções 5.1/5.2b/5.3/5.5, ADR-0030): prompt de `explain` sem recusa por nível, card com `↔️` e dica, `Acao.EXPLICAR_COM_CONTEXTO` sem IA de roteamento, troca do card recém-criado, `!add` do mesmo termo com `|` | `make check` passa; card com outros sentidos lista `↔️` e a dica (com `!add` no grupo), com um sentido só não muda; `palavra | sentido` logo após o card troca o card (só depois de a IA responder; com frase do aluno vira `--s2`); em `IDLE`, pedido de sentido de palavra já salva abre outro card em vez de "já existe"; `palavra | x` com outra palavra salva a atual e explica a nova, sem `route` |
 | M32 | `!delete palavra\|número` no grupo (seção 5.2b): reaproveita `commands.apagar` do privado | `make check` passa; `!delete` por palavra e por número apaga a entrada e as frases da turma; inexistente e sem argumento respondem com o prefixo do grupo; apagar a palavra aberta zera a sessão; a ajuda do grupo lista `!delete` |
+| M33 | `!level` no grupo (seção 5.2b, ADR-0031) e opção 5 do menu renomeada para "Don't save" | `make check` passa; `!level` sem argumento mostra o nível a qualquer membro; com argumento, professor e dono mudam só o perfil da turma, aluno recebe `nivel_so_professor` e nada muda; nível inválido recusa; a ajuda do grupo lista `!level`; o menu mostra `5️⃣ Don't save` |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 

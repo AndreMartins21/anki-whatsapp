@@ -117,7 +117,7 @@ def menu_acoes(palavra: str, *, ja_viu_sinonimos: bool = False, grupo: str | Non
     virou automático, já mandado junto da explicação — por isso o menu começa no 2, sem renumerar
     o que o aluno já decorou (`grupo` é o prefixo do grupo, M16; `None` no privado)."""
     sinonimos = "See more synonyms" if ja_viu_sinonimos else "Check synonyms"
-    opcoes = ["See more examples", sinonimos, "Just save", "Ignore this word, try another"]
+    opcoes = ["See more examples", sinonimos, "Just save", "Don't save"]
     return convite(palavra, grupo) + "\n" + _lista_de_opcoes(opcoes, grupo, primeira=2)
 
 
@@ -424,8 +424,12 @@ def apagada(palavra: str) -> str:
     return f"🗑️ *{palavra}* deleted."
 
 
-def nivel_atual(nivel: NivelUsuario) -> str:
-    return f"Your level is *{nivel}*. To change it: /level B1-B2 (options: A2-B1, B1-B2, B2-C1)."
+def nivel_atual(nivel: NivelUsuario, p: str = "/") -> str:
+    return f"Your level is *{nivel}*. To change it: {p}level B1-B2 (options: A2-B1, B1-B2, B2-C1)."
+
+
+def nivel_so_professor(p: str = "!") -> str:
+    return f"Only a teacher can change the class's level. To see it, send {p}level."
 
 
 def nivel_alterado(nivel: NivelUsuario) -> str:
@@ -804,7 +808,8 @@ def ajuda_do_grupo(p: str = "!") -> str:
         f"{p}practice [word or number] — practice one (no word: the oldest pending one)\n"
         f"{p}review — start a review round right now\n"
         f"{p}reminder 3 9h-22h — daily practice reminders (or {p}reminder off)\n"
-        f"{p}group — the class, its words and reminders\n\n"
+        f"{p}group — the class, its words and reminders\n"
+        f"{p}level — the class's level (to change it: {p}level B1-B2)\n\n"
         f"While practicing, pick an option with {p}2, {p}3, {p}4 or {p}5, and start a sentence "
         f"with {p} to try it."
     )
