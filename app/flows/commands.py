@@ -349,4 +349,4 @@ async def revisar(d: Deps, sessao: Sessao, perfil: Profile) -> Sessao:
     if not review.montar_fila(entradas, d.agora(), limite=review.limite(d, perfil, len(entradas))):
         await d.conversa.enviar(messages.SEM_NADA_PARA_REVISAR)
         return sessao
-    return await review.iniciar(d, perfil, avisar=True)
+    return await review.iniciar(d, perfil)

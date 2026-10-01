@@ -34,11 +34,14 @@ _DO_GRUPO = {
     "list",
     "practice",
     "review",
+    "daily",
     "reminder",
     "reminders",
     "group",
     "help",
     "level",
+    "skip",  # M35: respostas dentro da revisão
+    "skipall",
 }
 
 
@@ -315,7 +318,7 @@ async def test_a_ajuda_do_grupo_so_cita_comandos_do_grupo() -> None:
     (ajuda,) = await m.diz_no_grupo(ANA, "!help")
 
     _sem_comandos_do_privado([ajuda])
-    for comando in ("add", "delete", "list", "practice", "review", "reminder", "group", "level"):
+    for comando in ("add", "delete", "list", "practice", "review", "daily", "group", "level"):
         assert f"!{comando}" in ajuda
     for escondido in ("teacher", "student", "activate"):
         assert escondido not in ajuda
@@ -411,48 +414,64 @@ async def test_delete_da_palavra_aberta_zera_a_sessao() -> None:
     assert Estado(turma.obter_sessao().estado) == Estado.IDLE
 
 
-# --- !reminder --------------------------------------------------------------------------------
+# --- !daily (M35, ADR-0033) -------------------------------------------------------------------
 
 
-async def test_reminder_configura_os_lembretes_do_grupo() -> None:
+async def test_daily_sem_argumento_mostra_a_configuracao_a_qualquer_membro() -> None:
     m = _grupo()
 
-    (ligado,) = await m.diz_no_grupo(ANA, "!reminder 3 9h-22h")
+    (resposta,) = await m.diz_no_grupo(ANA, "!daily")
 
-    assert "Reminders set: 3x a day, between 9h and 22h" in ligado
+    assert "every weekday at 19:00" in resposta and "Next one:" in resposta
+    assert "5 words per review" in resposta
+    _sem_comandos_do_privado([resposta])
+
+
+async def test_daily_so_admin_do_bot_muda_e_aluno_recebe_a_recusa() -> None:
+    m = montar(tutor=_tutor(), admins=(BIA.numero,))
+
+    (recusa,) = await m.diz_no_grupo(ANA, "!daily 20h")
+    (ok,) = await m.diz_no_grupo(BIA, "!daily 20:30 weekends on size 3")
+
+    assert recusa == messages.so_admin_configura("!")
+    assert "Daily review updated" in ok and "every day at 20:30" in ok and "3 words" in ok
     perfil = m.banco.do_espaco(GRUPO).obter_perfil()
-    assert perfil is not None and perfil.lembretes_por_dia == 3
-    assert m.banco.do_espaco(CHAT).obter_perfil() is None  # o privado de ninguém mudou
+    assert perfil is not None
+    assert (perfil.diaria_hora, perfil.diaria_minuto) == (20, 30)
+    assert perfil.diaria_fim_de_semana is True and perfil.tamanho_revisao == 3
 
 
-async def test_reminder_sem_argumento_off_alias_e_invalido_citam_o_prefixo_do_grupo() -> None:
+async def test_daily_off_on_e_invalido() -> None:
+    m = _grupo()
+    dono = Autor(DONO_NUMERO, "Dono")
+
+    (desligada,) = await m.diz_no_grupo(dono, "!daily off")
+    (invalida,) = await m.diz_no_grupo(dono, "!daily banana")
+    (ligada,) = await m.diz_no_grupo(dono, "!daily on")
+
+    assert "It's off" in desligada
+    assert invalida == messages.diaria_invalida("!")
+    assert "every weekday at 19:00" in ligada
+    _sem_comandos_do_privado([desligada, invalida, ligada])
+
+
+async def test_reminder_no_grupo_virou_apelido_da_daily() -> None:
     m = _grupo()
 
-    atual = (await m.diz_no_grupo(ANA, "!reminder"))[0]  # M24: ligado por padrão, 1x às 12h
-    invalido = (await m.diz_no_grupo(ANA, "!reminders blah"))[0]
-    await m.diz_no_grupo(ANA, "!reminders 2")
-    desligado = (await m.diz_no_grupo(ANA, "!reminder off"))[0]
-    off_de_novo = (await m.diz_no_grupo(ANA, "!reminder"))[0]
+    (resposta,) = await m.diz_no_grupo(ANA, "!reminder 3")
 
-    assert "once a day, between 12h and 21h" in atual
-    assert "!reminder N" in atual
-    assert "!reminder 3 9h-22h" in invalido
-    assert "off" in desligado
-    assert "!reminder 3" in off_de_novo
-    _sem_comandos_do_privado([atual, invalido, desligado, off_de_novo])
+    assert resposta == messages.lembrete_virou_daily("!")
     perfil = m.banco.do_espaco(GRUPO).obter_perfil()
-    assert perfil is not None and perfil.lembretes_por_dia == 0
+    assert perfil is not None and perfil.lembretes_por_dia == 1  # nada mudou
 
 
-async def test_a_dica_de_lembretes_do_grupo_cita_o_comando_do_grupo() -> None:
+async def test_o_grupo_nao_recebe_a_dica_de_lembretes_do_privado() -> None:
     m = _grupo()
-    await m.diz_no_grupo(ANA, "!reminder off")
     await m.diz_no_grupo(ANA, "!add stall")
 
     (salvo,) = await m.diz_no_grupo(ANA, "!4")
 
-    assert "Send !reminder 3" in salvo
-    _sem_comandos_do_privado([salvo])
+    assert "reminder" not in salvo.lower()
 
 
 # --- membros, papéis e !group -----------------------------------------------------------------
@@ -558,13 +577,12 @@ async def test_group_mostra_a_turma_sem_telefone() -> None:
     _sem_comandos_do_privado([resposta])
 
 
-async def test_group_com_lembretes_mostra_o_proximo_horario() -> None:
+async def test_group_mostra_a_revisao_diaria_e_o_proximo_horario() -> None:
     m = _grupo()
-    await m.diz_no_grupo(ANA, "!reminder 3 9h-22h")
 
     (resposta,) = await m.diz_no_grupo(ANA, "!group")
 
-    assert "every day, 3x between 9h and 22h" in resposta and "Next reminder" in resposta
+    assert "every weekday at 19:00" in resposta and "Next review" in resposta
 
 
 # --- limite de mensagens e privado ------------------------------------------------------------
@@ -635,7 +653,7 @@ def _agendador_do_grupo(m: Montagem, *, autorizado: bool = True):  # type: ignor
     )
 
 
-def _grupo_com_lembrete_e_palavra_vencida(m: Montagem) -> None:
+def _grupo_com_diaria_e_palavra_vencida(m: Montagem) -> None:
     from datetime import timedelta
 
     from app.domain.models import Membro, Profile
@@ -643,30 +661,29 @@ def _grupo_com_lembrete_e_palavra_vencida(m: Montagem) -> None:
     from tests.test_agendador import _entrada_vencida
 
     espaco = m.banco.do_espaco(GRUPO)
-    espaco.salvar_membro(ANA.numero, Membro(nome="Ana", entrou_em=T0))  # M17: alguém para marcar
+    espaco.salvar_membro(ANA.numero, Membro(nome="Ana", entrou_em=T0))
     espaco.criar_entrada(_entrada_vencida())
-    espaco.salvar_perfil(
-        Profile(nivel="B1-B2", chat_id=GRUPO, lembretes_por_dia=3, proximo_lembrete=T0)
-    )
+    espaco.salvar_perfil(Profile(nivel="B1-B2", chat_id=GRUPO, proxima_diaria=T0))
     m.relogio.avancar(timedelta(seconds=1))
 
 
-async def test_o_lembrete_do_grupo_inicia_a_revisao_no_grupo_com_o_prefixo_do_grupo() -> None:
+async def test_a_diaria_do_grupo_inicia_a_revisao_sem_marcar_ninguem() -> None:
     m = _grupo()
-    _grupo_com_lembrete_e_palavra_vencida(m)
+    _grupo_com_diaria_e_palavra_vencida(m)
 
     await _agendador_do_grupo(m)._tick()
 
     ((chat, texto),) = m.channel.textos_enviados
     assert chat == GRUPO
-    assert "Practice time" in texto and "Anyone can type !0 to leave the practice" in texto
+    assert "Practice time" in texto and "Anyone can answer" in texto
+    assert m.channel.mencoes_enviadas == [] or not m.channel.mencoes_enviadas[-1][1]
     _sem_comandos_do_privado([texto])
     assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.REVIEWING
 
 
 async def test_grupo_desativado_nao_recebe_lembrete() -> None:
     m = _grupo()
-    _grupo_com_lembrete_e_palavra_vencida(m)
+    _grupo_com_diaria_e_palavra_vencida(m)
 
     await _agendador_do_grupo(m, autorizado=False)._tick()
 

@@ -218,15 +218,16 @@ gravado nem marcado como lido (o filtro vem antes da deduplicação e do `sendSe
 
 - **Comandos (conjunto fechado):** `!delete palavra|número` (M32: remove um termo da lista da turma, igual ao `/delete` do privado; o número é o do `!list`; qualquer membro pode, como no `!add`), `!add palavra [| contexto ou sentido]` (a **única** forma de trazer uma palavra
   nova; com a palavra aberta, `!add` do mesmo termo com `|` troca o sentido, como no privado — M31), `!list [página]` (palavras da turma, mesma regra do `/list`), `!practice [palavra|número]`,
-  `!review`, `!reminder [N [INICIOh-FIMh] | off]` (aceita `!reminders`), `!level [A1-A2|A2-B1|B1-B2|B2-C1|C1-C2|C2]` (M33, ADR-0031: sem argumento qualquer membro vê o nível da turma; com argumento só professor ou dono muda, e aluno recebe a recusa), `!group` (nível, palavras,
+  `!review` (M35: começa uma revisão diária na hora), `!daily [19h | on | off | weekends on|off | size N|auto]` (M35, ADR-0033: qualquer membro vê; só admin do bot ou o dono muda; `!reminder` virou apelido que aponta para ele), `!level [A1-A2|A2-B1|B1-B2|B2-C1|C1-C2|C2]` (M33, ADR-0031: sem argumento qualquer membro vê o nível da turma; com argumento só professor ou dono muda, e aluno recebe a recusa), `!group` (nível, palavras,
   vencidas, lembretes e os membros com o papel, só nomes e sem menção) e `!help` (só os comandos do
   grupo). `!teacher`/`!student` (um professor da turma ou o dono) mudam o papel, escondidos do `!help`;
   os alvos vêm das menções do payload ou do número escrito no texto.
 - **Dentro de uma atividade:** `!1`, `!2`, `!3` e `!texto` são as respostas, pela mesma máquina de
-  estados do privado; na revisão, `!texto` responde e `!0`/`!stop` sai. Um `nova_palavra` do roteamento
+  estados do privado; na revisão, `!texto` responde, `!skip` pula a palavra, `!skipall` (ou `!0`/`!stop`) encerra.
+  **Barra (M35, ADR-0033):** `/skip`, `/skip-all`, `/skipall`, `/1`, `/2` e `/3` (a mensagem inteira) valem como o `!` equivalente; qualquer outra mensagem com barra segue não lida. Um `nova_palavra` do roteamento
   só devolve a dica de `!add`.
 - **Fora de atividade**, qualquer outra coisa com o prefixo, inclusive comando do privado (`!export`,
-  `!export`, `!song`...), recebe a ajuda do grupo, **sem chamar a IA**. Com a barra, a mensagem nem é lida.
+  `!export`, `!song`...), recebe a ajuda do grupo, **sem chamar a IA**. Com a barra (exceto as acima), a mensagem nem é lida.
 - Os textos que citam comandos usam o prefixo do espaço e, no grupo, só citam comandos do grupo.
 - **Turma só em inglês (M34, ADR-0032):** no grupo, de B1-B2 para cima, nada aparece em português (sem a
   linha 🇧🇷, sem a tradução nos cabeçalhos e nos `↔️`; o `!list` mostra a definição, cortada em 70
@@ -238,26 +239,24 @@ gravado nem marcado como lido (o filtro vem antes da deduplicação e do `sendSe
 - `python -m sim --grupo`: uma linha `nome: mensagem` por participante; linhas sem prefixo aparecem
   como ignoradas.
 
-**Revisão em grupo (M17, ADR-0020).** `!review` (e o lembrete do grupo) começa uma rodada de
-`LIMITE_POR_SESSAO_GRUPO` (5) palavras em que **cada card marca UM aluno** com uma menção real do
-WhatsApp (`sendText` com `mentions: ["NUMERO@c.us"]`, e `@NUMERO` no texto). A escolha é um rodízio
-(`domain/rodizio.py`): quem foi marcado há mais tempo (ou nunca), desempate aleatório, sem repetir
-seguido se houver outro aluno; professores e o bot nunca são marcados. Os alunos elegíveis vêm da lista
-de participantes do WAHA (`GET /api/{session}/groups/{id}/participants/v2`, atualizada no início de cada
-rodada; sem ela, o cadastro de `membros/`). Sem aluno para marcar, a rodada não começa (o lembrete fica
-em silêncio; o `!review` avisa).
+**Revisão diária do grupo (M35, ADR-0033; substitui o M17/ADR-0020).** Uma por dia, às 19h (fuso da
+turma), de segunda a sexta (`Profile.diaria_*`; `!daily 20h`, `!daily weekends on`, `!daily off`,
+`!daily size 3`). `!review` começa uma na hora. **Ninguém é marcado**: o card convida todo mundo, e
+qualquer participante responde com `!texto`, recebendo feedback da IA (`Tutor.review`). A **primeira
+resposta aceitável** (`qualidade != de_novo`) vale a nota (`srs.reagendar` no cartão do grupo) e o bot
+manda o feedback com o nome de quem respondeu e o próximo card numa mensagem só; resposta `de_novo`
+recebe feedback e a palavra segue aberta (cartão intacto). `!skip` (ou `/skip`) pula a palavra sem
+mexer na nota; `!skipall` (`/skip-all`, `!0`, `!stop`) encerra com o resumo (`Skipped:` lista as puladas).
+`LIMITE_POR_SESSAO_GRUPO` (5) palavras por rodada, ou o `tamanho_revisao` do `!daily size`.
 
-- Resposta = `!` + texto. **Da pessoa marcada**, vale a nota (`Tutor.review`, `srs.reagendar` no cartão
-  do grupo), com o feedback e o próximo card numa mensagem só. **De outra pessoa** (aluno ou
-  professor), o bot dá feedback mas **não** muda a nota nem avança o card; a frase fica salva com o
-  autor. `!0`/`!stop` de qualquer participante fecha com o resumo; na revisão só `!0`, `!stop` e
-  `!help` escapam da resposta.
-- **Timeout:** sem resposta em `TIMEOUT_MARCACAO_HORAS`, o agendador passa o **mesmo card** ao próximo
-  aluno do rodízio, uma vez; sem resposta de novo, fecha com o resumo. O prazo é espelhado em
-  `espacos/{grupo}.timeout_em`, então o agendador acha os grupos vencidos com uma consulta por tick.
-  Respeita o limite de 3 mensagens seguidas (card, repasse, fechamento).
-- `respostas/{auto}` registra `{entry, autor_id, marcado, qualidade}` de cada resposta (alimenta o
-  `!group` e as métricas do piloto).
+- **Fecha sozinha** após `TIMEOUT_MARCACAO_HORAS` (3h) sem mensagem do grupo; toda mensagem adia o
+  prazo. O prazo vai para `espacos/{grupo}.timeout_em` e o agendador acha as vencidas com uma consulta
+  por tick, **antes** dos lembretes (a sessão libera no mesmo tick).
+- **Agendador** (`services/lembretes.py:_tick_grupo`): `proximo_tick` do grupo é a `proxima_diaria`;
+  atraso > 2h desiste do horário; sessão ocupada e não expirada adia; sem palavras fica em silêncio.
+  **Pausa** depois de 3 revisões agendadas seguidas sem nenhuma mensagem do grupo
+  (`Profile.revisoes_sem_resposta`); qualquer mensagem do grupo zera o contador.
+- `respostas/{auto}` registra `{entry, autor_id, marcado=false, qualidade}` de cada resposta.
 
 ### 5.3 Calibração pelo nível (B1-B2)
 
@@ -643,9 +642,12 @@ admins/{numero}            { adicionado_em, adicionado_por }          # M15 (ADR
 grupos_pendentes/{grupo}   { visto_em }   # M15: grupo em que o bot está sem ativação; sai depois de 24h
                            # espacos/{grupo} ganha, ao ativar: ativo, nome?, ativado_por, ativado_em
 espacos/{grupo}/membros/{numero}  { papel:"aluno"|"professor", nome?, entrou_em, marcado_em? }   # M16 (marcado_em: M17)
-espacos/{grupo}/respostas/{auto}  { entry, autor_id, marcado, qualidade, criado_em }              # M17
+espacos/{grupo}/respostas/{auto}  { entry, autor_id, marcado, qualidade, criado_em }              # M17 (marcado é sempre false desde o M35)
                            # M17: session/current ganha marcado_id, marcacao_expira_em, marcacao_tentativas; espacos/{grupo}
                            # ganha timeout_em (espelho do prazo, para o agendador)
+                           # M35: profile/me ganha diaria_ligada, diaria_hora, diaria_minuto, diaria_fim_de_semana,
+                           # proxima_diaria, revisoes_sem_resposta; session/current ganha revisao_puladas;
+                           # no grupo `proximo_tick` espelha `proxima_diaria`; marcacao_expira_em = fechamento por inatividade (3h)
 lids/{lid}                 { numero }                   # cache LID -> número (seção 8.2), evita consultar o WAHA a cada mensagem
 meta/snapshot               { ultimo_dia }              # M28: último dia (AAAA-MM-DD) do snapshot diário de métricas
 ```
@@ -772,6 +774,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, enviar voz, marcar com
 | M32 | `!delete palavra\|número` no grupo (seção 5.2b): reaproveita `commands.apagar` do privado | `make check` passa; `!delete` por palavra e por número apaga a entrada e as frases da turma; inexistente e sem argumento respondem com o prefixo do grupo; apagar a palavra aberta zera a sessão; a ajuda do grupo lista `!delete` |
 | M33 | `!level` no grupo (seção 5.2b, ADR-0031) e opção 5 do menu renomeada para "Don't save" | `make check` passa; `!level` sem argumento mostra o nível a qualquer membro; com argumento, professor e dono mudam só o perfil da turma, aluno recebe `nivel_so_professor` e nada muda; nível inválido recusa; a ajuda do grupo lista `!level`; o menu mostra `5️⃣ Don't save` |
 | M34 | Seis níveis (A1-A2 a C2) e turma só em inglês de B1-B2 para cima (seções 5.2b/5.3/5.5, ADR-0032): `nivel_so_ingles`, `Deps.so_ingles`, formatadores com `pt` | `make check` passa; grupo A1-A2/A2-B1 mostra 🇧🇷 e `!list` com tradução; grupo B1-B2 em diante não mostra 🇧🇷 nem tradução em card, exemplos, sinônimos e `!list`; privado B1-B2 segue com 🇧🇷; todo nível tem calibração no prompt |
+| M35 | Revisão diária do grupo sem marcar ninguém (seções 5.2b/5.7/7.1, ADR-0033, substitui o ADR-0020): `!daily`, `Profile.diaria_*`, `domain/agenda_grupo.py`, `!skip`/`!skipall` (e `/skip`, `/skip-all`, `/1`-`/3` com barra), fechamento após 3h parado, pausa após 3 revisões sem resposta | `make check` e `make test-emulador` passam; diária às 19h em dia útil (sexta à noite agenda segunda; `weekends on` agenda sábado); qualquer aluno responde e a 1ª resposta aceitável avança, a errada deixa a palavra aberta; `skip` não mexe na nota; `skipall` resume; 3h parado fecha; 3 revisões sem mensagem pausam e uma mensagem volta; só admin do bot muda `!daily`; `/skip` lido no grupo e `/list` não |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 

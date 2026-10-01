@@ -349,6 +349,15 @@ class Profile(BaseModel):
     # Tamanho da fila de revisão (M24): `None` = dinâmico, `MIN(palavras do aluno, 7)`; um valor
     # fixo (`/reviewsize` ou o último parâmetro de `/reminders`) sobrepõe o dinâmico e o do grupo.
     tamanho_revisao: int | None = None
+    # Revisão diária do grupo (M35, ADR-0033): o grupo ignora `lembretes_por_dia`/janela. Horário
+    # no fuso da turma; fora do fim de semana por padrão. `revisoes_sem_resposta` conta as
+    # revisões agendadas seguidas sem nenhuma mensagem do grupo (3 pausam o agendamento).
+    diaria_ligada: bool = True
+    diaria_hora: int = 19
+    diaria_minuto: int = 0
+    diaria_fim_de_semana: bool = False
+    proxima_diaria: datetime | None = None
+    revisoes_sem_resposta: int = 0
 
 
 class OpcaoDeMusica(BaseModel):
@@ -391,6 +400,7 @@ class Sessao(BaseModel):
     revisao_feitas: list[str] = Field(default_factory=list)
     revisao_lapsos: list[str] = Field(default_factory=list)
     revisao_total: int = 0
+    revisao_puladas: list[str] = Field(default_factory=list)  # M35: `skip` no grupo
     # Prática com música (M13, seção 5.8): as candidatas de uma busca (SONG_PICKING), a música
     # escolhida com os versos a praticar e o índice do verso atual (SONG_PRACTICE), e as
     # expressões que o aluno não pegou, oferecidas para salvar no fim (SONG_SAVING).

@@ -18,11 +18,11 @@ from collections.abc import Awaitable, Callable
 
 from app import messages
 from app.channel.parser import numero_esta_na_lista
+from app.domain.agenda_grupo import diaria_a_exibir, parse_diaria
 from app.domain.choices import normalizar
-from app.domain.lembretes import proximo_a_exibir
 from app.domain.models import Estado, Membro, Papel, Profile, Sessao
 from app.domain.srs import vencida
-from app.flows import capture, commands, practice
+from app.flows import capture, commands, practice, review
 from app.flows.base import Autor, Deps, bloq
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,7 @@ COMANDOS = {
     "list",
     "practice",
     "review",
+    "daily",
     "reminder",
     "reminders",
     "group",
@@ -43,6 +44,19 @@ COMANDOS = {
 _PAPEIS = {"teacher": "professor", "student": "aluno"}
 
 Conversar = Callable[[Deps, Sessao, Profile, str], Awaitable[Sessao]]
+
+
+# Comandos de resposta que também valem com a barra no grupo (M35, ADR-0033): `/skip`, `/1`...
+_COM_BARRA = {"skip", "skip-all", "skipall", "1", "2", "3"}
+
+
+def aceitar_barra(texto: str, prefixo: str) -> str:
+    """No grupo só `!` chama o bot, mas `/skip`, `/skip-all`, `/skipall`, `/1`, `/2` e `/3` (a
+    mensagem inteira) valem como `!skip`... Qualquer outra mensagem com barra segue não lida."""
+    limpo = texto.strip()
+    if limpo.startswith("/") and limpo[1:].lower() in _COM_BARRA:
+        return prefixo + limpo[1:]
+    return texto
 
 
 def sem_prefixo(texto: str, prefixo: str) -> str | None:
@@ -69,6 +83,7 @@ async def tratar(
     autor: Autor,
     conversar: Conversar,
     eh_dono: Callable[[str], bool],
+    eh_admin: Callable[[str], bool] | None = None,
 ) -> Sessao:
     """`texto` já vem sem o prefixo. Devolve a nova sessão."""
     await bloq(registrar_membro, d, autor)
@@ -85,10 +100,18 @@ async def tratar(
         if comando == "help":
             await d.conversa.enviar(messages.ajuda_do_grupo(d.p))
             return sessao
+        if comando == "skip" and not argumento:  # M35: pula a palavra, não encerra a rodada
+            return await review.pular(d, sessao)
+        if comando in {"skip all", "skipall"}:
+            return await conversar(d, sessao, perfil, "0")
         return await conversar(d, sessao, perfil, texto)
 
     if comando == "level":
         await _nivel(d, perfil, autor, argumento, eh_dono)
+        return sessao
+
+    if comando == "daily":
+        await _diaria(d, perfil, autor, argumento, eh_admin or eh_dono)
         return sessao
 
     if comando in COMANDOS:
@@ -112,8 +135,8 @@ async def _executar(
         return await commands.praticar(d, sessao, perfil, argumento)
     elif comando == "review":
         return await commands.revisar(d, sessao, perfil)
-    elif comando in {"reminder", "reminders"}:
-        await commands.lembretes(d, perfil, argumento)
+    elif comando in {"reminder", "reminders"}:  # M35: apelido antigo da revisão diária
+        await d.conversa.enviar(messages.lembrete_virou_daily(d.p))
     elif comando == "group":
         await _perfil_do_grupo(d, perfil)
     elif comando == "add":
@@ -194,6 +217,37 @@ async def _nivel(
     await commands.definir_nivel(d, perfil, argumento)
 
 
+async def _diaria(
+    d: Deps,
+    perfil: Profile,
+    autor: Autor,
+    argumento: str,
+    eh_admin: Callable[[str], bool],
+) -> None:
+    """`!daily`: qualquer membro vê a revisão diária; só admin do bot (ou o dono) a muda (M35)."""
+    if argumento:
+        if not await bloq(eh_admin, autor.numero):
+            await d.conversa.enviar(messages.so_admin_configura(d.p))
+            return
+        mudancas = parse_diaria(argumento)
+        if mudancas is None:
+            await d.conversa.enviar(messages.diaria_invalida(d.p))
+            return
+        perfil = perfil.model_copy(update={**mudancas, "proxima_diaria": None})
+        await bloq(d.repo.salvar_perfil, perfil)
+    entradas = await bloq(d.repo.listar_entradas)
+    await d.conversa.enviar(
+        messages.diaria_estado(
+            perfil,
+            diaria_a_exibir(perfil, d.agora(), d.fuso),
+            d.agora(),
+            review.limite(d, perfil, len(entradas)),
+            d.p,
+            alterada=bool(argumento),
+        )
+    )
+
+
 async def _papel(
     d: Deps,
     sessao: Sessao,
@@ -240,14 +294,14 @@ async def _perfil_do_grupo(d: Deps, perfil: Profile) -> None:
             nome = f"Student {sem_nome}"
         linhas.append((nome, membro.papel, por_autor.get(numero, 0)))
 
-    if perfil.lembretes_por_dia == 0:
-        lembretes = f"off — turn them on with {d.cmd_lembretes} 3"
+    if not perfil.diaria_ligada:
+        lembretes = f"off — turn it on with {d.p}daily on"
     else:
-        vezes = "once" if perfil.lembretes_por_dia == 1 else f"{perfil.lembretes_por_dia}x"
-        lembretes = f"every day, {vezes} between {perfil.janela_inicio}h and {perfil.janela_fim}h"
-        proximo = proximo_a_exibir(perfil, d.agora(), d.fuso)
+        dias = "every day" if perfil.diaria_fim_de_semana else "every weekday"
+        lembretes = f"{dias} at {perfil.diaria_hora:02d}:{perfil.diaria_minuto:02d}"
+        proximo = diaria_a_exibir(perfil, d.agora(), d.fuso)
         if proximo is not None:
-            lembretes += f"\n⏭️ Next reminder: {messages._quando(proximo, d.agora())}"
+            lembretes += f"\n⏭️ Next review: {messages._quando(proximo, d.agora())}"
 
     await d.conversa.enviar(
         messages.grupo_perfil(

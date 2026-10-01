@@ -3,9 +3,10 @@ por vez (pergunta → resposta → feedback + próxima) e fecha com o resumo. `m
 (testável sem repo); `iniciar`/`responder`/`encerrar` fazem I/O, como os demais fluxos. Cada card
 vem seguido da pronúncia automática do termo, sem a frase (M26, ADR-0027).
 
-Em grupo (M17, ADR-0020) cada card **marca um aluno**, escolhido por rodízio (`domain/rodizio.py`):
-só a resposta da pessoa marcada vale a nota; a de outra pessoa recebe feedback sem mudar o card; e
-se a marcada não responde no prazo, o card passa ao próximo aluno, uma vez, e depois a rodada fecha.
+Em grupo (M35, ADR-0033) é a revisão diária: ninguém é marcado, qualquer um responde e recebe
+feedback; a primeira resposta aceitável (qualidade != `de_novo`) vale a nota e avança; `skip` pula a
+palavra e `skipall` encerra. Sem mensagem por 3 horas, a rodada fecha sozinha. Os ajudantes de
+marcação (`_alunos_elegiveis`, `_marcar`) ficam para o desafio semanal (M36, ADR-0034).
 """
 
 from __future__ import annotations
@@ -118,25 +119,15 @@ async def _marcar(
 # --- a rodada ---------------------------------------------------------------------------------
 
 
-async def iniciar(d: Deps, perfil: Profile, *, avisar: bool = False) -> Sessao:
-    """Começa a rodada. `avisar`: num grupo sem aluno para marcar, diz por que não começou (o
-    `!review`); o lembrete agendado (`avisar=False`) fica em silêncio."""
+async def iniciar(d: Deps, perfil: Profile) -> Sessao:
+    """Começa a rodada (o `/review`, o `!review` ou o agendador)."""
     entradas = await bloq(d.repo.listar_entradas)
     fila = montar_fila(entradas, d.agora(), limite=limite(d, perfil, len(entradas)))
     if not fila:
         return d.sessao_vazia()
-    alunos: list[tuple[str, Membro]] | None = None
-    if d.em_grupo:
-        alunos = await _alunos_elegiveis(d, atualizar=True)
-        if not alunos:
-            if avisar:
-                await d.conversa.enviar(messages.grupo_sem_aluno(d.p))
-            return d.sessao_vazia()
     d.conversa.nova_iniciativa()  # o bot está iniciando, não respondendo — reseta o limite de 3
     total = len(fila)
-    return await _mostrar_proxima(
-        d, messages.hora_da_pratica(total), fila, [], [], total, alunos=alunos
-    )
+    return await _mostrar_proxima(d, messages.hora_da_pratica(total), fila, [], [], total)
 
 
 def _mesma_pessoa(a: str | None, b: str | None) -> bool:
@@ -155,24 +146,20 @@ async def responder(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Ses
             sessao.revisao_feitas,
             sessao.revisao_lapsos,
             sessao.revisao_total,
-            anterior=sessao.marcado_id,
+            puladas=sessao.revisao_puladas,
         )
 
     async with d.conversa.digitando():
         revisao = await bloq(d.tutor.review, entrada.palavra, entrada.sentido, texto, perfil.nivel)
 
     agora = d.agora()
-    # Em grupo só a pessoa marcada vale a nota (sem marcada, como no privado, quem responde vale).
-    conta = (
-        not d.em_grupo or sessao.marcado_id is None or _mesma_pessoa(d.autor_id, sessao.marcado_id)
-    )
     registrar_evento(
         logger,
         "revisao_resposta",
         espaco=id_curto(d.chat_id),
         tipo_espaco=tipo_do_espaco(d.chat_id),
         qualidade=revisao.qualidade,
-        **({"marcado": conta} if d.em_grupo else {}),
+        **({"marcado": False} if d.em_grupo else {}),
     )
     if revisao.tipo == "frase":
         await bloq(
@@ -192,14 +179,15 @@ async def responder(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Ses
             Resposta(
                 entry=entrada.slug,
                 autor_id=d.autor_id,
-                marcado=conta and sessao.marcado_id is not None,
+                marcado=False,
                 qualidade=revisao.qualidade,
                 criado_em=agora,
             ),
         )
-    if not conta:
-        # Feedback, mas o cartão, a nota e o card atual não mudam.
-        await d.conversa.enviar(messages.feedback_sem_nota(revisao))
+    nome = d.autor.nome if d.autor else None
+    if d.em_grupo and revisao.qualidade == "de_novo":
+        # Ainda não está certo: feedback, e a palavra segue aberta para outro tentar (ou `skip`).
+        await d.conversa.enviar(messages.diaria_tente_de_novo(revisao, nome, d.p))
         return sessao
 
     agendamento = reagendar(entrada, revisao.qualidade, agora)
@@ -225,9 +213,35 @@ async def responder(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Ses
         fila = [*fila, entrada.slug]  # volta ao fim da fila DESTA sessão, como no Anki
         lapsos = [*lapsos, entrada.palavra]
 
-    feedback = messages.feedback_de_revisao(revisao)
+    feedback = (
+        messages.feedback_da_diaria(revisao, nome)
+        if d.em_grupo
+        else messages.feedback_de_revisao(revisao)
+    )
     return await _mostrar_proxima(
-        d, feedback, fila, feitas, lapsos, sessao.revisao_total, anterior=sessao.marcado_id
+        d, feedback, fila, feitas, lapsos, sessao.revisao_total, puladas=sessao.revisao_puladas
+    )
+
+
+async def pular(d: Deps, sessao: Sessao) -> Sessao:
+    """`skip` na revisão do grupo (M35): passa para a próxima palavra sem mudar a nota — ela
+    continua vencida e volta numa revisão futura."""
+    entrada = (
+        await bloq(d.repo.obter_entrada, sessao.revisao_atual) if sessao.revisao_atual else None
+    )
+    puladas = list(sessao.revisao_puladas)
+    aviso = ""
+    if entrada is not None:
+        puladas.append(entrada.palavra)
+        aviso = messages.palavra_pulada(entrada.palavra)
+    return await _mostrar_proxima(
+        d,
+        aviso,
+        sessao.revisao_fila,
+        sessao.revisao_feitas,
+        sessao.revisao_lapsos,
+        sessao.revisao_total,
+        puladas=puladas,
     )
 
 
@@ -251,38 +265,23 @@ async def encerrar(d: Deps, sessao: Sessao) -> Sessao:
         d, sessao.revisao_feitas, sessao.revisao_lapsos, sessao.revisao_total, "manual"
     )
     await d.conversa.enviar(
-        messages.revisao_encerrada(sessao.revisao_feitas, sessao.revisao_lapsos, p=d.p)
+        messages.revisao_encerrada(
+            sessao.revisao_feitas, sessao.revisao_lapsos, puladas=sessao.revisao_puladas, p=d.p
+        )
     )
     return d.sessao_vazia()
 
 
-async def sem_resposta(d: Deps, sessao: Sessao) -> Sessao:
-    """A pessoa marcada não respondeu no prazo (M17, chamado pelo agendador): na primeira vez o
-    card passa ao próximo aluno do rodízio; na segunda a rodada fecha com o resumo."""
-    entrada = (
-        await bloq(d.repo.obter_entrada, sessao.revisao_atual) if sessao.revisao_atual else None
-    )
-    if sessao.marcacao_tentativas < 1 and entrada is not None:
-        alunos = await _alunos_elegiveis(d, atualizar=False)
-        novo = await _marcar(d, alunos, excluir=sessao.marcado_id)
-        if novo is not None:
-            indice = min(len(sessao.revisao_feitas) + 1, sessao.revisao_total)
-            await d.conversa.enviar(
-                messages.repasse(indice, sessao.revisao_total, entrada.palavra, novo, d.p),
-                mentions=[novo],
-            )
-            return sessao.model_copy(
-                update={
-                    "marcado_id": novo,
-                    "marcacao_expira_em": d.agora() + d.grupo_cfg.timeout,
-                    "marcacao_tentativas": sessao.marcacao_tentativas + 1,
-                }
-            )
+async def fechar_por_inatividade(d: Deps, sessao: Sessao) -> Sessao:
+    """O grupo ficou 3 horas sem mensagem na rodada (chamado pelo agendador): fecha com o resumo."""
     _registrar_conclusao(
         d, sessao.revisao_feitas, sessao.revisao_lapsos, sessao.revisao_total, "timeout"
     )
+    d.conversa.nova_iniciativa()
     await d.conversa.enviar(
-        messages.revisao_sem_resposta(sessao.revisao_feitas, sessao.revisao_lapsos, p=d.p)
+        messages.revisao_inativa(
+            sessao.revisao_feitas, sessao.revisao_lapsos, puladas=sessao.revisao_puladas, p=d.p
+        )
     )
     return d.sessao_vazia()
 
@@ -295,34 +294,22 @@ async def _mostrar_proxima(
     lapsos: list[str],
     total: int,
     *,
-    alunos: list[tuple[str, Membro]] | None = None,
-    anterior: str | None = None,
+    puladas: Sequence[str] = (),
 ) -> Sessao:
     """Mostra a próxima palavra da fila (pulando entradas apagadas no meio da revisão) numa
-    mensagem só com o feedback, ou encerra com o resumo se a fila acabou. Em grupo, o card marca
-    o próximo aluno do rodízio (nunca o mesmo `anterior`, se houver outro)."""
+    mensagem só com o feedback, ou encerra com o resumo se a fila acabou."""
     restante = list(fila)
     while restante:
         slug = restante.pop(0)
         entrada = await bloq(d.repo.obter_entrada, slug)
         if entrada is None:
             continue
-        indice = min(len(feitas) + 1, total)
-        marcado: str | None = None
-        if d.em_grupo:
-            if alunos is None:
-                alunos = await _alunos_elegiveis(d, atualizar=False)
-            marcado = await _marcar(d, alunos, excluir=anterior)
-        card = messages.card_de_revisao(
-            indice, total, entrada.palavra, grupo=d.grupo_prefixo, marcado=marcado
-        )
-        await d.conversa.enviar(
-            f"{feedback}\n\n{card}" if feedback else card, mentions=[marcado] if marcado else None
-        )
+        indice = min(len(feitas) + len(puladas) + 1, total)
+        card = messages.card_de_revisao(indice, total, entrada.palavra, grupo=d.grupo_prefixo)
+        await d.conversa.enviar(f"{feedback}\n\n{card}" if feedback else card)
         if not d.em_grupo:
-            # M26: só o termo, só no privado — no grupo o orçamento de 3 mensagens já é disputado
-            # pelo repasse e pelo fechamento da rodada (ADR-0020); áudio ali arrisca derrubar um
-            # dos dois em silêncio.
+            # M26: só o termo, só no privado — no grupo o orçamento de 3 mensagens é curto
+            # (feedback + card + fechamento) e áudio ali arrisca derrubar um deles em silêncio.
             await pronuncia.ouvir(d, entrada, anunciar=False, com_frase=False)
         return Sessao(
             estado=Estado.REVIEWING,
@@ -331,12 +318,12 @@ async def _mostrar_proxima(
             revisao_feitas=feitas,
             revisao_lapsos=lapsos,
             revisao_total=total,
-            marcado_id=marcado,
-            marcacao_expira_em=(d.agora() + d.grupo_cfg.timeout) if marcado else None,
+            revisao_puladas=list(puladas),
+            marcacao_expira_em=(d.agora() + d.grupo_cfg.timeout) if d.em_grupo else None,
             atualizado_em=d.agora(),
         )
 
     _registrar_conclusao(d, feitas, lapsos, total, "fila_vazia")
-    resumo = messages.revisao_encerrada(feitas, lapsos, p=d.p)
+    resumo = messages.revisao_encerrada(feitas, lapsos, puladas=puladas, p=d.p)
     await d.conversa.enviar(f"{feedback}\n\n{resumo}" if feedback else resumo)
     return d.sessao_vazia()

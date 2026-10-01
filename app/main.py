@@ -155,6 +155,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         exportador=ExportadorExcel(_criar_armazenamento(settings)),
         prefixo_do_grupo=settings.group_prefix,
         eh_dono=settings.eh_dono,
+        eh_admin=lambda numero: admin.eh_admin(_acesso(settings, canal, banco), numero),
         config_grupo=ConfigGrupo(
             limite=settings.limite_por_sessao_grupo,
             timeout=timedelta(hours=settings.timeout_marcacao_horas),
@@ -473,15 +474,16 @@ async def _tratar_mensagem_de_grupo(
     (deduplicação, `sendSeen`): o resto é conversa entre pessoas, que ele não lê nem grava. Grupo
     não ativado só reage a `!activate` de um admin (M15)."""
     grupo_id = payload.from_
+    corpo = grupo.aceitar_barra(payload.body, settings.group_prefix)
     acesso = _acesso(settings, channel, banco)
     autorizado = await run_in_threadpool(admin.grupo_autorizado, acesso, grupo_id)
     if not autorizado:
         _logar_grupo_uma_vez(grupo_id)
         await _registrar_pendente(banco, grupo_id)
 
-    if payload.has_media or grupo.sem_prefixo(payload.body, settings.group_prefix) is None:
+    if payload.has_media or grupo.sem_prefixo(corpo, settings.group_prefix) is None:
         return  # mídia e conversa: ignoradas em silêncio
-    comando = admin.eh_comando_de_ativacao(payload.body, settings.group_prefix)
+    comando = admin.eh_comando_de_ativacao(corpo, settings.group_prefix)
     if not autorizado and comando is None:
         return
     if payload.participant is None:
@@ -500,7 +502,7 @@ async def _tratar_mensagem_de_grupo(
         "mensagem_recebida",
         espaco=id_curto(grupo_id),
         tipo_espaco="grupo",
-        comando=_nome_do_comando(payload.body, settings.group_prefix),
+        comando=_nome_do_comando(corpo, settings.group_prefix),
     )
     await channel.send_seen(grupo_id)
 
@@ -512,7 +514,7 @@ async def _tratar_mensagem_de_grupo(
         nome=payload.nome_do_remetente(),
         mencionados=await _numeros_mencionados(payload, channel, banco),
     )
-    tarefas.add_task(_responder_no_grupo, router, channel, grupo_id, payload.body, autor)
+    tarefas.add_task(_responder_no_grupo, router, channel, grupo_id, corpo, autor)
 
 
 async def _numeros_mencionados(

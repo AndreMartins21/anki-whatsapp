@@ -515,29 +515,14 @@ def hora_da_pratica(total: int) -> str:
     return f"⏰ *Practice time* — {total} {palavra} to review."
 
 
-def card_de_revisao(
-    indice: int,
-    total: int,
-    palavra: str,
-    *,
-    grupo: str | None = None,
-    marcado: str | None = None,
-) -> str:
-    """`marcado` (M17) é o número de quem responde este card no grupo: o texto leva `@numero` e
-    quem envia passa o número em `mentions`."""
-    if grupo is not None and marcado is not None:
-        return (
-            f"🔁 {indice}/{total} · *{palavra}*\n"
-            f"@{marcado}, your turn: explain it in English in your own words, or write a "
-            f"sentence using it (start with {grupo}).\n\n"
-            f"_Anyone can type {grupo}0 to leave the practice._"
-        )
+def card_de_revisao(indice: int, total: int, palavra: str, *, grupo: str | None = None) -> str:
+    """No grupo (M35) ninguém é marcado: qualquer um responde, e `skip` pula a palavra."""
     if grupo is not None:
         return (
             f"🔁 {indice}/{total} · *{palavra}*\n"
             f"Explain it in English in your own words, or write a sentence using it "
             f"(start with {grupo}).\n\n"
-            f"_Type {grupo}0 to leave the practice._"
+            f"_Anyone can answer · {grupo}skip next word · {grupo}skipall stop the review_"
         )
     return (
         f"🔁 {indice}/{total} · *{palavra}*\n"
@@ -553,8 +538,14 @@ def feedback_de_revisao(rev: Revisao) -> str:
     return "\n".join(linhas)
 
 
-def revisao_encerrada(feitas: Sequence[str], lapsos: Sequence[str], *, p: str = "/") -> str:
-    if not feitas:
+def revisao_encerrada(
+    feitas: Sequence[str],
+    lapsos: Sequence[str],
+    *,
+    puladas: Sequence[str] = (),
+    p: str = "/",
+) -> str:
+    if not feitas and not puladas:
         return SEM_NADA_PARA_REVISAR
     solidas = [palavra for palavra in feitas if palavra not in lapsos]
     linhas = [f"🎉 *Practice done* — {len(feitas)} reviewed."]
@@ -562,6 +553,8 @@ def revisao_encerrada(feitas: Sequence[str], lapsos: Sequence[str], *, p: str = 
         linhas.append(f"✅ Solid: {', '.join(solidas)}")
     if lapsos:
         linhas.append(f"🔁 Coming back soon: {', '.join(lapsos)}")
+    if puladas:
+        linhas.append(f"⏭️ Skipped: {', '.join(puladas)}")
     if p == "/":
         linhas.append("Send me a new word or expression whenever you want.")
     else:  # no grupo, palavra nova entra só por !add
@@ -821,11 +814,11 @@ def ajuda_do_grupo(p: str = "!") -> str:
         f"{p}delete [word or number] — remove a word from the class's list\n"
         f"{p}practice [word or number] — practice one (no word: the oldest pending one)\n"
         f"{p}review — start a review round right now\n"
-        f"{p}reminder 3 9h-22h — daily practice reminders (or {p}reminder off)\n"
+        f"{p}daily — the daily review, no one tagged (admins: {p}daily 19h, {p}daily off)\n"
         f"{p}group — the class, its words and reminders\n"
         f"{p}level — the class's level (to change it: {p}level B1-B2)\n\n"
         f"While practicing, pick an option with {p}2, {p}3, {p}4 or {p}5, and start a sentence "
-        f"with {p} to try it."
+        f"with {p} to try it. In a review, {p}skip jumps to the next word and {p}skipall stops it."
     )
 
 
@@ -892,27 +885,77 @@ def grupo_sem_aluno(p: str = "!") -> str:
     )
 
 
-def feedback_sem_nota(rev: Revisao) -> str:
-    """Resposta de quem NÃO é a pessoa marcada: feedback, mas o card e a nota não mudam."""
+def feedback_da_diaria(rev: Revisao, nome: str | None) -> str:
+    """Resposta aceita na revisão diária: quem acertou e o feedback (sem menção, ninguém é
+    notificado)."""
+    quem = nome or "Someone"
+    return f"👏 *{quem}* answered:\n" + feedback_de_revisao(rev)
+
+
+def diaria_tente_de_novo(rev: Revisao, nome: str | None, p: str = "!") -> str:
+    """Resposta que ainda não está certa: feedback e a palavra continua aberta para outro tentar."""
+    quem = nome or "Someone"
     return (
-        "💬 Nice try — this one doesn't count, the card is for the person I tagged.\n"
-        + feedback_de_revisao(rev)
+        f"💬 *{quem}* answered:\n{feedback_de_revisao(rev)}\n\n"
+        f"The word is still open — anyone can try again, or {p}skip."
     )
 
 
-def repasse(indice: int, total: int, palavra: str, marcado: str, p: str = "!") -> str:
+def palavra_pulada(palavra: str) -> str:
+    return f"⏭️ Skipping *{palavra}*. It'll come back in a future review."
+
+
+def revisao_inativa(
+    feitas: Sequence[str],
+    lapsos: Sequence[str],
+    *,
+    puladas: Sequence[str] = (),
+    p: str = "!",
+) -> str:
+    """A rodada fechou porque o grupo ficou 3 horas sem mensagem."""
+    corpo = "😴 Nobody replied for a while, so I closed this review."
+    if not feitas and not puladas:
+        return corpo + " I'll be back later."
+    return corpo + "\n" + revisao_encerrada(feitas, lapsos, puladas=puladas, p=p)
+
+
+# --- Configuração da revisão diária (M35, ADR-0033) -------------------------------------------
+
+
+def so_admin_configura(p: str = "!") -> str:
+    return f"Only the bot's admins can change this. Anyone can see the settings with {p}daily."
+
+
+def lembrete_virou_daily(p: str = "!") -> str:
+    return f"Reminders now work as a daily review. See it with {p}daily."
+
+
+def diaria_invalida(p: str = "!") -> str:
     return (
-        "⏰ No answer yet, so I'm passing this one on.\n"
-        f"🔁 {indice}/{total} · *{palavra}*\n"
-        f"@{marcado}, your turn: explain it in English or write a sentence using it "
-        f"(start with {p})."
+        f"I couldn't understand that. Try {p}daily 19h (time), {p}daily weekends on, "
+        f"{p}daily size 5 or {p}daily off."
     )
 
 
-def revisao_sem_resposta(feitas: Sequence[str], lapsos: Sequence[str], *, p: str = "!") -> str:
-    """A rodada fechou porque ninguém respondeu a tempo."""
-    if not feitas:
-        return "😴 Nobody answered in time, so I closed this review. I'll be back later."
-    return "😴 Nobody answered in time, so I closed this review.\n" + revisao_encerrada(
-        feitas, lapsos, p=p
-    )
+def diaria_estado(
+    perfil: Profile,
+    proximo: datetime | None,
+    agora: datetime,
+    tamanho: int,
+    p: str = "!",
+    *,
+    alterada: bool = False,
+) -> str:
+    abertura = "✅ Daily review updated." if alterada else "⏰ *Daily review*"
+    if not perfil.diaria_ligada:
+        return f"{abertura}\nIt's off. Turn it on with {p}daily on."
+    dias = "every day" if perfil.diaria_fim_de_semana else "every weekday"
+    linhas = [
+        abertura,
+        f"🕖 {dias} at {perfil.diaria_hora:02d}:{perfil.diaria_minuto:02d}",
+        f"📚 {tamanho} words per review",
+    ]
+    if proximo is not None:
+        linhas.append(f"⏭️ Next one: {_quando(proximo, agora)}")
+    linhas.append(f"_Admins can change it: {p}daily 19h · {p}daily weekends on · {p}daily off_")
+    return "\n".join(linhas)

@@ -1,6 +1,6 @@
 # ADR-0020: Revisão em grupo com menção em rodízio
 
-- **Status:** Aceito
+- **Status:** Substituído por ADR-0033
 - **Data:** 2026-09-24
 
 ## Contexto
