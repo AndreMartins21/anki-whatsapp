@@ -18,8 +18,10 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from app.domain.agenda_grupo import MAX_REVISOES_SEM_RESPOSTA, proxima_diaria
 from app.domain.lembretes import proximo_horario
 from app.domain.models import Estado, Profile
+from app.domain.state import expirou
 from app.flows import review
 from app.flows.admin import PRAZO_GRUPO_PENDENTE
 from app.flows.base import bloq
@@ -83,15 +85,15 @@ class Agendador:
 
     async def _tick(self) -> None:
         agora_utc = self._agora()
+        try:  # antes dos lembretes: uma rodada vencida fecha e libera a sessão no mesmo tick
+            await self._expirar_marcacoes(agora_utc)
+        except Exception:  # o Firestore falhando aqui não pode calar os lembretes do próximo tick
+            logger.exception("falha ao fechar revisões de grupo paradas")
         for espaco_id in await bloq(self._banco.listar_espacos_com_lembrete, agora_utc):
             try:
                 await self._tick_espaco(espaco_id)
             except Exception:  # um espaço com problema não pode calar os outros
                 logger.exception("falha no lembrete de um espaço; os demais seguem")
-        try:
-            await self._expirar_marcacoes(agora_utc)
-        except Exception:  # o Firestore falhando aqui não pode calar os lembretes do próximo tick
-            logger.exception("falha ao expirar marcações de revisão em grupo")
         try:
             await self._sair_de_grupos_pendentes()
         except Exception:  # o Firestore falhando aqui não pode calar os lembretes do próximo tick
@@ -144,6 +146,9 @@ class Agendador:
             return
         repo = self._banco.do_espaco(espaco_id)
         perfil = await bloq(repo.obter_perfil)
+        if perfil is not None and perfil.chat_id is not None and espaco_id.endswith("@g.us"):
+            await self._tick_grupo(repo, espaco_id, perfil)
+            return
         if perfil is None or perfil.lembretes_por_dia == 0 or perfil.chat_id is None:
             return
 
@@ -205,6 +210,75 @@ class Agendador:
         if perfil_apos is not None:
             await self._agendar_proximo(repo, perfil_apos, agora_local)
 
+    async def _tick_grupo(self, repo: Repository, espaco_id: str, perfil: Profile) -> None:
+        """Revisão diária do grupo (M35, ADR-0033), no horário e nos dias da turma. Pausa depois de
+        3 revisões seguidas sem nenhuma mensagem do grupo (volta na próxima mensagem)."""
+        if not perfil.diaria_ligada:
+            return
+        agora_utc = self._agora()
+        agora_local = agora_utc.astimezone(self._fuso)
+        if perfil.proxima_diaria is None:
+            await self._agendar_diaria(repo, perfil, agora_local)
+            return
+        if agora_utc < perfil.proxima_diaria:
+            return
+
+        espaco = id_curto(espaco_id)
+        motivo: str | None = None
+        if agora_utc - perfil.proxima_diaria > LIMITE_DE_ATRASO:
+            motivo = "atraso"
+        elif perfil.revisoes_sem_resposta >= MAX_REVISOES_SEM_RESPOSTA:
+            motivo = "pausado"
+        if motivo is not None:
+            registrar_evento(
+                logger, "lembrete_desistido", espaco=espaco, tipo_espaco="grupo", motivo=motivo
+            )
+            await self._agendar_diaria(repo, perfil, agora_local)
+            return
+
+        sessao = await bloq(repo.obter_sessao)
+        if sessao.estado != Estado.IDLE and not expirou(sessao.atualizado_em, agora_utc):
+            registrar_evento(
+                logger,
+                "lembrete_adiado",
+                espaco=espaco,
+                tipo_espaco="grupo",
+                motivo="conversa_em_andamento",
+            )
+            return  # conversa em andamento: tenta de novo no próximo tick
+
+        entradas = await bloq(repo.listar_entradas)
+        fila = review.montar_fila(entradas, agora_utc)
+        if not fila:
+            registrar_evento(
+                logger, "lembrete_adiado", espaco=espaco, tipo_espaco="grupo", motivo="nada_vencido"
+            )
+            await self._agendar_diaria(repo, perfil, agora_local)
+            return
+
+        await bloq(
+            repo.salvar_perfil,
+            perfil.model_copy(update={"revisoes_sem_resposta": perfil.revisoes_sem_resposta + 1}),
+        )
+        registrar_evento(
+            logger, "lembrete_enviado", espaco=espaco, tipo_espaco="grupo", n=len(fila)
+        )
+        await self._router.iniciar_revisao(espaco_id)
+
+        perfil_apos = await bloq(repo.obter_perfil)
+        if perfil_apos is not None:
+            await self._agendar_diaria(repo, perfil_apos, agora_local)
+
+    async def _agendar_diaria(
+        self, repo: Repository, perfil: Profile, agora_local: datetime
+    ) -> None:
+        novo = proxima_diaria(
+            agora_local, perfil.diaria_hora, perfil.diaria_minuto, perfil.diaria_fim_de_semana
+        )
+        await bloq(
+            repo.salvar_perfil, perfil.model_copy(update={"proxima_diaria": novo.astimezone(UTC)})
+        )
+
     async def _agendar_proximo(
         self, repo: Repository, perfil: Profile, agora_local: datetime
     ) -> None:
@@ -217,8 +291,8 @@ class Agendador:
         )
 
     async def _expirar_marcacoes(self, agora: datetime) -> None:
-        """M17 (ADR-0020): revisão em grupo em que a pessoa marcada não respondeu no prazo. Uma
-        consulta por tick devolve só os grupos vencidos; cada um é tratado à parte."""
+        """M35 (ADR-0033): revisão em grupo parada por 3 horas fecha com o resumo. Uma consulta por
+        tick devolve só os grupos vencidos; cada um é tratado à parte."""
         for grupo_id in await bloq(self._banco.listar_grupos_com_timeout, agora):
             try:
                 await self._router.expirar_marcacao(grupo_id)

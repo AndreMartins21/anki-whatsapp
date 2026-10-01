@@ -59,7 +59,7 @@ class FirestoreRepository:
     def salvar_perfil(self, perfil: Profile) -> None:
         self._raiz.collection("profile").document("me").set(perfil.model_dump())
         if self._espaco is not None:
-            tick = proximo_tick(perfil)
+            tick = proximo_tick(perfil, grupo=tipo_do_espaco(self._espaco.id) == "grupo")
             self._espaco.set(
                 {
                     "tipo": tipo_do_espaco(self._espaco.id),
@@ -242,7 +242,7 @@ class FirestoreBanco:
         self._db.collection("grupos_pendentes").document(grupo_id).delete()
         # Reativar devolve os lembretes do grupo (a desativação os tirou da consulta do agendador).
         perfil = self.do_espaco(grupo_id).obter_perfil()
-        tick = proximo_tick(perfil) if perfil else None
+        tick = proximo_tick(perfil, grupo=True) if perfil else None
         if tick is not None:
             self._db.collection("espacos").document(grupo_id).set(
                 {"proximo_tick": tick}, merge=True

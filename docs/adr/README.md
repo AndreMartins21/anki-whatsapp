@@ -29,7 +29,7 @@ operacional: numeração, status e o índice.
 | [0017](0017-multiusuario-por-espaco.md) | Multiusuário por espaço | Aceito | 2026-09-24 |
 | [0018](0018-acesso-por-admins-e-ativacao-de-grupos.md) | Acesso por admins e ativação de grupos | Aceito | 2026-09-24 |
 | [0019](0019-bot-em-grupo-com-prefixo-e-comandos-limitados.md) | Bot em grupo com prefixo `!` e comandos limitados | Aceito | 2026-09-24 |
-| [0020](0020-revisao-em-grupo-com-mencao-em-rodizio.md) | Revisão em grupo com menção em rodízio | Aceito | 2026-09-24 |
+| [0020](0020-revisao-em-grupo-com-mencao-em-rodizio.md) | Revisão em grupo com menção em rodízio | Substituído por ADR-0033 | 2026-09-24 |
 | [0021](0021-palavra-repetida-pular-e-ignorar-no-menu.md) | Palavra repetida avisa e mostra o que já existe; `0`/`skip` saem da palavra e a opção 4 a descarta | Aceito | 2026-09-25 |
 | [0022](0022-retentativa-do-gemini-e-erro-de-provedor-como-llmerror.md) | Retentativa do Gemini no próprio SDK e erro do provedor tratado como `LLMError` | Aceito | 2026-09-25 |
 | [0023](0023-identidade-da-palavra-nao-depende-do-texto-da-traducao.md) | A identidade da palavra não depende do texto da tradução que a IA devolve | Aceito | 2026-09-25 |
@@ -42,6 +42,7 @@ operacional: numeração, status e o índice.
 | [0030](0030-pedido-de-sentido-e-palavra-de-qualquer-nivel.md) | Pedido de sentido (`palavra \| sentido`) e palavra de qualquer nível | Aceito | 2026-09-28 |
 | [0031](0031-level-no-grupo-so-professor-ou-dono-e-opcao-5-dont-save.md) | `!level` no grupo (só professor ou dono muda) e opção 5 do menu renomeada para "Don't save" | Aceito | 2026-09-29 |
 | [0032](0032-seis-niveis-e-turma-so-em-ingles-a-partir-do-b1-b2.md) | Seis níveis e turma só em inglês a partir de B1-B2 | Aceito | 2026-10-01 |
+| [0033](0033-revisao-diaria-no-grupo-sem-marcacao.md) | Revisão diária no grupo, sem marcar ninguém | Aceito | 2026-10-01 |
 
 ## Quando escrever um
 

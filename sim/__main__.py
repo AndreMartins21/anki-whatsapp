@@ -6,9 +6,9 @@
 Com `--grupo` (M16), simula um grupo de turma com vários participantes: cada linha é
 `nome: mensagem` (ex.: `ana: !add stall`). Só as linhas que começam com o prefixo (`!`) chegam ao
 bot; as outras aparecem como ignoradas, como no WhatsApp real. O participante `dono` é o dono do
-bot (pode usar `!teacher`); `--professor NOME` cadastra professores de saída. Na revisão em
-grupo (`ana: !review`) o bot marca um aluno (`@ana`); `~timeout` força o prazo da marcação
-(o repasse, e depois o fechamento) sem esperar as 3 horas.
+bot (pode usar `!teacher`); `--professor NOME` cadastra professores de saída. Na revisão diária
+do grupo (`ana: !review`, ou `~daily` para o bot começar sozinho) ninguém é marcado; `/skip` e
+`/skip-all` valem com a barra; `~timeout` fecha a rodada parada sem esperar as 3 horas.
 
 Usa `ConsoleChannel` e `MemoryRepository` (nada é gravado; ao sair, tudo some), e o mesmo
 `Router` do bot. Sem `--real-llm`, as respostas de IA são fabricadas (`SimTutor`); com ele, usa o
@@ -108,11 +108,14 @@ async def _conversar_no_grupo(
         if linha.lower() in {"~timeout", "timeout"}:
             await router.expirar_marcacao(GRUPO_DO_SIMULADOR, forcar=True)
             continue
+        if linha.lower() in {"~daily", "daily"}:
+            await router.iniciar_revisao(GRUPO_DO_SIMULADOR)
+            continue
         nome, separador, texto = linha.partition(":")
         if not separador or not nome.strip() or not texto.strip():
             saida("  (use `nome: mensagem`)")
             continue
-        nome, texto = nome.strip(), texto.strip()
+        nome, texto = nome.strip(), flows_grupo.aceitar_barra(texto.strip(), PREFIXO_DO_SIMULADOR)
         saida(f"[{nome}] {texto}")
         if flows_grupo.sem_prefixo(texto, PREFIXO_DO_SIMULADOR) is None:
             saida("  (ignorado: sem prefixo, o bot não lê)")

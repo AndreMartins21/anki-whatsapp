@@ -61,6 +61,7 @@ class Router:
         audio: ServicoAudio | None = None,
         prefixo_do_grupo: str = "!",
         eh_dono: Callable[[str], bool] = lambda _numero: False,
+        eh_admin: Callable[[str], bool] | None = None,
         config_grupo: ConfigGrupo | None = None,
     ) -> None:
         self._banco = banco
@@ -72,6 +73,7 @@ class Router:
         self._audio = audio
         self._prefixo_do_grupo = prefixo_do_grupo
         self._eh_dono = eh_dono
+        self._eh_admin = eh_admin
         self._config_grupo = config_grupo or ConfigGrupo()
         self._nivel_padrao = nivel_padrao
         self._status_da_sessao = status_da_sessao
@@ -132,11 +134,20 @@ class Router:
             d.conversa.usuario_falou()
             perfil = await bloq(self._perfil, d)
             d = self._com_idioma(d, perfil)
-            if perfil.chat_id != chat_id or perfil.lembrete_sem_resposta:
+            if (
+                perfil.chat_id != chat_id
+                or perfil.lembrete_sem_resposta
+                or (d.em_grupo and (perfil.revisoes_sem_resposta or perfil.proxima_diaria is None))
+            ):
                 # M10: guarda o destino real (para o agendador saber para onde mandar os
-                # lembretes) e limpa o backoff — o aluno acabou de falar.
+                # lembretes) e limpa o backoff — o aluno acabou de falar. No grupo (M35) isso
+                # também zera as revisões seguidas sem resposta e reescreve o espelho do tick.
                 perfil = perfil.model_copy(
-                    update={"chat_id": chat_id, "lembrete_sem_resposta": False}
+                    update={
+                        "chat_id": chat_id,
+                        "lembrete_sem_resposta": False,
+                        "revisoes_sem_resposta": 0,
+                    }
                 )
                 await bloq(d.repo.salvar_perfil, perfil)
             sessao = await bloq(d.repo.obter_sessao)
@@ -154,6 +165,7 @@ class Router:
                         autor=de_grupo[0],
                         conversar=self._conversar,
                         eh_dono=self._eh_dono,
+                        eh_admin=self._eh_admin,
                     )
                 elif self._como_comando(texto).startswith("/"):
                     nova = await commands.executar(
@@ -171,7 +183,15 @@ class Router:
                 await d.conversa.enviar(messages.ERRO_IA)
                 return
 
-            await bloq(d.repo.salvar_sessao, nova.model_copy(update={"atualizado_em": d.agora()}))
+            await bloq(d.repo.salvar_sessao, self._com_prazo(d, nova))
+
+    @staticmethod
+    def _com_prazo(d: Deps, sessao: Sessao) -> Sessao:
+        """Todo ato no grupo adia o fechamento por inatividade da rodada em andamento (M35)."""
+        atualizacoes: dict[str, object] = {"atualizado_em": d.agora()}
+        if d.em_grupo and Estado(sessao.estado) == Estado.REVIEWING:
+            atualizacoes["marcacao_expira_em"] = d.agora() + d.grupo_cfg.timeout
+        return sessao.model_copy(update=atualizacoes)
 
     @staticmethod
     def _com_idioma(d: Deps, perfil: Profile) -> Deps:
@@ -254,14 +274,14 @@ class Router:
             if perfil.chat_id is None:
                 return
             sessao = await bloq(d.repo.obter_sessao)
-            if sessao.estado != Estado.IDLE:
+            if sessao.estado != Estado.IDLE and not expirou(sessao.atualizado_em, d.agora()):
                 return
             nova = await review.iniciar(d, perfil)
             await bloq(d.repo.salvar_sessao, nova.model_copy(update={"atualizado_em": d.agora()}))
 
     async def expirar_marcacao(self, chat_id: str, forcar: bool = False) -> None:
-        """M17: chamado pelo agendador quando a pessoa marcada numa revisão em grupo não respondeu
-        no prazo (`forcar` ignora o prazo, para o simulador). Sem revisão em andamento, ou já
+        """M35: chamado pelo agendador quando o grupo ficou 3 horas sem mensagem numa revisão
+        (`forcar` ignora o prazo, para o simulador). Sem revisão em andamento, ou já
         respondida a tempo, não faz nada. Mesma trava do resto; não conta como fala do aluno."""
         async with self._trava(chat_id):
             d = self._deps(chat_id)
@@ -271,5 +291,5 @@ class Router:
                 return
             if not forcar and prazo > d.agora():
                 return
-            nova = await review.sem_resposta(d, sessao)
+            nova = await review.fechar_por_inatividade(d, sessao)
             await bloq(d.repo.salvar_sessao, nova.model_copy(update={"atualizado_em": d.agora()}))

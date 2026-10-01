@@ -108,7 +108,7 @@ async def concluir(d: Deps, sessao: Sessao, perfil: Profile) -> Sessao:
         )
     sugestoes = await expansion.sugestoes(d, entrada, perfil)
     texto = messages.salvo(entrada.palavra, sugestoes, p=d.p)
-    if perfil.lembretes_por_dia == 0 and not perfil.avisou_lembretes:
+    if not d.em_grupo and perfil.lembretes_por_dia == 0 and not perfil.avisou_lembretes:
         # M10: dica de uma linha, só na primeira vez que o aluno salva uma palavra com os
         # lembretes desligados (M24: o padrão agora é ligado, então a dica deixou de fazer sentido
         # para a maioria — só quem desligou antes de salvar a primeira palavra ainda a vê).

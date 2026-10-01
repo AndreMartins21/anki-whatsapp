@@ -132,6 +132,7 @@ def montar(
     numero_do_bot: str | None = None,
     sortear: Callable[[Sequence[Candidato]], Candidato] | None = None,
     participantes: Participantes | None = None,
+    admins: tuple[str, ...] = (),
 ) -> Montagem:
     channel = FakeChannel()
     banco = MemoryBanco()
@@ -157,6 +158,7 @@ def montar(
         audio=audio,
         prefixo_do_grupo=prefixo_do_grupo,
         eh_dono=lambda numero: numero == DONO_NUMERO,
+        eh_admin=lambda numero: numero == DONO_NUMERO or numero in admins,
         config_grupo=ConfigGrupo(
             limite=grupo_limite,
             timeout=grupo_timeout,

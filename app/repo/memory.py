@@ -155,7 +155,9 @@ class MemoryBanco:
             if espaco_id in self._grupos_sem_lembrete:
                 continue
             perfil = repo.obter_perfil()
-            tick = proximo_tick(perfil) if perfil else None
+            tick = (
+                proximo_tick(perfil, grupo=tipo_do_espaco(espaco_id) == "grupo") if perfil else None
+            )
             if tick is not None and tick <= agora:
                 vencidos.append(espaco_id)
         return vencidos
