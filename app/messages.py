@@ -81,7 +81,7 @@ Send me a word or expression in English (you can include the sentence where you 
 /profile — your level, words and reminders
 /export — get an Excel spreadsheet with everything
 /delete word — remove a word
-/level B1-B2 — change your level (A2-B1, B1-B2 or B2-C1)
+/level B1-B2 — change your level (A1-A2, A2-B1, B1-B2, B2-C1, C1-C2 or C2)
 /cancel — stop what you were doing (nothing is deleted)
 /status — how things are going"""
 
@@ -129,7 +129,7 @@ def _titulo(palavra: str, classe: str, cefr: str) -> str:
 
 
 def _outros_sentidos(
-    palavra: str, outros: Sequence[Sense | SentidoSalvo], grupo: str | None
+    palavra: str, outros: Sequence[Sense | SentidoSalvo], grupo: str | None, pt: bool = True
 ) -> list[str]:
     """Os outros sentidos da palavra (no formato do `/info`) e como pedir um deles: a mesma
     palavra com `|` e o sentido, no grupo pelo `!add` (M31). Vazio se a palavra tem um só."""
@@ -138,7 +138,7 @@ def _outros_sentidos(
     comando = f"{grupo}add " if grupo is not None else ""
     return [
         "",
-        *(f"↔️ {o.traducao} — {o.definicao}" for o in outros),
+        *((f"↔️ {o.traducao} — {o.definicao}" if pt else f"↔️ {o.definicao}") for o in outros),
         f"Want another meaning? Send *{comando}{palavra} | {outros[0].definicao}*",
     ]
 
@@ -154,13 +154,17 @@ def explicacao(
     outros_sentidos: Sequence[Sense | SentidoSalvo] = (),
     ja_viu_sinonimos: bool = False,
     grupo: str | None = None,
+    pt: bool = True,
 ) -> str:
-    linhas = [_titulo(palavra, classe, cefr), f"🇧🇷 {sentido.traducao}", f"📖 {sentido.definicao}"]
+    linhas = [_titulo(palavra, classe, cefr)]
+    if pt:  # M34: turma de B1-B2 para cima não vê português
+        linhas.append(f"🇧🇷 {sentido.traducao}")
+    linhas.append(f"📖 {sentido.definicao}")
     if dica:
         linhas.append(f"💡 {dica}")
     if exemplo:
         linhas.append(f'"{sem_marcas(exemplo)}"')
-    linhas += _outros_sentidos(palavra, outros_sentidos, grupo)
+    linhas += _outros_sentidos(palavra, outros_sentidos, grupo, pt)
     return (
         "\n".join(linhas)
         + "\n\n"
@@ -177,6 +181,7 @@ def ja_existe(
     *,
     outros_sentidos: Sequence[Sense | SentidoSalvo] = (),
     grupo: str | None = None,
+    pt: bool = True,
 ) -> str:
     """O aluno mandou uma palavra que já está na lista: avisa, mostra o que já tem e oferece só o
     que faz sentido (frase, exemplos, sinônimos) — salvar já não se aplica, e 0/skip abre caminho
@@ -186,12 +191,12 @@ def ja_existe(
         f"📌 You already have *{palavra}* in your list.",
         "",
         _titulo(palavra, classe, cefr),
-        f"🇧🇷 {sentido.traducao}",
+        *([f"🇧🇷 {sentido.traducao}"] if pt else []),
         f"📖 {sentido.definicao}",
     ]
     if exemplo:
         linhas.append(f'"{sem_marcas(exemplo)}"')
-    linhas += _outros_sentidos(palavra, outros_sentidos, grupo)
+    linhas += _outros_sentidos(palavra, outros_sentidos, grupo, pt)
     opcoes = ["See more examples", "Check synonyms"]
     return (
         "\n".join(linhas)
@@ -294,8 +299,16 @@ def entrada_invalida(motivo: str | None) -> str:
 # ---- comandos --------------------------------------------------------------------------------
 
 
-def _linha_de_entrada(e: Entry) -> str:
-    return f"{e.palavra}: {e.sentido.traducao}"
+_MAX_DEFINICAO_NA_LISTA = 70
+
+
+def _linha_de_entrada(e: Entry, pt: bool = True) -> str:
+    if pt:
+        return f"{e.palavra}: {e.sentido.traducao}"
+    definicao = e.sentido.definicao
+    if len(definicao) > _MAX_DEFINICAO_NA_LISTA:  # M34: a definição é mais longa que a tradução
+        definicao = definicao[: _MAX_DEFINICAO_NA_LISTA - 1].rstrip() + "…"
+    return f"{e.palavra}: {definicao}"
 
 
 def lista(
@@ -306,11 +319,12 @@ def lista(
     paginas: int,
     p: str = "/",
     grupo: bool = False,
+    pt: bool = True,
 ) -> str:
     """Uma página da lista, das mais novas para as mais antigas. Cada palavra leva o seu número
     fixo (1 = a mais antiga), o mesmo que `/info`, `/practice` e `/delete` aceitam. No grupo
     (M16) o título é da turma e a dica é de `!practice` (não há `!info` na turma)."""
-    corpo = "\n".join(f"{n}. {_linha_de_entrada(e)}" for n, e in pagina)
+    corpo = "\n".join(f"{n}. {_linha_de_entrada(e, pt)}" for n, e in pagina)
     titulo = "The class's words" if grupo else "Your words"
     dica = (
         f"{p}practice {pagina[0][0]} to practice one"
@@ -425,7 +439,7 @@ def apagada(palavra: str) -> str:
 
 
 def nivel_atual(nivel: NivelUsuario, p: str = "/") -> str:
-    return f"Your level is *{nivel}*. To change it: {p}level B1-B2 (options: A2-B1, B1-B2, B2-C1)."
+    return f"Your level is *{nivel}*. To change it: {p}level B1-B2 (options: A1-A2, A2-B1, B1-B2, B2-C1, C1-C2, C2)."
 
 
 def nivel_so_professor(p: str = "!") -> str:
@@ -437,7 +451,7 @@ def nivel_alterado(nivel: NivelUsuario) -> str:
 
 
 def nivel_invalido() -> str:
-    return "Invalid level. Use A2-B1, B1-B2 or B2-C1."
+    return "Invalid level. Use A1-A2, A2-B1, B1-B2, B2-C1, C1-C2 or C2."
 
 
 def status(sessao_waha: str, total: int, pendentes_: int) -> str:

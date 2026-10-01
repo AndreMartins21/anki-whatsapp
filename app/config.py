@@ -16,7 +16,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.channel.parser import numero_e_permitido
 
-NivelUsuario = Literal["A2-B1", "B1-B2", "B2-C1"]
+NivelUsuario = Literal["A1-A2", "A2-B1", "B1-B2", "B2-C1", "C1-C2", "C2"]
 ProvedorLLM = Literal["vertex_gemini", "anthropic"]
 AmbienteApp = Literal["local", "prod"]
 CONTATO_PADRAO = "smartins.bot@gmail.com"

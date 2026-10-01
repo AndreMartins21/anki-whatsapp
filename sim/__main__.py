@@ -144,7 +144,9 @@ def main(
         action="store_true",
         help="fala com o Google Cloud TTS de verdade (precisa de credencial); sem isto, o áudio é um dublê",
     )
-    parser.add_argument("--nivel", choices=["A2-B1", "B1-B2", "B2-C1"], default="B1-B2")
+    parser.add_argument(
+        "--nivel", choices=["A1-A2", "A2-B1", "B1-B2", "B2-C1", "C1-C2", "C2"], default="B1-B2"
+    )
     parser.add_argument(
         "--grupo", action="store_true", help="simula um grupo de turma (`nome: mensagem`)"
     )

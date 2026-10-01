@@ -12,7 +12,16 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-NivelUsuario = Literal["A2-B1", "B1-B2", "B2-C1"]
+NivelUsuario = Literal["A1-A2", "A2-B1", "B1-B2", "B2-C1", "C1-C2", "C2"]
+
+# De B1-B2 para cima a turma não vê português (M34, ADR-0032).
+NIVEIS_SO_INGLES: frozenset[str] = frozenset({"B1-B2", "B2-C1", "C1-C2", "C2"})
+
+
+def nivel_so_ingles(nivel: str) -> bool:
+    return nivel in NIVEIS_SO_INGLES
+
+
 Cefr = Literal["A2", "B1", "B2", "C1", "C2"]
 Tag = Literal["trabalho", "phrasal_verb", "expressao"]
 Veredito = Literal["correta", "correta_pouco_natural", "quase", "incorreta"]

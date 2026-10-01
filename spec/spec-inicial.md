@@ -176,7 +176,7 @@ Regras:
 `/help`, `/list [página]`, `/info N|palavra`, `/pending`, `/practice [N|palavra]`, `/review`,
 `/reviewsize [N|auto]`, `/listen N|palavra`, `/song nome [- artista]`,
 `/reminders [N [INICIOh-FIMh] [TAMANHO] | off]`, `/profile`, `/export`, `/delete N|palavra`,
-`/level A2-B1|B1-B2|B2-C1`, `/cancel`, `/status`. Todos os nomes são em inglês (M12, ADR-0014). Os
+`/level A1-A2|A2-B1|B1-B2|B2-C1|C1-C2|C2`, `/cancel`, `/status`. Todos os nomes são em inglês (M12, ADR-0014). Os
 apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/praticar`,
 `/exportar [tudo]`, `/apagar`, `/nivel`, `/cancelar`, `/reminders`, `/review`, `/perfil`, `/musica`)
 **continuam funcionando, mas nenhuma mensagem do bot os divulga**.
@@ -194,7 +194,7 @@ apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/pr
 - `/export` gera a planilha com **todas** as palavras (ver 7.3); `/export all` (e `/exportar tudo`)
   é aceito e faz o mesmo. Sem nenhuma palavra, o bot avisa que não há o que exportar.
 - `/practice` sem argumento pega a pendente mais antiga.
-- `/level` aceita A2-B1, B1-B2 e B2-C1.
+- `/level` aceita A1-A2, A2-B1, B1-B2, B2-C1, C1-C2 e C2 (M34, ADR-0032).
 - `/reminders`, `/review` e `/reviewsize`: ver seção 5.7.
 - `/song`: ver seção 5.8. Sem argumento, mostra como usar.
 - `/profile` mostra o nível, o total de palavras (praticadas e pendentes), quantas estão vencidas
@@ -218,7 +218,7 @@ gravado nem marcado como lido (o filtro vem antes da deduplicação e do `sendSe
 
 - **Comandos (conjunto fechado):** `!delete palavra|número` (M32: remove um termo da lista da turma, igual ao `/delete` do privado; o número é o do `!list`; qualquer membro pode, como no `!add`), `!add palavra [| contexto ou sentido]` (a **única** forma de trazer uma palavra
   nova; com a palavra aberta, `!add` do mesmo termo com `|` troca o sentido, como no privado — M31), `!list [página]` (palavras da turma, mesma regra do `/list`), `!practice [palavra|número]`,
-  `!review`, `!reminder [N [INICIOh-FIMh] | off]` (aceita `!reminders`), `!level [A2-B1|B1-B2|B2-C1]` (M33, ADR-0031: sem argumento qualquer membro vê o nível da turma; com argumento só professor ou dono muda, e aluno recebe a recusa), `!group` (nível, palavras,
+  `!review`, `!reminder [N [INICIOh-FIMh] | off]` (aceita `!reminders`), `!level [A1-A2|A2-B1|B1-B2|B2-C1|C1-C2|C2]` (M33, ADR-0031: sem argumento qualquer membro vê o nível da turma; com argumento só professor ou dono muda, e aluno recebe a recusa), `!group` (nível, palavras,
   vencidas, lembretes e os membros com o papel, só nomes e sem menção) e `!help` (só os comandos do
   grupo). `!teacher`/`!student` (um professor da turma ou o dono) mudam o papel, escondidos do `!help`;
   os alvos vêm das menções do payload ou do número escrito no texto.
@@ -228,6 +228,9 @@ gravado nem marcado como lido (o filtro vem antes da deduplicação e do `sendSe
 - **Fora de atividade**, qualquer outra coisa com o prefixo, inclusive comando do privado (`!export`,
   `!export`, `!song`...), recebe a ajuda do grupo, **sem chamar a IA**. Com a barra, a mensagem nem é lida.
 - Os textos que citam comandos usam o prefixo do espaço e, no grupo, só citam comandos do grupo.
+- **Turma só em inglês (M34, ADR-0032):** no grupo, de B1-B2 para cima, nada aparece em português (sem a
+  linha 🇧🇷, sem a tradução nos cabeçalhos e nos `↔️`; o `!list` mostra a definição, cortada em 70
+  caracteres). A1-A2 e A2-B1 mantêm a 🇧🇷. A `traducao` segue gerada e gravada. O privado não muda.
 - `espacos/{grupo}/membros/{numero}` guarda `{papel: aluno|professor, nome}` (quem manda a primeira
   mensagem com prefixo entra como aluno); `sentences.autor_id` guarda quem escreveu a frase.
 - No privado nada muda; o prefixo do grupo é aceito como apelido escondido da barra (`!list` vale
@@ -259,6 +262,7 @@ em silêncio; o `!review` avisa).
 ### 5.3 Calibração pelo nível (B1-B2)
 
 - **Exemplos:** vocabulário de apoio no máximo B2 (a palavra-alvo pode ser de qualquer nível), 8 a 18 palavras por frase, contextos variados (empresa internacional, dia a dia, informal).
+- **Níveis (M34):** A1-A2, A2-B1, B1-B2, B2-C1, C1-C2 e C2, cada um com calibração própria no prompt (`_CALIBRACAO_POR_NIVEL`).
 - **Avaliação:** tolerante com frases simples e corretas. Prioridade: sentido, depois gramática e colocação, depois naturalidade. Explicação em inglês, com no máximo 4 linhas (M9: só a linha 🇧🇷 do card fica em PT-BR).
 - **Palavra-alvo de qualquer nível (M31, ADR-0030):** o nível do espaço calibra só o vocabulário de apoio (definições, dicas, exemplos). Nenhum nível é motivo de recusar uma palavra: raras, técnicas, gírias, inglês de rua, abreviações (`gonna`, `ain't`, `no cap`) e palavrões entram, com a `nota` avisando o registro. A IA só devolve `ok=false` para o que não é inglês.
 - **Expansões:** colocações e expressões frequentes de nível B1-B2, ligadas ao sentido escolhido. Evite idiomatismos raros (C2).
@@ -273,7 +277,7 @@ Não há mais modos (`guiado` / `producao_primeiro`): toda palavra cai no mesmo 
 
 Use a formatação do WhatsApp (`*negrito*`, `_itálico_`) e emojis com moderação. Um único texto por
 resposta sempre que possível. Desde o M9, **tudo em inglês** — só a linha 🇧🇷 (tradução literal)
-fica em PT-BR — e o menu de ações (seção 5.1) termina praticamente toda resposta.
+fica em PT-BR (exceto em turmas de B1-B2 para cima, M34) — e o menu de ações (seção 5.1) termina praticamente toda resposta.
 
 **Card inicial** (o aluno manda uma palavra; a IA já escolhe um sentido e gera uma frase de
 exemplo calibrada, reaproveitando palavras que o aluno já salvou quando der):
@@ -767,6 +771,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, enviar voz, marcar com
 | M31 | Palavra de qualquer nível/gíria e pedido de sentido `palavra | sentido` (seções 5.1/5.2b/5.3/5.5, ADR-0030): prompt de `explain` sem recusa por nível, card com `↔️` e dica, `Acao.EXPLICAR_COM_CONTEXTO` sem IA de roteamento, troca do card recém-criado, `!add` do mesmo termo com `|` | `make check` passa; card com outros sentidos lista `↔️` e a dica (com `!add` no grupo), com um sentido só não muda; `palavra | sentido` logo após o card troca o card (só depois de a IA responder; com frase do aluno vira `--s2`); em `IDLE`, pedido de sentido de palavra já salva abre outro card em vez de "já existe"; `palavra | x` com outra palavra salva a atual e explica a nova, sem `route` |
 | M32 | `!delete palavra\|número` no grupo (seção 5.2b): reaproveita `commands.apagar` do privado | `make check` passa; `!delete` por palavra e por número apaga a entrada e as frases da turma; inexistente e sem argumento respondem com o prefixo do grupo; apagar a palavra aberta zera a sessão; a ajuda do grupo lista `!delete` |
 | M33 | `!level` no grupo (seção 5.2b, ADR-0031) e opção 5 do menu renomeada para "Don't save" | `make check` passa; `!level` sem argumento mostra o nível a qualquer membro; com argumento, professor e dono mudam só o perfil da turma, aluno recebe `nivel_so_professor` e nada muda; nível inválido recusa; a ajuda do grupo lista `!level`; o menu mostra `5️⃣ Don't save` |
+| M34 | Seis níveis (A1-A2 a C2) e turma só em inglês de B1-B2 para cima (seções 5.2b/5.3/5.5, ADR-0032): `nivel_so_ingles`, `Deps.so_ingles`, formatadores com `pt` | `make check` passa; grupo A1-A2/A2-B1 mostra 🇧🇷 e `!list` com tradução; grupo B1-B2 em diante não mostra 🇧🇷 nem tradução em card, exemplos, sinônimos e `!list`; privado B1-B2 segue com 🇧🇷; todo nível tem calibração no prompt |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 
