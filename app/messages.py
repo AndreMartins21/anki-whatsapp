@@ -8,11 +8,14 @@ mais o próximo card na revisão espaçada (seção 5.7, M10).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 from datetime import datetime
 
+from app.domain.agenda_grupo import NOMES_DOS_DIAS
 from app.domain.lembretes import TAMANHO_REVISAO_PADRAO
 from app.domain.models import (
+    AvaliacaoDaPergunta,
     Entry,
     Evaluation,
     Expansion,
@@ -815,6 +818,7 @@ def ajuda_do_grupo(p: str = "!") -> str:
         f"{p}practice [word or number] — practice one (no word: the oldest pending one)\n"
         f"{p}review — start a review round right now\n"
         f"{p}daily — the daily review, no one tagged (admins: {p}daily 19h, {p}daily off)\n"
+        f"{p}weekly — the weekly challenge, one tagged question each (admins: {p}weekly now)\n"
         f"{p}group — the class, its words and reminders\n"
         f"{p}level — the class's level (to change it: {p}level B1-B2)\n\n"
         f"While practicing, pick an option with {p}2, {p}3, {p}4 or {p}5, and start a sentence "
@@ -922,8 +926,12 @@ def revisao_inativa(
 # --- Configuração da revisão diária (M35, ADR-0033) -------------------------------------------
 
 
-def so_admin_configura(p: str = "!") -> str:
-    return f"Only the bot's admins can change this. Anyone can see the settings with {p}daily."
+def so_admin_configura(p: str = "!", comando: str = "daily") -> str:
+    return f"Only the bot's admins can change this. Anyone can see the settings with {p}{comando}."
+
+
+def atividade_em_andamento(p: str = "!") -> str:
+    return f"There's an activity going on right now. Finish it first (or send {p}0)."
 
 
 def lembrete_virou_daily(p: str = "!") -> str:
@@ -958,4 +966,110 @@ def diaria_estado(
     if proximo is not None:
         linhas.append(f"⏭️ Next one: {_quando(proximo, agora)}")
     linhas.append(f"_Admins can change it: {p}daily 19h · {p}daily weekends on · {p}daily off_")
+    return "\n".join(linhas)
+
+
+# --- Desafio semanal do grupo (M36, ADR-0034) --------------------------------------------------
+
+_MARCA = re.compile(r"\[\[(.+?)\]\]")
+
+
+def negrito_das_marcas(frase: str) -> str:
+    """`[[stalled]]` -> `*stalled*` (negrito do WhatsApp), para destacar o vocabulário."""
+    return _MARCA.sub(r"*\1*", frase)
+
+
+def semanal_abertura(total: int) -> str:
+    perguntas = "question" if total == 1 else "questions"
+    return (
+        f"🏆 *Weekly challenge* — {total} {perguntas}, one student each.\n"
+        "I'll tag who answers. Anyone can try, but I only move on when the tagged person "
+        "answers, or someone skips."
+    )
+
+
+def pergunta_semanal(indice: int, total: int, marcado: str, pergunta: str, p: str = "!") -> str:
+    """Sempre começa marcando a pessoa, depois a pergunta e o menu (`/1`, `/2`, `/3`)."""
+    return (
+        f"@{marcado} {negrito_das_marcas(pergunta)}\n\n"
+        "/1 Explain the question\n"
+        "/2 Listen to the question\n"
+        "/3 Skip this question\n"
+        f"_🏆 Weekly challenge · {indice}/{total} — answer starting with {p}_"
+    )
+
+
+def explicacao_da_pergunta(explicacao_en: str, explicacao_pt: str, *, pt: bool) -> str:
+    """Turma iniciante: português primeiro, depois o inglês; de B1-B2 em diante, só inglês."""
+    if pt and explicacao_pt.strip():
+        return f"🇧🇷 {explicacao_pt.strip()}\n🇺🇸 {explicacao_en.strip()}"
+    return f"💡 {explicacao_en.strip()}"
+
+
+def feedback_semanal(rev: AvaliacaoDaPergunta, nome: str | None) -> str:
+    quem = nome or "Someone"
+    linhas = [f"{_QUALIDADE_EMOJI[rev.qualidade]} *{quem}*: {rev.feedback}"]
+    if rev.correcao:
+        linhas.append(f"💬 {rev.correcao}")
+    return "\n".join(linhas)
+
+
+def feedback_semanal_de_outro(rev: AvaliacaoDaPergunta, nome: str | None, marcado: str) -> str:
+    """Quem não foi marcado também recebe feedback, mas a pergunta não avança por ele."""
+    return (
+        feedback_semanal(rev, nome)
+        + f"\n⏳ Nice try! I'm still waiting for @{marcado} (or a skip)."
+    )
+
+
+def semanal_encerrada(respondidas: int, puladas: int, total: int, *, p: str = "!") -> str:
+    linhas = [f"🏁 *Weekly challenge done* — {respondidas} of {total} answered."]
+    if puladas:
+        linhas.append(f"⏭️ Skipped: {puladas}")
+    linhas.append(f"Add new words any time: {p}add word.")
+    return "\n".join(linhas)
+
+
+def semanal_inativa(respondidas: int, puladas: int, total: int, *, p: str = "!") -> str:
+    return "😴 Nobody replied for a while, so I closed the challenge.\n" + semanal_encerrada(
+        respondidas, puladas, total, p=p
+    )
+
+
+def semanal_sem_palavras(p: str = "!") -> str:
+    return f"The weekly challenge needs words from the class. Add some with {p}add word."
+
+
+def semanal_invalida(p: str = "!") -> str:
+    return (
+        f"I couldn't understand that. Try {p}weekly fri 13h (day and time), {p}weekly size 3, "
+        f"{p}weekly off or {p}weekly now."
+    )
+
+
+def semanal_estado(
+    perfil: Profile,
+    proximo: datetime | None,
+    agora: datetime,
+    p: str = "!",
+    *,
+    alterada: bool = False,
+) -> str:
+    abertura = "✅ Weekly challenge updated." if alterada else "🏆 *Weekly challenge*"
+    if not perfil.semanal_ligada:
+        return f"{abertura}\nIt's off. Turn it on with {p}weekly on."
+    dia = NOMES_DOS_DIAS[perfil.semanal_dia]
+    tamanho = (
+        f"{perfil.semanal_tamanho} questions"
+        if perfil.semanal_tamanho
+        else "one question per student"
+    )
+    linhas = [
+        abertura,
+        f"🗓️ every {dia} at {perfil.semanal_hora:02d}:{perfil.semanal_minuto:02d}",
+        f"❓ {tamanho}",
+    ]
+    if proximo is not None:
+        linhas.append(f"⏭️ Next one: {_quando(proximo, agora)}")
+    linhas.append(f"_Admins can change it: {p}weekly fri 13h · {p}weekly size 3 · {p}weekly now_")
     return "\n".join(linhas)

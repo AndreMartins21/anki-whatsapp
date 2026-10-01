@@ -18,11 +18,16 @@ from collections.abc import Awaitable, Callable
 
 from app import messages
 from app.channel.parser import numero_esta_na_lista
-from app.domain.agenda_grupo import diaria_a_exibir, parse_diaria
+from app.domain.agenda_grupo import (
+    diaria_a_exibir,
+    parse_diaria,
+    parse_semanal,
+    semanal_a_exibir,
+)
 from app.domain.choices import normalizar
 from app.domain.models import Estado, Membro, Papel, Profile, Sessao
 from app.domain.srs import vencida
-from app.flows import capture, commands, practice, review
+from app.flows import capture, commands, practice, review, semanal
 from app.flows.base import Autor, Deps, bloq
 
 logger = logging.getLogger(__name__)
@@ -34,6 +39,7 @@ COMANDOS = {
     "practice",
     "review",
     "daily",
+    "weekly",
     "reminder",
     "reminders",
     "group",
@@ -93,6 +99,16 @@ async def tratar(
     if comando in _PAPEIS:
         return await _papel(d, sessao, autor, comando, argumento, eh_dono)
 
+    if estado == Estado.WEEKLY_QUIZ:
+        # No desafio semanal (M36) `1`/`2`/`3`/`skip`/`skipall` são do menu (máquina de estados);
+        # o resto é a resposta. Só sair e pedir ajuda escapam disso.
+        if comando == "stop":
+            return await conversar(d, sessao, perfil, "0")
+        if comando == "help":
+            await d.conversa.enviar(messages.ajuda_do_grupo(d.p))
+            return sessao
+        return await conversar(d, sessao, perfil, texto)
+
     if estado == Estado.REVIEWING:
         # Na revisão o texto é a resposta; só sair e pedir ajuda escapam disso.
         if comando == "stop":
@@ -113,6 +129,9 @@ async def tratar(
     if comando == "daily":
         await _diaria(d, perfil, autor, argumento, eh_admin or eh_dono)
         return sessao
+
+    if comando == "weekly":
+        return await _semanal(d, sessao, perfil, autor, argumento, eh_admin or eh_dono)
 
     if comando in COMANDOS:
         return await _executar(d, sessao, perfil, comando, argumento)
@@ -248,6 +267,43 @@ async def _diaria(
     )
 
 
+async def _semanal(
+    d: Deps,
+    sessao: Sessao,
+    perfil: Profile,
+    autor: Autor,
+    argumento: str,
+    eh_admin: Callable[[str], bool],
+) -> Sessao:
+    """`!weekly`: qualquer membro vê o desafio semanal; só admin do bot (ou o dono) o muda ou
+    o começa na hora com `!weekly now` (M36)."""
+    if argumento:
+        if not await bloq(eh_admin, autor.numero):
+            await d.conversa.enviar(messages.so_admin_configura(d.p, "weekly"))
+            return sessao
+        if normalizar(argumento) == "now":
+            if Estado(sessao.estado) != Estado.IDLE:
+                await d.conversa.enviar(messages.atividade_em_andamento(d.p))
+                return sessao
+            return await semanal.iniciar(d, perfil, avisar=True)
+        mudancas = parse_semanal(argumento)
+        if mudancas is None:
+            await d.conversa.enviar(messages.semanal_invalida(d.p))
+            return sessao
+        perfil = perfil.model_copy(update={**mudancas, "proxima_semanal": None})
+        await bloq(d.repo.salvar_perfil, perfil)
+    await d.conversa.enviar(
+        messages.semanal_estado(
+            perfil,
+            semanal_a_exibir(perfil, d.agora(), d.fuso),
+            d.agora(),
+            d.p,
+            alterada=bool(argumento),
+        )
+    )
+    return sessao
+
+
 async def _papel(
     d: Deps,
     sessao: Sessao,
@@ -302,6 +358,9 @@ async def _perfil_do_grupo(d: Deps, perfil: Profile) -> None:
         proximo = diaria_a_exibir(perfil, d.agora(), d.fuso)
         if proximo is not None:
             lembretes += f"\n⏭️ Next review: {messages._quando(proximo, d.agora())}"
+        proxima_semanal = semanal_a_exibir(perfil, d.agora(), d.fuso)
+        if proxima_semanal is not None:
+            lembretes += f"\n🏆 Weekly challenge: {messages._quando(proxima_semanal, d.agora())}"
 
     await d.conversa.enviar(
         messages.grupo_perfil(

@@ -17,6 +17,7 @@ from app.domain.choices import (
     eh_pular,
     eh_sair,
     eh_todos,
+    normalizar,
     parse_escolha,
     separar_contexto,
     so_numeros,
@@ -44,6 +45,11 @@ class Acao(StrEnum):
     ENCERRAR_MUSICA = "ENCERRAR_MUSICA"
     SALVAR_EXPRESSOES = "SALVAR_EXPRESSOES"
     DESCARTAR_EXPRESSOES = "DESCARTAR_EXPRESSOES"
+    RESPONDER_PERGUNTA = "RESPONDER_PERGUNTA"
+    EXPLICAR_PERGUNTA = "EXPLICAR_PERGUNTA"
+    OUVIR_PERGUNTA = "OUVIR_PERGUNTA"
+    PULAR_PERGUNTA = "PULAR_PERGUNTA"
+    ENCERRAR_SEMANAL = "ENCERRAR_SEMANAL"
 
 
 @dataclass(frozen=True)
@@ -84,6 +90,8 @@ def transicionar(estado: Estado, texto: str) -> Transicao:
             return _song_practice(texto)
         case Estado.SONG_SAVING:
             return _song_saving(texto)
+        case Estado.WEEKLY_QUIZ:
+            return _weekly_quiz(texto)
 
 
 def _await_action(texto: str) -> Transicao:
@@ -107,6 +115,22 @@ def _reviewing(texto: str) -> Transicao:
     if eh_sair(texto):
         return Transicao(Estado.IDLE, Acao.ENCERRAR_REVISAO)
     return Transicao(Estado.REVIEWING, Acao.RESPONDER_REVISAO, texto)
+
+
+def _weekly_quiz(texto: str) -> Transicao:
+    """Desafio semanal do grupo (M36, seção 5.2b): `1` explica a pergunta, `2` a lê em voz alta,
+    `3`/`skip` a pula, `skipall`/`0`/`stop` encerra; qualquer outro texto é a resposta (só a da
+    pessoa marcada avança a pergunta — quem decide é o fluxo)."""
+    normal = normalizar(texto)
+    if normal == "1":
+        return Transicao(Estado.WEEKLY_QUIZ, Acao.EXPLICAR_PERGUNTA)
+    if normal == "2":
+        return Transicao(Estado.WEEKLY_QUIZ, Acao.OUVIR_PERGUNTA)
+    if normal in {"3", "skip"}:
+        return Transicao(Estado.WEEKLY_QUIZ, Acao.PULAR_PERGUNTA)
+    if normal in {"skip all", "skipall"} or eh_sair(texto):
+        return Transicao(Estado.IDLE, Acao.ENCERRAR_SEMANAL)
+    return Transicao(Estado.WEEKLY_QUIZ, Acao.RESPONDER_PERGUNTA, texto)
 
 
 def _song_picking(texto: str) -> Transicao:

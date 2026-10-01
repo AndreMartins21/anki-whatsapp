@@ -17,6 +17,21 @@ _FIM_DE_SEMANA = {"weekends", "weekend", "fds"}
 _TAMANHO = {"size", "tamanho"}
 _AUTO = {"auto", "automatic"}
 MAX_REVISOES_SEM_RESPOSTA = 3
+MAX_PERGUNTAS = 10  # teto do desafio semanal (M36)
+_DIAS: dict[str, int] = {}
+for _i, _nomes in enumerate(
+    [
+        ("mon", "monday", "seg", "segunda"),
+        ("tue", "tuesday", "ter", "terca"),
+        ("wed", "wednesday", "qua", "quarta"),
+        ("thu", "thursday", "qui", "quinta"),
+        ("fri", "friday", "sex", "sexta"),
+        ("sat", "saturday", "sab", "sabado"),
+        ("sun", "sunday", "dom", "domingo"),
+    ]
+):
+    _DIAS.update(dict.fromkeys(_nomes, _i))
+NOMES_DOS_DIAS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
 def _dia_aceito(dia: datetime, fim_de_semana: bool) -> bool:
@@ -101,4 +116,61 @@ def diaria_a_exibir(perfil: Profile, agora: datetime, fuso: ZoneInfo) -> datetim
         perfil.diaria_hora,
         perfil.diaria_minuto,
         perfil.diaria_fim_de_semana,
+    )
+
+
+def proxima_semanal(agora_local: datetime, dia: int, hora: int, minuto: int) -> datetime:
+    """O próximo `dia` da semana (0 = segunda) às `hora:minuto`, depois de `agora_local`."""
+    candidato = agora_local.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+    candidato += timedelta(days=(dia - candidato.weekday()) % 7)
+    if candidato <= agora_local:
+        candidato += timedelta(days=7)
+    return candidato
+
+
+def parse_semanal(argumento: str) -> dict[str, object] | None:
+    """Os campos de `Profile` que `!weekly ...` muda, ou `None` se algum pedaço é inválido.
+
+    Aceita, em qualquer ordem e combinados: `on`, `off`, um dia (`fri`, `friday`, `sex`), um
+    horário (`13h`, `13:30`) e `size N|auto` (quantas perguntas; `auto` = uma por aluno)."""
+    partes = argumento.lower().split()
+    if not partes:
+        return None
+    mudancas: dict[str, object] = {}
+    i = 0
+    while i < len(partes):
+        parte = partes[i]
+        if parte in _LIGAR:
+            mudancas["semanal_ligada"] = True
+        elif parte in _DESLIGAR:
+            mudancas["semanal_ligada"] = False
+        elif parte in _DIAS:
+            mudancas["semanal_dia"] = _DIAS[parte]
+            mudancas["semanal_ligada"] = True
+        elif parte in _TAMANHO and i + 1 < len(partes):
+            i += 1
+            if partes[i] in _AUTO:
+                mudancas["semanal_tamanho"] = None
+            elif partes[i].isdigit() and 1 <= int(partes[i]) <= MAX_PERGUNTAS:
+                mudancas["semanal_tamanho"] = int(partes[i])
+            else:
+                return None
+        else:
+            horario = parse_horario(parte)
+            if horario is None:
+                return None
+            mudancas["semanal_hora"], mudancas["semanal_minuto"] = horario
+            mudancas["semanal_ligada"] = True
+        i += 1
+    return mudancas
+
+
+def semanal_a_exibir(perfil: Profile, agora: datetime, fuso: ZoneInfo) -> datetime | None:
+    """Quando o próximo desafio semanal toca, no fuso da turma; `None` se está desligado."""
+    if not perfil.semanal_ligada:
+        return None
+    if perfil.proxima_semanal is not None and perfil.proxima_semanal > agora:
+        return perfil.proxima_semanal.astimezone(fuso)
+    return proxima_semanal(
+        agora.astimezone(fuso), perfil.semanal_dia, perfil.semanal_hora, perfil.semanal_minuto
     )

@@ -201,3 +201,24 @@ def test_timeout_no_simulador_fecha_a_rodada_parada_e_skip_com_barra(tmp_path: P
 
     assert "Skipping *stall*" in tela
     assert "Nobody replied for a while" in tela or "Practice done" in tela
+
+
+def test_desafio_semanal_no_simulador_marca_um_aluno_por_pergunta(tmp_path: Path) -> None:
+    _, tela = _executar(
+        [
+            "ana: !add stall",
+            "ana: !4",
+            "bia: !add deadline",
+            "bia: !4",
+            "~weekly",
+            "ana: /1",
+            "ana: !I would call the client",
+            "bia: /skip-all",
+            "sair",
+        ],
+        tmp_path,
+        "--grupo",
+    )
+
+    assert "Weekly challenge" in tela and "Explain the question" in tela
+    assert "Weekly challenge done" in tela

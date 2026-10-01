@@ -8,7 +8,8 @@ Com `--grupo` (M16), simula um grupo de turma com vários participantes: cada li
 bot; as outras aparecem como ignoradas, como no WhatsApp real. O participante `dono` é o dono do
 bot (pode usar `!teacher`); `--professor NOME` cadastra professores de saída. Na revisão diária
 do grupo (`ana: !review`, ou `~daily` para o bot começar sozinho) ninguém é marcado; `/skip` e
-`/skip-all` valem com a barra; `~timeout` fecha a rodada parada sem esperar as 3 horas.
+`/skip-all` valem com a barra; `~weekly` começa o desafio semanal (um aluno marcado por
+pergunta; `/1`, `/2`, `/3` com barra); `~timeout` fecha a rodada parada sem esperar as 3 horas.
 
 Usa `ConsoleChannel` e `MemoryRepository` (nada é gravado; ao sair, tudo some), e o mesmo
 `Router` do bot. Sem `--real-llm`, as respostas de IA são fabricadas (`SimTutor`); com ele, usa o
@@ -107,6 +108,9 @@ async def _conversar_no_grupo(
             continue
         if linha.lower() in {"~timeout", "timeout"}:
             await router.expirar_marcacao(GRUPO_DO_SIMULADOR, forcar=True)
+            continue
+        if linha.lower() in {"~weekly", "weekly"}:
+            await router.iniciar_semanal(GRUPO_DO_SIMULADOR)
             continue
         if linha.lower() in {"~daily", "daily"}:
             await router.iniciar_revisao(GRUPO_DO_SIMULADOR)

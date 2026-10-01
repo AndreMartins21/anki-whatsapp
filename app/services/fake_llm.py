@@ -8,11 +8,13 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel
 
 from app.domain.models import (
+    AvaliacaoDaPergunta,
     Evaluation,
     Expansion,
     Explanation,
     LinhaDaMusica,
     NivelUsuario,
+    PerguntaSemanal,
     Revisao,
     Roteamento,
     Sense,
@@ -69,6 +71,8 @@ class FakeTutor:
     roteamentos: list[Roteamento | Exception] = field(default_factory=list)
     revisoes: list[Revisao | Exception] = field(default_factory=list)
     linhas_de_musica: list[LinhaDaMusica | Exception] = field(default_factory=list)
+    perguntas_semanais: list[list[PerguntaSemanal] | Exception] = field(default_factory=list)
+    avaliacoes_da_pergunta: list[AvaliacaoDaPergunta | Exception] = field(default_factory=list)
     chamadas: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
 
     def _proxima[T](self, fila: list[T | Exception]) -> T:
@@ -151,3 +155,15 @@ class FakeTutor:
     ) -> LinhaDaMusica:
         self.chamadas.append(("song_line", (titulo, verso, resposta, nivel)))
         return self._proxima(self.linhas_de_musica)
+
+    def weekly_questions(
+        self, vocabulario: Sequence[tuple[str, str]], nivel: NivelUsuario, n: int
+    ) -> list[PerguntaSemanal]:
+        self.chamadas.append(("weekly_questions", (tuple(p for p, _ in vocabulario), nivel, n)))
+        return self._proxima(self.perguntas_semanais)
+
+    def weekly_answer(
+        self, pergunta: str, palavras: Sequence[str], resposta: str, nivel: NivelUsuario
+    ) -> AvaliacaoDaPergunta:
+        self.chamadas.append(("weekly_answer", (pergunta, tuple(palavras), resposta, nivel)))
+        return self._proxima(self.avaliacoes_da_pergunta)

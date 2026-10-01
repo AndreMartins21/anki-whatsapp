@@ -18,7 +18,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from app.domain.agenda_grupo import MAX_REVISOES_SEM_RESPOSTA, proxima_diaria
+from app.domain.agenda_grupo import MAX_REVISOES_SEM_RESPOSTA, proxima_diaria, proxima_semanal
 from app.domain.lembretes import proximo_horario
 from app.domain.models import Estado, Profile
 from app.domain.state import expirou
@@ -211,21 +211,48 @@ class Agendador:
             await self._agendar_proximo(repo, perfil_apos, agora_local)
 
     async def _tick_grupo(self, repo: Repository, espaco_id: str, perfil: Profile) -> None:
-        """Revisão diária do grupo (M35, ADR-0033), no horário e nos dias da turma. Pausa depois de
-        3 revisões seguidas sem nenhuma mensagem do grupo (volta na próxima mensagem)."""
-        if not perfil.diaria_ligada:
-            return
+        """Revisão diária e desafio semanal do grupo (M35/M36, ADR-0033/ADR-0034), no horário e
+        nos dias da turma. Pausa depois de 3 revisões seguidas sem nenhuma mensagem do grupo (volta
+        na próxima mensagem). O semanal tem precedência se os dois vencem no mesmo tick."""
         agora_utc = self._agora()
         agora_local = agora_utc.astimezone(self._fuso)
-        if perfil.proxima_diaria is None:
-            await self._agendar_diaria(repo, perfil, agora_local)
-            return
-        if agora_utc < perfil.proxima_diaria:
-            return
+        calcular = [
+            tipo
+            for tipo in ("semanal", "diaria")
+            if getattr(perfil, f"{tipo}_ligada") and getattr(perfil, f"proxima_{tipo}") is None
+        ]
+        if calcular:
+            for tipo in calcular:
+                perfil = self._com_horario(perfil, tipo, agora_local)
+            await bloq(repo.salvar_perfil, perfil)
+        for tipo in ("semanal", "diaria"):
+            proximo = getattr(perfil, f"proxima_{tipo}")
+            if getattr(perfil, f"{tipo}_ligada") and agora_utc >= proximo:
+                await self._disparar_grupo(repo, espaco_id, perfil, tipo)
+                return
 
+    @staticmethod
+    def _com_horario(perfil: Profile, tipo: str, agora_local: datetime) -> Profile:
+        if tipo == "semanal":
+            novo = proxima_semanal(
+                agora_local, perfil.semanal_dia, perfil.semanal_hora, perfil.semanal_minuto
+            )
+        else:
+            novo = proxima_diaria(
+                agora_local, perfil.diaria_hora, perfil.diaria_minuto, perfil.diaria_fim_de_semana
+            )
+        return perfil.model_copy(update={f"proxima_{tipo}": novo.astimezone(UTC)})
+
+    async def _disparar_grupo(
+        self, repo: Repository, espaco_id: str, perfil: Profile, tipo: str
+    ) -> None:
+        agora_utc = self._agora()
+        agora_local = agora_utc.astimezone(self._fuso)
         espaco = id_curto(espaco_id)
+        horario: datetime = getattr(perfil, f"proxima_{tipo}")
+
         motivo: str | None = None
-        if agora_utc - perfil.proxima_diaria > LIMITE_DE_ATRASO:
+        if agora_utc - horario > LIMITE_DE_ATRASO:
             motivo = "atraso"
         elif perfil.revisoes_sem_resposta >= MAX_REVISOES_SEM_RESPOSTA:
             motivo = "pausado"
@@ -233,7 +260,7 @@ class Agendador:
             registrar_evento(
                 logger, "lembrete_desistido", espaco=espaco, tipo_espaco="grupo", motivo=motivo
             )
-            await self._agendar_diaria(repo, perfil, agora_local)
+            await bloq(repo.salvar_perfil, self._com_horario(perfil, tipo, agora_local))
             return
 
         sessao = await bloq(repo.obter_sessao)
@@ -248,12 +275,13 @@ class Agendador:
             return  # conversa em andamento: tenta de novo no próximo tick
 
         entradas = await bloq(repo.listar_entradas)
-        fila = review.montar_fila(entradas, agora_utc)
+        # A diária só vale com algo para revisar; o desafio semanal, com qualquer palavra da turma.
+        fila = review.montar_fila(entradas, agora_utc) if tipo == "diaria" else entradas
         if not fila:
             registrar_evento(
                 logger, "lembrete_adiado", espaco=espaco, tipo_espaco="grupo", motivo="nada_vencido"
             )
-            await self._agendar_diaria(repo, perfil, agora_local)
+            await bloq(repo.salvar_perfil, self._com_horario(perfil, tipo, agora_local))
             return
 
         await bloq(
@@ -263,21 +291,14 @@ class Agendador:
         registrar_evento(
             logger, "lembrete_enviado", espaco=espaco, tipo_espaco="grupo", n=len(fila)
         )
-        await self._router.iniciar_revisao(espaco_id)
+        if tipo == "semanal":
+            await self._router.iniciar_semanal(espaco_id)
+        else:
+            await self._router.iniciar_revisao(espaco_id)
 
         perfil_apos = await bloq(repo.obter_perfil)
         if perfil_apos is not None:
-            await self._agendar_diaria(repo, perfil_apos, agora_local)
-
-    async def _agendar_diaria(
-        self, repo: Repository, perfil: Profile, agora_local: datetime
-    ) -> None:
-        novo = proxima_diaria(
-            agora_local, perfil.diaria_hora, perfil.diaria_minuto, perfil.diaria_fim_de_semana
-        )
-        await bloq(
-            repo.salvar_perfil, perfil.model_copy(update={"proxima_diaria": novo.astimezone(UTC)})
-        )
+            await bloq(repo.salvar_perfil, self._com_horario(perfil_apos, tipo, agora_local))
 
     async def _agendar_proximo(
         self, repo: Repository, perfil: Profile, agora_local: datetime

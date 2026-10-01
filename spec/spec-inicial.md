@@ -218,7 +218,7 @@ gravado nem marcado como lido (o filtro vem antes da deduplicação e do `sendSe
 
 - **Comandos (conjunto fechado):** `!delete palavra|número` (M32: remove um termo da lista da turma, igual ao `/delete` do privado; o número é o do `!list`; qualquer membro pode, como no `!add`), `!add palavra [| contexto ou sentido]` (a **única** forma de trazer uma palavra
   nova; com a palavra aberta, `!add` do mesmo termo com `|` troca o sentido, como no privado — M31), `!list [página]` (palavras da turma, mesma regra do `/list`), `!practice [palavra|número]`,
-  `!review` (M35: começa uma revisão diária na hora), `!daily [19h | on | off | weekends on|off | size N|auto]` (M35, ADR-0033: qualquer membro vê; só admin do bot ou o dono muda; `!reminder` virou apelido que aponta para ele), `!level [A1-A2|A2-B1|B1-B2|B2-C1|C1-C2|C2]` (M33, ADR-0031: sem argumento qualquer membro vê o nível da turma; com argumento só professor ou dono muda, e aluno recebe a recusa), `!group` (nível, palavras,
+  `!review` (M35: começa uma revisão diária na hora), `!daily [19h | on | off | weekends on|off | size N|auto]`, (M35, ADR-0033: qualquer membro vê; só admin do bot ou o dono muda; `!reminder` virou apelido que aponta para ele), `!weekly [fri 13h | on | off | size N|auto | now]` (M36, ADR-0034: mesma permissão; `now` começa o desafio na hora), `!level [A1-A2|A2-B1|B1-B2|B2-C1|C1-C2|C2]` (M33, ADR-0031: sem argumento qualquer membro vê o nível da turma; com argumento só professor ou dono muda, e aluno recebe a recusa), `!group` (nível, palavras,
   vencidas, lembretes e os membros com o papel, só nomes e sem menção) e `!help` (só os comandos do
   grupo). `!teacher`/`!student` (um professor da turma ou o dono) mudam o papel, escondidos do `!help`;
   os alvos vêm das menções do payload ou do número escrito no texto.
@@ -257,6 +257,27 @@ mexer na nota; `!skipall` (`/skip-all`, `!0`, `!stop`) encerra com o resumo (`Sk
   **Pausa** depois de 3 revisões agendadas seguidas sem nenhuma mensagem do grupo
   (`Profile.revisoes_sem_resposta`); qualquer mensagem do grupo zera o contador.
 - `respostas/{auto}` registra `{entry, autor_id, marcado=false, qualidade}` de cada resposta.
+
+**Desafio semanal do grupo (M36, ADR-0034).** Uma vez por semana (padrão **sexta 13h**, fuso da turma;
+`!weekly mon 9h`, `!weekly size 3`, `!weekly off`; `!weekly now` começa na hora; ver: todos, mudar: admins
+do bot e o dono). O bot cria perguntas abertas **no nível da turma** com palavras do vocabulário do grupo
+(`Tutor.weekly_questions`, uma chamada; `escolher_vocabulario`: as da última semana primeiro, até 15) e
+**marca um aluno por pergunta** (rodízio do ADR-0020; professores e o bot nunca; uma pergunta por aluno
+elegível por padrão, até 10, ou `size N`). Estado `WEEKLY_QUIZ`. Cada pergunta **começa pela menção**:
+```
+@5531999998888 What would you do if a project you care about *stalled* for weeks?
+
+/1 Explain the question
+/2 Listen to the question
+/3 Skip this question
+_🏆 Weekly challenge · 1/3 — answer starting with !_
+```
+- Qualquer um pode tentar (`!texto`) e recebe feedback (`Tutor.weekly_answer`); a pergunta **só avança
+  quando a pessoa marcada responde** ou alguém pula (`3`/`skip`); `skipall`/`0`/`stop` encerra com o
+  resumo. Sem nota SM-2. `respostas/` registra a participação.
+- `1`: turma A1-A2/A2-B1 vê **🇧🇷 português e depois 🇺🇸 inglês**; de B1-B2 em diante, só inglês. `2`: a
+  pergunta em voz (Cloud TTS, cache existente). `/1`, `/2`, `/3` valem com barra no grupo.
+- Fecha sozinho após 3 h sem mensagem; o semanal tem precedência sobre a diária no mesmo tick.
 
 ### 5.3 Calibração pelo nível (B1-B2)
 
@@ -578,6 +599,18 @@ class Roteamento(BaseModel):
     correcoes: list[str]; versao_natural: str; explicacao: str
 # route(palavra, sentido, texto, nivel) -> Roteamento
 
+# Desafio semanal (M36, seção 5.2b, ADR-0034): perguntas no nível da turma com palavras do vocabulário.
+class PerguntaSemanal(BaseModel):
+    pergunta: str          # inglês, com as palavras do vocabulário entre [[ ]]
+    palavras: list[str]    # >= 1, só do vocabulário enviado
+    explicacao_en: str     # máx. 4 linhas
+    explicacao_pt: str     # só A1-A2/A2-B1 (obrigatória); vazia nos demais
+# weekly_questions(vocabulario: [(palavra, definicao)], nivel, n) -> list[PerguntaSemanal]  (exatamente n)
+
+class AvaliacaoDaPergunta(BaseModel):
+    qualidade: Literal["de_novo","dificil","bom","facil"]; feedback: str; correcao: str  # feedback em inglês, máx. 4 linhas
+# weekly_answer(pergunta, palavras, resposta, nivel) -> AvaliacaoDaPergunta  (modelo de avaliação)
+
 # Revisão espaçada (M10, seção 5.7, ADR-0011): julga a resposta livre do aluno numa revisão.
 class Revisao(BaseModel):
     tipo: Literal["definicao","frase","nao_sei","outro"]
@@ -645,6 +678,10 @@ espacos/{grupo}/membros/{numero}  { papel:"aluno"|"professor", nome?, entrou_em,
 espacos/{grupo}/respostas/{auto}  { entry, autor_id, marcado, qualidade, criado_em }              # M17 (marcado é sempre false desde o M35)
                            # M17: session/current ganha marcado_id, marcacao_expira_em, marcacao_tentativas; espacos/{grupo}
                            # ganha timeout_em (espelho do prazo, para o agendador)
+                           # M36: profile/me ganha semanal_ligada, semanal_dia (0=segunda), semanal_hora, semanal_minuto,
+                           # semanal_tamanho?, proxima_semanal; session/current ganha semanal_perguntas, semanal_indice,
+                           # semanal_respondidas, semanal_puladas (estado WEEKLY_QUIZ; marcado_id/marcacao_expira_em reaproveitados);
+                           # no grupo `proximo_tick` espelha o menor entre proxima_diaria e proxima_semanal
                            # M35: profile/me ganha diaria_ligada, diaria_hora, diaria_minuto, diaria_fim_de_semana,
                            # proxima_diaria, revisoes_sem_resposta; session/current ganha revisao_puladas;
                            # no grupo `proximo_tick` espelha `proxima_diaria`; marcacao_expira_em = fechamento por inatividade (3h)
@@ -775,6 +812,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, enviar voz, marcar com
 | M33 | `!level` no grupo (seção 5.2b, ADR-0031) e opção 5 do menu renomeada para "Don't save" | `make check` passa; `!level` sem argumento mostra o nível a qualquer membro; com argumento, professor e dono mudam só o perfil da turma, aluno recebe `nivel_so_professor` e nada muda; nível inválido recusa; a ajuda do grupo lista `!level`; o menu mostra `5️⃣ Don't save` |
 | M34 | Seis níveis (A1-A2 a C2) e turma só em inglês de B1-B2 para cima (seções 5.2b/5.3/5.5, ADR-0032): `nivel_so_ingles`, `Deps.so_ingles`, formatadores com `pt` | `make check` passa; grupo A1-A2/A2-B1 mostra 🇧🇷 e `!list` com tradução; grupo B1-B2 em diante não mostra 🇧🇷 nem tradução em card, exemplos, sinônimos e `!list`; privado B1-B2 segue com 🇧🇷; todo nível tem calibração no prompt |
 | M35 | Revisão diária do grupo sem marcar ninguém (seções 5.2b/5.7/7.1, ADR-0033, substitui o ADR-0020): `!daily`, `Profile.diaria_*`, `domain/agenda_grupo.py`, `!skip`/`!skipall` (e `/skip`, `/skip-all`, `/1`-`/3` com barra), fechamento após 3h parado, pausa após 3 revisões sem resposta | `make check` e `make test-emulador` passam; diária às 19h em dia útil (sexta à noite agenda segunda; `weekends on` agenda sábado); qualquer aluno responde e a 1ª resposta aceitável avança, a errada deixa a palavra aberta; `skip` não mexe na nota; `skipall` resume; 3h parado fecha; 3 revisões sem mensagem pausam e uma mensagem volta; só admin do bot muda `!daily`; `/skip` lido no grupo e `/list` não |
+| M36 | Desafio semanal do grupo (seção 5.2b/6/7.1, ADR-0034): `!weekly`, `Profile.semanal_*`, estado `WEEKLY_QUIZ`, `Tutor.weekly_questions`/`weekly_answer`, marcação em rodízio, menu `/1` explicar (PT→EN em turma iniciante, só EN de B1-B2), `/2` ouvir, `/3` pular | `make check` e `make test-emulador` passam; sexta 13h dispara (outro dia não; `off` não); uma pergunta por aluno, mensagem começa pela menção; só o marcado avança, outro recebe feedback; `1` PT+EN em A1-A2/A2-B1 e só EN em B2; `2` manda voz e sem áudio avisa; `3`/`skip` pulam, `skipall` encerra; 3h parado fecha; só admin do bot muda `!weekly`; perguntas com o Gemini real conferidas em A1-A2, B1-B2 e C2 |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 

@@ -31,6 +31,7 @@ from app.flows import (
     grupo,
     practice,
     review,
+    semanal,
     song,
     synonyms,
 )
@@ -189,7 +190,7 @@ class Router:
     def _com_prazo(d: Deps, sessao: Sessao) -> Sessao:
         """Todo ato no grupo adia o fechamento por inatividade da rodada em andamento (M35)."""
         atualizacoes: dict[str, object] = {"atualizado_em": d.agora()}
-        if d.em_grupo and Estado(sessao.estado) == Estado.REVIEWING:
+        if d.em_grupo and Estado(sessao.estado) in (Estado.REVIEWING, Estado.WEEKLY_QUIZ):
             atualizacoes["marcacao_expira_em"] = d.agora() + d.grupo_cfg.timeout
         return sessao.model_copy(update=atualizacoes)
 
@@ -261,6 +262,16 @@ class Router:
                 return await song.salvar(d, sessao, perfil, str(argumento))
             case Acao.DESCARTAR_EXPRESSOES:
                 return await song.descartar(d)
+            case Acao.RESPONDER_PERGUNTA:
+                return await semanal.responder(d, sessao, perfil, str(argumento))
+            case Acao.EXPLICAR_PERGUNTA:
+                return await semanal.explicar(d, sessao)
+            case Acao.OUVIR_PERGUNTA:
+                return await semanal.ouvir(d, sessao)
+            case Acao.PULAR_PERGUNTA:
+                return await semanal.pular(d, sessao)
+            case Acao.ENCERRAR_SEMANAL:
+                return await semanal.encerrar(d, sessao)
 
     async def iniciar_revisao(self, chat_id: str) -> None:
         """Chamado pelo agendador (M10, `app/services/lembretes.py`): o bot inicia a conversa,
@@ -279,6 +290,21 @@ class Router:
             nova = await review.iniciar(d, perfil)
             await bloq(d.repo.salvar_sessao, nova.model_copy(update={"atualizado_em": d.agora()}))
 
+    async def iniciar_semanal(self, chat_id: str) -> None:
+        """Chamado pelo agendador (M36): o bot inicia o desafio semanal do grupo. Mesma trava do
+        resto; nunca interrompe uma atividade em andamento (sessão não expirada)."""
+        async with self._trava(chat_id):
+            d = self._deps(chat_id)
+            perfil = await bloq(self._perfil, d)
+            d = self._com_idioma(d, perfil)
+            if perfil.chat_id is None:
+                return
+            sessao = await bloq(d.repo.obter_sessao)
+            if sessao.estado != Estado.IDLE and not expirou(sessao.atualizado_em, d.agora()):
+                return
+            nova = await semanal.iniciar(d, perfil)
+            await bloq(d.repo.salvar_sessao, self._com_prazo(d, nova))
+
     async def expirar_marcacao(self, chat_id: str, forcar: bool = False) -> None:
         """M35: chamado pelo agendador quando o grupo ficou 3 horas sem mensagem numa revisão
         (`forcar` ignora o prazo, para o simulador). Sem revisão em andamento, ou já
@@ -287,9 +313,13 @@ class Router:
             d = self._deps(chat_id)
             sessao = await bloq(d.repo.obter_sessao)
             prazo = sessao.marcacao_expira_em
-            if Estado(sessao.estado) != Estado.REVIEWING or prazo is None:
+            estado = Estado(sessao.estado)
+            if estado not in (Estado.REVIEWING, Estado.WEEKLY_QUIZ) or prazo is None:
                 return
             if not forcar and prazo > d.agora():
                 return
-            nova = await review.fechar_por_inatividade(d, sessao)
+            if estado == Estado.WEEKLY_QUIZ:
+                nova = await semanal.fechar_por_inatividade(d, sessao)
+            else:
+                nova = await review.fechar_por_inatividade(d, sessao)
             await bloq(d.repo.salvar_sessao, nova.model_copy(update={"atualizado_em": d.agora()}))

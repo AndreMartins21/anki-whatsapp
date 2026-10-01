@@ -50,6 +50,7 @@ class Estado(StrEnum):
     SONG_PICKING = "SONG_PICKING"
     SONG_PRACTICE = "SONG_PRACTICE"
     SONG_SAVING = "SONG_SAVING"
+    WEEKLY_QUIZ = "WEEKLY_QUIZ"  # M36: o desafio semanal do grupo (seção 5.2b)
 
 
 def _exige_marca(frase: str) -> str:
@@ -225,6 +226,50 @@ class Revisao(BaseModel):
         return self
 
 
+MAX_PERGUNTAS_SEMANAIS = 10
+
+
+class PerguntaSemanal(BaseModel):
+    """Uma pergunta do desafio semanal (M36, seção 5.2b): escrita no nível da turma, usando uma ou
+    mais palavras do vocabulário do grupo (marcadas entre [[ ]]), com a explicação para o botão
+    `1`. `explicacao_pt` só existe para turmas iniciantes (A1-A2, A2-B1)."""
+
+    pergunta: str
+    palavras: list[str] = Field(min_length=1)
+    explicacao_en: str
+    explicacao_pt: str = ""
+
+    @model_validator(mode="after")
+    def _pergunta_marcada(self) -> PerguntaSemanal:
+        _exige_marca(self.pergunta)
+        if not self.explicacao_en.strip():
+            raise ValueError("`explicacao_en` não pode ser vazia")
+        if len(self.explicacao_en.strip().splitlines()) > MAX_LINHAS_EXPLICACAO:
+            raise ValueError(f"`explicacao_en` deve ter no máximo {MAX_LINHAS_EXPLICACAO} linhas")
+        return self
+
+
+class PerguntasSemanais(BaseModel):
+    """Saída de `weekly_questions`: as perguntas do desafio, todas de uma vez."""
+
+    itens: list[PerguntaSemanal] = Field(min_length=1, max_length=MAX_PERGUNTAS_SEMANAIS)
+
+
+class AvaliacaoDaPergunta(BaseModel):
+    """Saída de `weekly_answer` (M36): feedback real sobre a resposta a uma pergunta do desafio.
+    Não gera nota SM-2 — é conversa, não revisão de cartão."""
+
+    qualidade: QualidadeRevisao
+    feedback: str  # em inglês, curto (máx. 4 linhas)
+    correcao: str = ""  # uma resposta natural de exemplo, quando ajuda
+
+    @model_validator(mode="after")
+    def _feedback_curto(self) -> AvaliacaoDaPergunta:
+        if len(self.feedback.strip().splitlines()) > MAX_LINHAS_EXPLICACAO:
+            raise ValueError(f"`feedback` deve ter no máximo {MAX_LINHAS_EXPLICACAO} linhas")
+        return self
+
+
 MAX_EXPRESSOES_POR_VERSO = 3
 
 
@@ -358,6 +403,14 @@ class Profile(BaseModel):
     diaria_fim_de_semana: bool = False
     proxima_diaria: datetime | None = None
     revisoes_sem_resposta: int = 0
+    # Desafio semanal do grupo (M36, ADR-0034): padrão sexta 13h; `semanal_tamanho=None` = uma
+    # pergunta por aluno elegível (no máximo `MAX_PERGUNTAS_SEMANAIS`).
+    semanal_ligada: bool = True
+    semanal_dia: int = 4  # 0 = segunda ... 6 = domingo
+    semanal_hora: int = 13
+    semanal_minuto: int = 0
+    semanal_tamanho: int | None = None
+    proxima_semanal: datetime | None = None
 
 
 class OpcaoDeMusica(BaseModel):
@@ -401,6 +454,11 @@ class Sessao(BaseModel):
     revisao_lapsos: list[str] = Field(default_factory=list)
     revisao_total: int = 0
     revisao_puladas: list[str] = Field(default_factory=list)  # M35: `skip` no grupo
+    # Desafio semanal (M36): as perguntas da rodada, a atual, quem já foi marcado e o placar.
+    semanal_perguntas: list[PerguntaSemanal] = Field(default_factory=list)
+    semanal_indice: int = 0
+    semanal_respondidas: int = 0
+    semanal_puladas: int = 0
     # Prática com música (M13, seção 5.8): as candidatas de uma busca (SONG_PICKING), a música
     # escolhida com os versos a praticar e o índice do verso atual (SONG_PRACTICE), e as
     # expressões que o aluno não pegou, oferecidas para salvar no fim (SONG_SAVING).

@@ -210,13 +210,17 @@ def tipo_do_espaco(espaco_id: str) -> str:
 def proximo_tick(perfil: Profile, *, grupo: bool = False) -> datetime | None:
     """O que o `Banco` espelha do perfil no documento do espaço para a consulta dos lembretes:
     quando o agendador deve olhar este espaço de novo, ou `None` se ele não deve olhar nunca.
-    No grupo (M35) vale a revisão diária, não os lembretes N vezes por dia."""
+    No grupo (M35/M36) vale o menor entre a revisão diária e o desafio semanal, não os
+    lembretes N vezes por dia."""
     if perfil.chat_id is None:
         return None
     if grupo:
-        if not perfil.diaria_ligada:
-            return None
-        return perfil.proxima_diaria or SEM_HORARIO_AINDA
+        ticks = []
+        if perfil.diaria_ligada:
+            ticks.append(perfil.proxima_diaria or SEM_HORARIO_AINDA)
+        if perfil.semanal_ligada:
+            ticks.append(perfil.proxima_semanal or SEM_HORARIO_AINDA)
+        return min(ticks) if ticks else None
     if perfil.lembretes_por_dia == 0:
         return None
     return perfil.proximo_lembrete or SEM_HORARIO_AINDA
