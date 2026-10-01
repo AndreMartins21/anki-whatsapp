@@ -155,7 +155,7 @@ async def test_add_do_mesmo_termo_com_sentido_troca_o_card_sem_salvar() -> None:
 
     (card,) = await m.diz_no_grupo(BIA, "!add stall | to delay on purpose")
 
-    assert "🇧🇷 enrolar" in card
+    assert "🇧🇷" not in card  # M34: turma B1-B2 não vê português (a tradução segue gravada)
     assert "Saved" not in card
     (entrada,) = m.banco.do_espaco(GRUPO).listar_entradas()
     assert entrada.sentido.traducao == "enrolar"
@@ -741,6 +741,6 @@ async def test_aluno_nao_muda_o_nivel_e_o_nivel_fica_como_estava() -> None:
 async def test_level_invalido_pelo_professor_cita_o_prefixo_do_grupo() -> None:
     m = _grupo()
 
-    (resposta,) = await m.diz_no_grupo(Autor(DONO_NUMERO, "Dono"), "!level C2")
+    (resposta,) = await m.diz_no_grupo(Autor(DONO_NUMERO, "Dono"), "!level C3")
 
     assert resposta == messages.nivel_invalido()

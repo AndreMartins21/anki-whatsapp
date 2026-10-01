@@ -17,9 +17,15 @@ CONTEXTO_DO_USUARIO = (
 )
 
 _CALIBRACAO_POR_NIVEL: dict[NivelUsuario, str] = {
+    "A1-A2": "A1 indo para A2: vocabulário de apoio no máximo A2, frases de 5 a 10 palavras, "
+    "presente simples e estruturas básicas.",
     "A2-B1": "A2 indo para B1: vocabulário de apoio no máximo B1, frases curtas e diretas.",
     "B1-B2": "B1 indo para B2: vocabulário de apoio no máximo B2, frases de 8 a 18 palavras.",
     "B2-C1": "B2 indo para C1: vocabulário de apoio no máximo C1, frases de 10 a 22 palavras.",
+    "C1-C2": "C1 indo para C2: vocabulário de apoio no máximo C2, frases de 12 a 28 palavras, "
+    "com nuances de registro e colocações.",
+    "C2": "C2: sem teto de vocabulário de apoio, frases elaboradas, registro, ironia e "
+    "idiomatismos.",
 }
 
 _TAG_ENTRADA = "entrada_do_usuario"

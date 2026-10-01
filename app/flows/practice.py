@@ -51,7 +51,7 @@ async def gerar_exemplos(
     await d.conversa.enviar(
         messages.exemplos(
             entrada.palavra,
-            entrada.sentido.traducao,
+            d.rotulo(entrada.sentido),
             frases,
             ja_viu_sinonimos=bool(sessao.sinonimos_mostrados),
             grupo=d.grupo_prefixo,
@@ -85,7 +85,7 @@ async def avaliar_frase(d: Deps, sessao: Sessao, frase: str, avaliacao: Evaluati
     await d.conversa.enviar(
         messages.avaliacao(
             avaliacao,
-            entrada.sentido.traducao,
+            d.rotulo(entrada.sentido),
             entrada.palavra,
             ja_viu_sinonimos=bool(sessao.sinonimos_mostrados),
             grupo=d.grupo_prefixo,

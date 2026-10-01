@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from app.domain.models import Sessao
+from app.domain.models import Sense, SentidoSalvo, Sessao
 from app.domain.rodizio import Candidato
 from app.flows.conversa import Conversa
 from app.repo.base import Repository
@@ -62,6 +62,7 @@ class Deps:
     autor: Autor | None = None  # M16: quem escreveu, em grupo
     chat_id: str = ""  # o espaço desta mensagem
     grupo_cfg: ConfigGrupo = field(default_factory=ConfigGrupo)  # M17
+    so_ingles: bool = False  # M34: grupo de B1-B2 para cima não vê português
 
     @property
     def em_grupo(self) -> bool:
@@ -79,6 +80,14 @@ class Deps:
     @property
     def cmd_lembretes(self) -> str:
         return f"{self.grupo_prefixo}reminder" if self.em_grupo else "/reminders"
+
+    @property
+    def pt(self) -> bool:
+        return not self.so_ingles
+
+    def rotulo(self, sentido: SentidoSalvo | Sense) -> str:
+        """O que acompanha a palavra em cabeçalhos: a tradução, ou a definição se não há PT."""
+        return sentido.definicao if self.so_ingles else sentido.traducao
 
     def sessao_vazia(self) -> Sessao:
         return Sessao(atualizado_em=self.agora())

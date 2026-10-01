@@ -198,7 +198,9 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None
         "--provider", choices=["vertex_gemini", "anthropic"], default="vertex_gemini"
     )
     parser.add_argument("--model", help="ID do modelo (padrão: o do ambiente)")
-    parser.add_argument("--nivel", choices=["A2-B1", "B1-B2", "B2-C1"], default="B1-B2")
+    parser.add_argument(
+        "--nivel", choices=["A1-A2", "A2-B1", "B1-B2", "B2-C1", "C1-C2", "C2"], default="B1-B2"
+    )
     parser.add_argument("--casos", type=Path, default=None)
     args = parser.parse_args(argv)
 

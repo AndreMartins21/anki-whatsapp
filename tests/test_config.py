@@ -65,7 +65,7 @@ def test_falha_quando_falta_campo_obrigatorio(
         Settings(_env_file=None)
 
 
-@pytest.mark.parametrize("nivel", ["A2-B1", "B1-B2", "B2-C1"])
+@pytest.mark.parametrize("nivel", ["A1-A2", "A2-B1", "B1-B2", "B2-C1", "C1-C2", "C2"])
 def test_aceita_todos_os_niveis_da_spec(monkeypatch: pytest.MonkeyPatch, nivel: str) -> None:
     _com_env(monkeypatch, USER_LEVEL=nivel)
 
@@ -75,7 +75,7 @@ def test_aceita_todos_os_niveis_da_spec(monkeypatch: pytest.MonkeyPatch, nivel: 
 
 
 def test_rejeita_nivel_fora_da_spec(monkeypatch: pytest.MonkeyPatch) -> None:
-    _com_env(monkeypatch, USER_LEVEL="C2")
+    _com_env(monkeypatch, USER_LEVEL="C3")
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)

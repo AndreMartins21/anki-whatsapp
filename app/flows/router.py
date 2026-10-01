@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -20,6 +21,7 @@ from app.domain.models import (
     Profile,
     Sessao,
     agora_utc,
+    nivel_so_ingles,
 )
 from app.domain.state import Acao, Transicao, expirou, transicionar
 from app.flows import (
@@ -129,6 +131,7 @@ class Router:
                 de_grupo = (autor, resto)
             d.conversa.usuario_falou()
             perfil = await bloq(self._perfil, d)
+            d = self._com_idioma(d, perfil)
             if perfil.chat_id != chat_id or perfil.lembrete_sem_resposta:
                 # M10: guarda o destino real (para o agendador saber para onde mandar os
                 # lembretes) e limpa o backoff — o aluno acabou de falar.
@@ -169,6 +172,11 @@ class Router:
                 return
 
             await bloq(d.repo.salvar_sessao, nova.model_copy(update={"atualizado_em": d.agora()}))
+
+    @staticmethod
+    def _com_idioma(d: Deps, perfil: Profile) -> Deps:
+        """M34 (ADR-0032): grupo de B1-B2 para cima não vê português; o privado nunca muda."""
+        return replace(d, so_ingles=d.em_grupo and nivel_so_ingles(perfil.nivel))
 
     def _como_comando(self, texto: str) -> str:
         """No privado, o prefixo do grupo (`!`) é um apelido escondido da barra: `!list` vale
@@ -242,6 +250,7 @@ class Router:
         async with self._trava(chat_id):
             d = self._deps(chat_id)
             perfil = await bloq(self._perfil, d)
+            d = self._com_idioma(d, perfil)
             if perfil.chat_id is None:
                 return
             sessao = await bloq(d.repo.obter_sessao)

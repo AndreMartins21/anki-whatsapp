@@ -119,7 +119,7 @@ def test_ciclo_stall_no_grupo_com_dois_alunos(tmp_path: Path) -> None:
     assert "📝 *Examples with stall*" in tela
     assert "✅ *Perfect!*" in tela
     assert "✅ Saved: *stall*." in tela
-    assert "The class's words" in tela and "1. stall: travar, emperrar" in tela
+    assert "The class's words" in tela and "1. stall: to stop making progress" in tela
 
 
 def test_no_grupo_linha_sem_prefixo_e_ignorada_e_nao_chega_ao_bot(tmp_path: Path) -> None:

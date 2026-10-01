@@ -153,7 +153,13 @@ async def listar(d: Deps, argumento: str) -> None:
     fatia = [(n, e) for n, e in numeradas[inicio : inicio + TAMANHO_DA_PAGINA]]
     await d.conversa.enviar(
         messages.lista(
-            fatia, total=len(entradas), numero=numero, paginas=paginas, p=d.p, grupo=d.em_grupo
+            fatia,
+            total=len(entradas),
+            numero=numero,
+            paginas=paginas,
+            p=d.p,
+            grupo=d.em_grupo,
+            pt=d.pt,
         )
     )
 

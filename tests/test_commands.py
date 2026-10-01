@@ -247,7 +247,7 @@ async def test_nivel_mostra_e_altera() -> None:
 async def test_nivel_invalido_nao_muda() -> None:
     m = montar()
 
-    (resposta,) = await m.diz("/level C2")
+    (resposta,) = await m.diz("/level C3")
 
     assert "Invalid level" in resposta
     perfil = m.repo.obter_perfil()

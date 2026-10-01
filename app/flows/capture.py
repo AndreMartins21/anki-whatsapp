@@ -99,6 +99,7 @@ async def _comecar_pratica(
             sentido.exemplo,
             outros_sentidos=[s for s in explicacao.sentidos if s.id != sentido.id],
             grupo=d.grupo_prefixo,
+            pt=d.pt,
         )
     )
     await pronuncia.ouvir(d, entrada, anunciar=False)  # M25: áudio automático, sem opção no menu
@@ -126,6 +127,7 @@ async def _avisar_que_ja_existe(d: Deps, entrada: Entry, sentido: Sense) -> Sess
             exemplo,
             outros_sentidos=entrada.outros_sentidos,
             grupo=d.grupo_prefixo,
+            pt=d.pt,
         )
     )
     await pronuncia.ouvir(d, entrada, anunciar=False)  # M25: áudio automático, sem opção no menu
