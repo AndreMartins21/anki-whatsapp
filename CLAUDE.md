@@ -18,7 +18,7 @@ Trabalhe **marco a marco** (seção 9 da spec): pare ao fim de cada um, relate e
    espere aprovação. Leitura pode rodar direto.
 3. Se a spec estiver ambígua ou parecer errada, **pergunte** — não invente.
 4. Todo texto voltado ao usuário fica em `app/messages.py`, **em inglês** (curto e amigável) —
-   só a linha 🇧🇷, com a tradução literal, fica em PT-BR (M9).
+   só a linha 🇧🇷, com a tradução literal, fica em PT-BR (M9) — exceções: turma iniciante (A1-A2, A2-B1) vê a 🇧🇷 e a explicação da pergunta do desafio semanal em PT antes do inglês (ADR-0032, ADR-0034).
 5. Confirme na documentação oficial atual (WAHA, Vertex AI, SDK `google-genai`) nomes de endpoints,
    variáveis e IDs de modelo antes de usá-los. Fixe versões de imagem Docker (nunca `latest`).
 6. Um commit ao fim de cada marco.

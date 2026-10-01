@@ -6,7 +6,7 @@ vem seguido da pronúncia automática do termo, sem a frase (M26, ADR-0027).
 Em grupo (M35, ADR-0033) é a revisão diária: ninguém é marcado, qualquer um responde e recebe
 feedback; a primeira resposta aceitável (qualidade != `de_novo`) vale a nota e avança; `skip` pula a
 palavra e `skipall` encerra. Sem mensagem por 3 horas, a rodada fecha sozinha. Os ajudantes de
-marcação (`_alunos_elegiveis`, `_marcar`) ficam para o desafio semanal (M36, ADR-0034).
+marcação (`alunos_elegiveis`, `marcar`) são do desafio semanal (`flows/semanal.py`, ADR-0034).
 """
 
 from __future__ import annotations
@@ -64,12 +64,12 @@ def limite(d: Deps, perfil: Profile, total_palavras: int) -> int:
 # --- quem é marcado (grupo) -------------------------------------------------------------------
 
 
-def _eh_o_bot(d: Deps, numero: str) -> bool:
+def eh_o_bot(d: Deps, numero: str) -> bool:
     bot = d.grupo_cfg.numero_do_bot
     return bot is not None and numero_esta_na_lista(numero, [bot])
 
 
-async def _alunos_elegiveis(d: Deps, *, atualizar: bool) -> list[tuple[str, Membro]]:
+async def alunos_elegiveis(d: Deps, *, atualizar: bool) -> list[tuple[str, Membro]]:
     """Os alunos que podem ser marcados: quem está no grupo (o endpoint do WAHA, atualizado no
     início de cada rodada), sem o bot e sem professores. Sem a lista de participantes (o WAHA
     falhou), vale o cadastro de membros. Quem está no grupo e nunca escreveu com prefixo entra no
@@ -84,26 +84,26 @@ async def _alunos_elegiveis(d: Deps, *, atualizar: bool) -> list[tuple[str, Memb
         else:
             # Uma lista vazia não é confiável (o próprio bot deveria estar nela): usa o cadastro.
             if numeros:
-                presentes = [n for n in numeros if not _eh_o_bot(d, n)]
-                await bloq(_cadastrar_novos, d, presentes)
+                presentes = [n for n in numeros if not eh_o_bot(d, n)]
+                await bloq(cadastrar_novos, d, presentes)
     membros = await bloq(d.repo.listar_membros)
     return [
         (numero, membro)
         for numero, membro in membros
         if membro.papel == "aluno"
-        and not _eh_o_bot(d, numero)
+        and not eh_o_bot(d, numero)
         and (presentes is None or numero_esta_na_lista(numero, presentes))
     ]
 
 
-def _cadastrar_novos(d: Deps, presentes: Sequence[str]) -> None:
+def cadastrar_novos(d: Deps, presentes: Sequence[str]) -> None:
     conhecidos = [numero for numero, _ in d.repo.listar_membros()]
     for numero in presentes:
         if not numero_esta_na_lista(numero, conhecidos):
             d.repo.salvar_membro(numero, Membro(entrou_em=d.agora()))
 
 
-async def _marcar(
+async def marcar(
     d: Deps, alunos: Sequence[tuple[str, Membro]], *, excluir: str | None
 ) -> str | None:
     """Escolhe quem marcar pelo rodízio e anota a marcação. `None` se não há aluno."""
@@ -130,7 +130,7 @@ async def iniciar(d: Deps, perfil: Profile) -> Sessao:
     return await _mostrar_proxima(d, messages.hora_da_pratica(total), fila, [], [], total)
 
 
-def _mesma_pessoa(a: str | None, b: str | None) -> bool:
+def mesma_pessoa(a: str | None, b: str | None) -> bool:
     return a is not None and b is not None and numero_esta_na_lista(a, [b])
 
 

@@ -10,11 +10,13 @@ from collections.abc import Sequence
 
 from app.domain.choices import contem_palavra_alvo, marcar_alvo
 from app.domain.models import (
+    AvaliacaoDaPergunta,
     Evaluation,
     Expansion,
     Explanation,
     LinhaDaMusica,
     NivelUsuario,
+    PerguntaSemanal,
     Revisao,
     Roteamento,
     Sense,
@@ -202,3 +204,29 @@ class SimTutor:
                 expressoes=[mais_longa],
             )
         return LinhaDaMusica(compreensao="entendeu", feedback=_NOTA_DO_SIMULADOR)
+
+    def weekly_questions(
+        self, vocabulario: Sequence[tuple[str, str]], nivel: NivelUsuario, n: int
+    ) -> list[PerguntaSemanal]:
+        """Sem IA: uma pergunta fixa por palavra do vocabulário (cíclica), só para percorrer o fluxo."""
+        perguntas = []
+        for i in range(n):
+            palavra, definicao = vocabulario[i % len(vocabulario)]
+            perguntas.append(
+                PerguntaSemanal(
+                    pergunta=f"When did you last use [[{palavra}]] in real life?",
+                    palavras=[palavra],
+                    explicacao_en=f"It asks about a real moment. {palavra} = {definicao}.",
+                    explicacao_pt=f"Pergunta sobre um momento real. ({palavra})"
+                    if nivel in {"A1-A2", "A2-B1"}
+                    else "",
+                )
+            )
+        return perguntas
+
+    def weekly_answer(
+        self, pergunta: str, palavras: Sequence[str], resposta: str, nivel: NivelUsuario
+    ) -> AvaliacaoDaPergunta:
+        if resposta.strip().lower() in {"", "i don't know", "no idea", "idk"}:
+            return AvaliacaoDaPergunta(qualidade="de_novo", feedback=_NOTA_DO_SIMULADOR)
+        return AvaliacaoDaPergunta(qualidade="bom", feedback=_NOTA_DO_SIMULADOR)

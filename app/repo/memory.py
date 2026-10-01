@@ -169,7 +169,11 @@ class MemoryBanco:
                 continue
             sessao = repo.obter_sessao()
             prazo = sessao.marcacao_expira_em
-            if sessao.estado == Estado.REVIEWING and prazo is not None and prazo <= agora:
+            if (
+                sessao.estado in (Estado.REVIEWING, Estado.WEEKLY_QUIZ)
+                and prazo is not None
+                and prazo <= agora
+            ):
                 vencidos.append(espaco_id)
         return vencidos
 

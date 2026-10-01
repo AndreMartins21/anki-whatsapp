@@ -305,3 +305,67 @@ def prompt_song_line(
         "nomes próprios. Vazio se ele entendeu tudo."
     )
     return Prompt(_sistema(nivel, tarefa, marcar_alvo=False), _delimitar(resposta_do_aluno))
+
+
+_COMPLEXIDADE_DA_PERGUNTA: dict[NivelUsuario, str] = {
+    "A1-A2": "muito simples: frases curtas (até 10 palavras), presente simples, um só assunto "
+    "concreto do dia a dia; nada de condicionais nem vocabulário abstrato.",
+    "A2-B1": "simples: frases de até 14 palavras, tempos básicos, assuntos do cotidiano; "
+    "no máximo uma ideia por pergunta.",
+    "B1-B2": "intermediária: opinião, experiência pessoal ou hipótese simples, frases de até 20 "
+    "palavras.",
+    "B2-C1": "avançada: opiniões justificadas, hipóteses, comparações e situações de trabalho; "
+    "frases de até 26 palavras.",
+    "C1-C2": "sofisticada: raciocínio abstrato, nuances, argumentação e registro formal ou "
+    "informal; frases elaboradas.",
+    "C2": "nível nativo: dilemas, ironia, hipóteses contrafactuais e idiomatismos; sem concessões "
+    "de simplicidade.",
+}
+
+
+def prompt_weekly_questions(
+    nivel: NivelUsuario, vocabulario: Sequence[tuple[str, str]], n: int, *, com_portugues: bool
+) -> Prompt:
+    lista = "\n".join(f"- {palavra}: {definicao}" for palavra, definicao in vocabulario)
+    explicacao_pt = (
+        "- `explicacao_pt`: a mesma explicação de `explicacao_en`, em português do Brasil "
+        "(EXCEÇÃO à regra de escrever tudo em inglês: aqui o aluno é iniciante).\n"
+        if com_portugues
+        else "- `explicacao_pt`: deixe SEMPRE vazio (string vazia): esta turma não vê português.\n"
+    )
+    tarefa = (
+        f"criar {n} perguntas para um desafio semanal de conversação numa turma, cada uma "
+        "respondida por um aluno diferente, usando o vocabulário que a turma já estudou.\n"
+        f"Vocabulário da turma (palavra: definição):\n{lista}\n"
+        f"- Complexidade das perguntas: {_COMPLEXIDADE_DA_PERGUNTA[nivel]}\n"
+        "- Cada pergunta é aberta (não de sim ou não), respondível em 1 a 3 frases, e usa uma ou "
+        "mais palavras do vocabulário, **exatamente como estão na lista** (pode flexionar), "
+        "marcadas entre [[ e ]] em `pergunta`. Varie as palavras entre as perguntas sempre "
+        "que der.\n"
+        "- A pergunta é só a pergunta (sem cumprimento, sem numeração).\n"
+        "- `palavras`: as palavras da lista que a pergunta usa, na forma da lista.\n"
+        "- `explicacao_en`: em inglês simples, até 3 linhas: o que a pergunta quer saber e o "
+        "sentido das palavras marcadas, sem responder a pergunta.\n" + explicacao_pt
+    )
+    return Prompt(_sistema(nivel, tarefa, marcar_alvo=False), f"Crie {n} perguntas.")
+
+
+def prompt_weekly_answer(
+    nivel: NivelUsuario, pergunta: str, palavras: Sequence[str], resposta_do_aluno: str
+) -> Prompt:
+    tarefa = (
+        "dar feedback real sobre a resposta de um aluno a uma pergunta de conversação de um "
+        "desafio semanal.\n"
+        f"- Pergunta: {pergunta}\n- Palavras do vocabulário que a pergunta trabalha: "
+        f"{', '.join(palavras)}\n"
+        "- `qualidade`: `facil` (resposta completa, natural, usa bem as palavras), `bom` "
+        "(responde bem, pequenos erros), `dificil` (responde, mas com erros que atrapalham ou "
+        "ignora o vocabulário), `de_novo` (não responde à pergunta, ou não é inglês).\n"
+        "- Seja tolerante com erros de inglês; o que importa é se a pessoa se comunica e usa o "
+        "vocabulário.\n"
+        "- `feedback`: em inglês, no máximo 4 linhas, tom encorajador: o que funcionou e um "
+        "ponto a melhorar. Nunca refaça a resposta inteira.\n"
+        "- `correcao`: opcional; uma versão mais natural da resposta, em uma frase; vazio se não "
+        "ajudar."
+    )
+    return Prompt(_sistema(nivel, tarefa, marcar_alvo=False), _delimitar(resposta_do_aluno))

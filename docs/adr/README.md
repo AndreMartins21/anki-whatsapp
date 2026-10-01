@@ -43,6 +43,7 @@ operacional: numeração, status e o índice.
 | [0031](0031-level-no-grupo-so-professor-ou-dono-e-opcao-5-dont-save.md) | `!level` no grupo (só professor ou dono muda) e opção 5 do menu renomeada para "Don't save" | Aceito | 2026-09-29 |
 | [0032](0032-seis-niveis-e-turma-so-em-ingles-a-partir-do-b1-b2.md) | Seis níveis e turma só em inglês a partir de B1-B2 | Aceito | 2026-10-01 |
 | [0033](0033-revisao-diaria-no-grupo-sem-marcacao.md) | Revisão diária no grupo, sem marcar ninguém | Aceito | 2026-10-01 |
+| [0034](0034-desafio-semanal-com-perguntas-da-ia-e-marcacao.md) | Desafio semanal do grupo, com perguntas da IA e marcação em rodízio | Aceito | 2026-10-01 |
 
 ## Quando escrever um
 

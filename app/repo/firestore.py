@@ -78,7 +78,11 @@ class FirestoreRepository:
         if self._espaco is not None and tipo_do_espaco(self._espaco.id) == "grupo":
             # Espelha o prazo da marcação (M17) para o agendador achar as vencidas com uma
             # consulta só, sem ler os demais grupos.
-            prazo = sessao.marcacao_expira_em if sessao.estado == Estado.REVIEWING else None
+            prazo = (
+                sessao.marcacao_expira_em
+                if sessao.estado in (Estado.REVIEWING, Estado.WEEKLY_QUIZ)
+                else None
+            )
             self._espaco.set(
                 {"timeout_em": prazo if prazo is not None else firestore.DELETE_FIELD},
                 merge=True,

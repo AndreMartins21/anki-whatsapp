@@ -35,6 +35,7 @@ _DO_GRUPO = {
     "practice",
     "review",
     "daily",
+    "weekly",
     "reminder",
     "reminders",
     "group",

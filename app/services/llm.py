@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from app.config import Settings
 from app.domain.models import (
+    AvaliacaoDaPergunta,
     Evaluation,
     Exemplos,
     Expansion,
@@ -28,12 +29,15 @@ from app.domain.models import (
     Explanation,
     LinhaDaMusica,
     NivelUsuario,
+    PerguntaSemanal,
+    PerguntasSemanais,
     Revisao,
     Roteamento,
     Sense,
     SentidoSalvo,
     Sinonimos,
     Synonym,
+    nivel_so_ingles,
 )
 from app.logging_config import registrar_evento
 from app.services import prompts
@@ -136,6 +140,14 @@ class Tutor(Protocol):
         nivel: NivelUsuario,
     ) -> LinhaDaMusica: ...
 
+    def weekly_questions(
+        self, vocabulario: Sequence[tuple[str, str]], nivel: NivelUsuario, n: int
+    ) -> list[PerguntaSemanal]: ...
+
+    def weekly_answer(
+        self, pergunta: str, palavras: Sequence[str], resposta: str, nivel: NivelUsuario
+    ) -> AvaliacaoDaPergunta: ...
+
 
 class VertexGeminiProvider:
     """`google-genai` no Vertex AI: autenticação pela conta de serviço da VM, sem chave."""
@@ -224,6 +236,8 @@ _METODO_POR_SCHEMA: dict[type[BaseModel], str] = {
     Roteamento: "route",
     Revisao: "review",
     LinhaDaMusica: "song_line",
+    PerguntasSemanais: "weekly_questions",
+    AvaliacaoDaPergunta: "weekly_answer",
 }
 
 
@@ -435,6 +449,47 @@ class LLMTutor:
             self._provider,
             prompts.prompt_song_line(nivel, titulo, artista, verso, verso_anterior, resposta),
             LinhaDaMusica,
+            modelo=self._modelo_avaliacao,
+            temperatura=TEMPERATURA_PRECISA,
+        )
+
+    def weekly_questions(
+        self, vocabulario: Sequence[tuple[str, str]], nivel: NivelUsuario, n: int
+    ) -> list[PerguntaSemanal]:
+        """`n` perguntas no nível da turma com palavras do vocabulário (M36). Valida a quantidade e
+        que `palavras` vêm da lista; `explicacao_pt` só existe em turma iniciante."""
+        com_portugues = not nivel_so_ingles(nivel)
+        permitidas = {_chave(palavra) for palavra, _ in vocabulario}
+
+        def regras(perguntas: PerguntasSemanais) -> None:
+            if len(perguntas.itens) != n:
+                raise ValueError(f"esperava {n} perguntas, vieram {len(perguntas.itens)}")
+            for item in perguntas.itens:
+                fora = [p for p in item.palavras if _chave(p) not in permitidas]
+                if fora:
+                    raise ValueError(f"palavras fora do vocabulário da turma: {fora}")
+                if com_portugues and not item.explicacao_pt.strip():
+                    raise ValueError("turma iniciante: `explicacao_pt` é obrigatória")
+
+        resultado = _gerar_validado(
+            self._provider,
+            prompts.prompt_weekly_questions(nivel, vocabulario, n, com_portugues=com_portugues),
+            PerguntasSemanais,
+            modelo=self._modelo,
+            temperatura=TEMPERATURA_CRIATIVA,
+            validar=regras,
+        )
+        if com_portugues:
+            return resultado.itens
+        return [item.model_copy(update={"explicacao_pt": ""}) for item in resultado.itens]
+
+    def weekly_answer(
+        self, pergunta: str, palavras: Sequence[str], resposta: str, nivel: NivelUsuario
+    ) -> AvaliacaoDaPergunta:
+        return _gerar_validado(
+            self._provider,
+            prompts.prompt_weekly_answer(nivel, pergunta, palavras, resposta),
+            AvaliacaoDaPergunta,
             modelo=self._modelo_avaliacao,
             temperatura=TEMPERATURA_PRECISA,
         )
