@@ -13,6 +13,7 @@ import hmac as hmac_lib
 import json
 import logging
 import os
+import re
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -36,6 +37,7 @@ from app.channel.parser import (
     deve_ignorar_chat,
     digitos_do_chat_id,
     eh_lid,
+    numero_e_permitido,
     numero_esta_na_lista,
     parse_evento,
 )
@@ -76,8 +78,9 @@ def _nome_do_comando(corpo: str, prefixo: str) -> str:
     if not texto:
         return "midia"
     primeira = texto.split(maxsplit=1)[0]
-    if primeira.startswith(prefixo):
-        return primeira[len(prefixo) :].lower() or "midia"
+    for candidato in (prefixo, "/"):
+        if primeira.startswith(candidato):
+            return primeira[len(candidato) :].lower() or "midia"
     return "texto"
 
 
@@ -470,19 +473,28 @@ async def _tratar_mensagem_de_grupo(
     router: Router,
     tarefas: BackgroundTasks,
 ) -> None:
-    """Em grupo o bot só lê mensagens com o prefixo (M16). O filtro vem antes de tudo
-    (deduplicação, `sendSeen`): o resto é conversa entre pessoas, que ele não lê nem grava. Grupo
-    não ativado só reage a `!activate` de um admin (M15)."""
+    """Em grupo o bot só lê duas coisas (ADR-0019, ADR-0035): comandos com `!` ou `/` e mensagens
+    que o marcam. O filtro vem antes de tudo (deduplicação, `sendSeen`): o resto é conversa entre
+    pessoas, que ele não lê nem grava. Grupo não ativado só reage a `!activate` de um admin (M15)."""
     grupo_id = payload.from_
-    corpo = grupo.aceitar_barra(payload.body, settings.group_prefix)
+    corpo = payload.body
     acesso = _acesso(settings, channel, banco)
     autorizado = await run_in_threadpool(admin.grupo_autorizado, acesso, grupo_id)
     if not autorizado:
         _logar_grupo_uma_vez(grupo_id)
         await _registrar_pendente(banco, grupo_id)
 
-    if payload.has_media or grupo.sem_prefixo(corpo, settings.group_prefix) is None:
-        return  # mídia e conversa: ignoradas em silêncio
+    if payload.has_media:
+        return  # mídia: ignorada em silêncio
+    marcado = False
+    if grupo.sem_prefixo(corpo, settings.group_prefix) is None:
+        if not autorizado:
+            return
+        sem_marca = await _sem_marcacao_do_bot(payload, settings, channel, banco)
+        if sem_marca is None:
+            return  # conversa entre pessoas: o bot não lê
+        corpo = sem_marca
+        marcado = grupo.sem_prefixo(corpo, settings.group_prefix) is None
     comando = admin.eh_comando_de_ativacao(corpo, settings.group_prefix)
     if not autorizado and comando is None:
         return
@@ -502,7 +514,7 @@ async def _tratar_mensagem_de_grupo(
         "mensagem_recebida",
         espaco=id_curto(grupo_id),
         tipo_espaco="grupo",
-        comando=_nome_do_comando(corpo, settings.group_prefix),
+        comando="marcacao" if marcado else _nome_do_comando(corpo, settings.group_prefix),
     )
     await channel.send_seen(grupo_id)
 
@@ -514,7 +526,34 @@ async def _tratar_mensagem_de_grupo(
         nome=payload.nome_do_remetente(),
         mencionados=await _numeros_mencionados(payload, channel, banco),
     )
-    tarefas.add_task(_responder_no_grupo, router, channel, grupo_id, corpo, autor)
+    tarefas.add_task(_responder_no_grupo, router, channel, grupo_id, corpo, autor, marcado)
+
+
+async def _sem_marcacao_do_bot(
+    payload: MessagePayload, settings: Settings, channel: ChannelComLid, banco: Banco
+) -> str | None:
+    """`None` se a mensagem não marca o bot; senão, o texto sem a marcação dele (o resto da
+    mensagem é o que a pessoa disse ao bot). A marcação vem em `mentionedIds` (número ou LID,
+    resolvido pelo cache `lids/`) ou, como plano B, escrita no texto como `@numero-do-bot`. O
+    campo não é documentado pelo WAHA: ver docs/noite/PENDENCIAS.md."""
+    digitos_do_bot = {re.sub(r"\D", "", settings.bot_number)}
+    ids_do_bot = set(digitos_do_bot)
+    marcou = any(
+        numero_e_permitido(d, settings.bot_number)
+        for d in grupo.numeros_marcados_no_texto(payload.body)
+    )
+    for mencionado in payload.mentioned_ids:
+        numero = await _numero_do_remetente(mencionado, channel, banco)
+        if numero is not None and numero_e_permitido(numero, settings.bot_number):
+            marcou = True
+            ids_do_bot.add(digitos_do_chat_id(mencionado))
+    if not marcou:
+        return None
+    # Tira também as marcações escritas com o número do bot, com ou sem o nono dígito.
+    for digitos in grupo.numeros_marcados_no_texto(payload.body):
+        if numero_e_permitido(digitos, settings.bot_number):
+            ids_do_bot.add(digitos)
+    return grupo.sem_marcacao(payload.body, ids_do_bot)
 
 
 async def _numeros_mencionados(
@@ -531,11 +570,16 @@ async def _numeros_mencionados(
 
 
 async def _responder_no_grupo(
-    router: Router, channel: ChannelComLid, grupo_id: str, texto: str, autor: Autor
+    router: Router,
+    channel: ChannelComLid,
+    grupo_id: str,
+    texto: str,
+    autor: Autor,
+    marcado: bool = False,
 ) -> None:
     """Roda depois do 200, como `_responder`: nada que aconteça aqui pode escapar."""
     try:
-        await router.processar(texto, grupo_id, autor)
+        await router.processar(texto, grupo_id, autor, marcado=marcado)
     except Exception:
         logger.exception("falha ao processar mensagem de grupo")
         with contextlib.suppress(Exception):

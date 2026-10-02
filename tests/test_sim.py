@@ -115,7 +115,7 @@ def test_ciclo_stall_no_grupo_com_dois_alunos(tmp_path: Path) -> None:
 
     assert codigo == 0
     assert "*stall* (verb) — B2" in tela
-    assert "!2 — See more examples" in tela
+    assert "2️⃣ See more examples" in tela
     assert "📝 *Examples with stall*" in tela
     assert "✅ *Perfect!*" in tela
     assert "✅ Saved: *stall*." in tela
@@ -127,7 +127,7 @@ def test_no_grupo_linha_sem_prefixo_e_ignorada_e_nao_chega_ao_bot(tmp_path: Path
         ["ana: gente, alguém entendeu a aula?", "bia: !help", "sair"], tmp_path, "--grupo"
     )
 
-    assert "(ignorado: sem prefixo, o bot não lê)" in tela
+    assert "(ignorado: não marcou o bot nem usou um comando, o bot não lê)" in tela
     assert tela.count("How I work in this group") == 1  # só o `!help` da Bia foi respondido
 
 
@@ -222,3 +222,13 @@ def test_desafio_semanal_no_simulador_marca_um_aluno_por_pergunta(tmp_path: Path
 
     assert "Weekly challenge" in tela and "Explain the question" in tela
     assert "Weekly challenge done" in tela
+
+
+def test_no_grupo_marcar_o_bot_com_uma_palavra_a_adiciona(tmp_path: Path) -> None:
+    _, tela = _executar(
+        ["ana: @bot stall | the talks stalled", "bia: @bot 4", "sair"], tmp_path, "--grupo"
+    )
+
+    assert "*stall* (verb) — B2" in tela
+    assert "✅ Saved: *stall*." in tela
+    assert "(ignorado" not in tela

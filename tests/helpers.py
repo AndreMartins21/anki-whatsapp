@@ -118,6 +118,13 @@ class Montagem:
         await self.router.processar(texto, chat, autor)
         return [t for c, t in self.channel.textos_enviados[antes:] if c == chat]
 
+    async def marca_no_grupo(self, autor: Autor, texto: str, *, chat: str = GRUPO) -> list[str]:
+        """Manda `texto` marcando o bot (M37; o webhook já tirou a marcação) como `autor` no grupo
+        e devolve o que o bot respondeu no grupo."""
+        antes = len(self.channel.textos_enviados)
+        await self.router.processar(texto, chat, autor, marcado=True)
+        return [t for c, t in self.channel.textos_enviados[antes:] if c == chat]
+
 
 def montar(
     *,

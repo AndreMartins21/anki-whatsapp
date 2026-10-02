@@ -160,7 +160,7 @@ Regras:
   sentido**: se a entrada foi criada por esta captura e o aluno ainda não escreveu frase nela, o novo
   card **substitui** o anterior (a IA responde primeiro; se falhar, nada é apagado); caso contrário o
   novo sentido vira outra entrada (`--sN`), sem "Saved" no meio. Se o termo é outro, é uma palavra
-  nova (salva a atual e explica a nova; no grupo, só a dica de `!add`).
+  nova (salva a atual e explica a nova; no grupo, igual ao privado: M37, a palavra só chega aqui marcando o bot).
 - **Palavra que já existe** (ADR-0023: palavra sem frase de contexto **nem sentido pedido** já salva, em qualquer sentido; com
   frase ou sentido pedido, mesmo `slug` e mesmo sentido — traduções com alguma opção em comum contam como o mesmo): em vez do card completo,
   o bot manda `📌 You already have *X* in your list.` com título, 🇧🇷, 📖 e o exemplo **salvos**,
@@ -212,22 +212,31 @@ apelidos em PT-BR que a spec sempre teve (`/ajuda`, `/lista`, `/pendentes`, `/pr
 
 ### 5.2b Grupos de turma (M16, ADR-0019)
 
-Em grupo ativo (5.6, ADR-0018) o bot **só lê mensagens que começam com o prefixo** (`GROUP_PREFIX`,
-padrão `!`, com uma letra ou número logo depois); o resto é conversa entre pessoas e não é lido,
-gravado nem marcado como lido (o filtro vem antes da deduplicação e do `sendSeen`). Mídia é ignorada.
+Em grupo ativo (5.6, ADR-0018) o bot **só lê duas coisas** (M37, ADR-0035, que muda a regra do
+ADR-0019): **mensagens que o marcam** (`@bot ...`, conversa com ele, sem comando) e **comandos** com
+o prefixo (`GROUP_PREFIX`, padrão `!`) **ou `/`**, com uma letra ou número logo depois. O resto é
+conversa entre pessoas e não é lido, gravado nem marcado como lido (o filtro vem antes da
+deduplicação e do `sendSeen`). Mídia é ignorada. Marcar outra pessoa não chama o bot.
 
-- **Comandos (conjunto fechado):** `!delete palavra|número` (M32: remove um termo da lista da turma, igual ao `/delete` do privado; o número é o do `!list`; qualquer membro pode, como no `!add`), `!add palavra [| contexto ou sentido]` (a **única** forma de trazer uma palavra
-  nova; com a palavra aberta, `!add` do mesmo termo com `|` troca o sentido, como no privado — M31), `!list [página]` (palavras da turma, mesma regra do `/list`), `!practice [palavra|número]`,
+- **Marcação (M37):** o webhook reconhece o bot em `mentionedIds` (número ou LID, resolvido pelo cache
+  `lids/`, nono dígito à parte) ou como `@numero` no texto, tira a marcação do bot e entrega o resto à
+  mesma máquina de estados do privado: dentro de uma atividade é a resposta (`@bot 2`, `@bot a frase`,
+  `@bot skip`, `@bot stop`); fora dela `@bot stall` / `@bot stall | contexto` adiciona a palavra e
+  `@bot` sozinho ou `@bot help` mostra a ajuda. `@bot !list` vale como o comando.
+
+- **Comandos (conjunto fechado):** `!delete palavra|número` (M32: remove um termo da lista da turma, igual ao `/delete` do privado; o número é o do `!list`; qualquer membro pode, como no `!add`), `!add palavra [| contexto ou sentido]` (M37: apelido escondido da ajuda; a forma normal é marcar o
+  bot com a palavra; com a palavra aberta, o mesmo termo com `|` troca o sentido, como no privado — M31), `!list [página]` (palavras da turma, mesma regra do `/list`), `!practice [palavra|número]`,
   `!review` (M35: começa uma revisão diária na hora), `!daily [19h | on | off | weekends on|off | size N|auto]`, (M35, ADR-0033: qualquer membro vê; só admin do bot ou o dono muda; `!reminder` virou apelido que aponta para ele), `!weekly [fri 13h | on | off | size N|auto | now]` (M36, ADR-0034: mesma permissão; `now` começa o desafio na hora), `!level [A1-A2|A2-B1|B1-B2|B2-C1|C1-C2|C2]` (M33, ADR-0031: sem argumento qualquer membro vê o nível da turma; com argumento só professor ou dono muda, e aluno recebe a recusa), `!group` (nível, palavras,
   vencidas, lembretes e os membros com o papel, só nomes e sem menção) e `!help` (só os comandos do
   grupo). `!teacher`/`!student` (um professor da turma ou o dono) mudam o papel, escondidos do `!help`;
   os alvos vêm das menções do payload ou do número escrito no texto.
-- **Dentro de uma atividade:** `!1`, `!2`, `!3` e `!texto` são as respostas, pela mesma máquina de
-  estados do privado; na revisão, `!texto` responde, `!skip` pula a palavra, `!skipall` (ou `!0`/`!stop`) encerra.
-  **Barra (M35, ADR-0033):** `/skip`, `/skip-all`, `/skipall`, `/1`, `/2` e `/3` (a mensagem inteira) valem como o `!` equivalente; qualquer outra mensagem com barra segue não lida. Um `nova_palavra` do roteamento
-  só devolve a dica de `!add`.
-- **Fora de atividade**, qualquer outra coisa com o prefixo, inclusive comando do privado (`!export`,
-  `!export`, `!song`...), recebe a ajuda do grupo, **sem chamar a IA**. Com a barra (exceto as acima), a mensagem nem é lida.
+- **Dentro de uma atividade:** marcar o bot com `2`, `3`, a frase etc. responde, pela mesma máquina de
+  estados do privado; `!1`, `!2`, `!3` e `!texto` (e com `/`) continuam valendo. Na revisão, a marcação
+  responde, `skip` pula a palavra, `skipall` (ou `0`/`stop`) encerra.
+  **Barra (M37, ADR-0035):** qualquer comando vale com `/` no grupo (no M35 eram só `/skip`, `/skip-all`,
+  `/skipall`, `/1`, `/2` e `/3`); `/` sozinha ou seguida de espaço é conversa.
+- **Fora de atividade**, um comando com o prefixo que não existe, inclusive comando do privado
+  (`!export`, `!song`...), recebe a ajuda do grupo, **sem chamar a IA**.
 - Os textos que citam comandos usam o prefixo do espaço e, no grupo, só citam comandos do grupo.
 - **Turma só em inglês (M34, ADR-0032):** no grupo, de B1-B2 para cima, nada aparece em português (sem a
   linha 🇧🇷, sem a tradução nos cabeçalhos e nos `↔️`; o `!list` mostra a definição, cortada em 70
@@ -270,13 +279,15 @@ elegível por padrão, até 10, ou `size N`). Estado `WEEKLY_QUIZ`. Cada pergunt
 /1 Explain the question
 /2 Listen to the question
 /3 Skip this question
-_🏆 Weekly challenge · 1/3 — answer starting with !_
+_🏆 Weekly challenge · 1/3 — tag me to answer_
 ```
-- Qualquer um pode tentar (`!texto`) e recebe feedback (`Tutor.weekly_answer`); a pergunta **só avança
+- Qualquer um pode tentar (marcando o bot com a resposta; `!texto` também vale) e recebe feedback
+  (`Tutor.weekly_answer`), que julga se a resposta é **coerente com a pergunta no geral** (M37: usar as
+  palavras do vocabulário não é exigido nem pesa contra; usá-las só melhora); a pergunta **só avança
   quando a pessoa marcada responde** ou alguém pula (`3`/`skip`); `skipall`/`0`/`stop` encerra com o
   resumo. Sem nota SM-2. `respostas/` registra a participação.
 - `1`: turma A1-A2/A2-B1 vê **🇧🇷 português e depois 🇺🇸 inglês**; de B1-B2 em diante, só inglês. `2`: a
-  pergunta em voz (Cloud TTS, cache existente). `/1`, `/2`, `/3` valem com barra no grupo.
+  pergunta em voz (Cloud TTS, cache existente). `/1`, `/2`, `/3` (ou marcar o bot com `1`, `2`, `3`) valem no grupo.
 - Fecha sozinho após 3 h sem mensagem; o semanal tem precedência sobre a diária no mesmo tick.
 
 ### 5.3 Calibração pelo nível (B1-B2)
@@ -319,7 +330,7 @@ Now, you can write one or more sentences using *stall*, or type:
 ```
 Os outros sentidos (`Explanation.sentidos` menos o escolhido, no mesmo formato do `/info`) aparecem
 depois do exemplo; sem outros sentidos, o card não muda. A dica usa a definição do primeiro outro
-sentido (no grupo, `*!add stall | to delay on purpose*`). Mandar `stall | to delay on purpose`
+sentido (no grupo, "Tag me with *stall | to delay on purpose*"). Mandar `stall | to delay on purpose`
 (ou `stall | enrolar`) faz a IA explicar **aquele** sentido, em vez do mais popular.
 
 **Case A — texto livre** (roteado pela IA, seção 5.1). Frase de prática avaliada:
@@ -761,7 +772,7 @@ conversa (ver seção 5.1 sobre o caso de áudio não configurado).
 - Para cada evento `message`:
   1. **Ignore `fromMe == true`**, para o bot não responder a si mesmo e não entrar em loop.
   2. Ignore grupos (`@g.us`), status/broadcast e canais. Grupo não autorizado (fora de `ALLOWED_GROUPS`): o id vai ao log em INFO uma vez por processo, para o dono descobri-lo e autorizá-lo; nada mais sobre a mensagem é logado.
-  3. Aplique a allowlist (8.2). Número fora da lista, no privado, recebe só o aviso de "sem plano" (no máximo 1 por semana) e a IA nunca é chamada; admin que não é aluno só usa `/groups`. Em `@g.us` (M15/M16): grupo não ativado só reage a `!activate` de um admin e fica pendente; grupo ativo só lê mensagens com o prefixo (5.2b), depois da resolução do participante (LID pelo cache `lids/`), da deduplicação e do `sendSeen`. O resto é ignorado sem ler, gravar nem marcar como lido.
+  3. Aplique a allowlist (8.2). Número fora da lista, no privado, recebe só o aviso de "sem plano" (no máximo 1 por semana) e a IA nunca é chamada; admin que não é aluno só usa `/groups`. Em `@g.us` (M15/M16): grupo não ativado só reage a `!activate` de um admin e fica pendente; grupo ativo só lê comandos (`!` ou `/`) e mensagens que marcam o bot (5.2b, M37), depois da resolução do participante (LID pelo cache `lids/`), da deduplicação e do `sendSeen`. O resto é ignorado sem ler, gravar nem marcar como lido.
   4. Deduplique pelo `id` da mensagem.
   5. Faça `sendSeen` e despache ao roteador, com a lógica síncrona em threadpool. A conversa (IA, atrasos "humanos") roda em segundo plano, depois do 200 (M4, ADR-0006).
   6. **Sempre** devolva 200. Registre as exceções e mande ao usuário uma mensagem curta de erro.
@@ -813,6 +824,7 @@ Crie a interface `Channel` (enviar texto, enviar arquivo, enviar voz, marcar com
 | M34 | Seis níveis (A1-A2 a C2) e turma só em inglês de B1-B2 para cima (seções 5.2b/5.3/5.5, ADR-0032): `nivel_so_ingles`, `Deps.so_ingles`, formatadores com `pt` | `make check` passa; grupo A1-A2/A2-B1 mostra 🇧🇷 e `!list` com tradução; grupo B1-B2 em diante não mostra 🇧🇷 nem tradução em card, exemplos, sinônimos e `!list`; privado B1-B2 segue com 🇧🇷; todo nível tem calibração no prompt |
 | M35 | Revisão diária do grupo sem marcar ninguém (seções 5.2b/5.7/7.1, ADR-0033, substitui o ADR-0020): `!daily`, `Profile.diaria_*`, `domain/agenda_grupo.py`, `!skip`/`!skipall` (e `/skip`, `/skip-all`, `/1`-`/3` com barra), fechamento após 3h parado, pausa após 3 revisões sem resposta | `make check` e `make test-emulador` passam; diária às 19h em dia útil (sexta à noite agenda segunda; `weekends on` agenda sábado); qualquer aluno responde e a 1ª resposta aceitável avança, a errada deixa a palavra aberta; `skip` não mexe na nota; `skipall` resume; 3h parado fecha; 3 revisões sem mensagem pausam e uma mensagem volta; só admin do bot muda `!daily`; `/skip` lido no grupo e `/list` não |
 | M36 | Desafio semanal do grupo (seção 5.2b/6/7.1, ADR-0034): `!weekly`, `Profile.semanal_*`, estado `WEEKLY_QUIZ`, `Tutor.weekly_questions`/`weekly_answer`, marcação em rodízio, menu `/1` explicar (PT→EN em turma iniciante, só EN de B1-B2), `/2` ouvir, `/3` pular | `make check` e `make test-emulador` passam; sexta 13h dispara (outro dia não; `off` não); uma pergunta por aluno, mensagem começa pela menção; só o marcado avança, outro recebe feedback; `1` PT+EN em A1-A2/A2-B1 e só EN em B2; `2` manda voz e sem áudio avisa; `3`/`skip` pulam, `skipall` encerra; 3h parado fecha; só admin do bot muda `!weekly`; perguntas com o Gemini real conferidas em A1-A2, B1-B2 e C2 |
+| M37 | Grupo responde a quem marca o bot e comandos valem com `!` ou `/` (seções 5.2b/8.1, ADR-0035, muda a regra do ADR-0019): filtro do webhook por marcação (`mentionedIds` número/LID ou `@numero`), `Router.processar(marcado=)`, `grupo.tratar(marcado=)`, menus e cartões do grupo com "tag me", `!add` escondido da ajuda, `weekly_answer` julga coerência com a pergunta sem cobrar o vocabulário | `make check` passa; `@bot stall` num grupo ativo adiciona a palavra; `@bot 4`/`@bot a frase` respondem menu, revisão e desafio; marcar outra pessoa ou conversar não chama o bot (nada gravado, sem `sendSeen`); marcação por LID resolvida; `@bot !help` é comando; `/help` e `/list` valem; `@bot` sozinho mostra a ajuda; a avaliação do desafio não exige as palavras (prompt) |
 
 **Opcional antes do M8:** subir o compose localmente (`docker compose up`) e parear um teste no próprio computador. Se fizer isso, use um volume de sessão separado, porque o número só pode ter uma sessão do WAHA ativa por vez.
 

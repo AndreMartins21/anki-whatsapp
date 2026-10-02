@@ -38,7 +38,7 @@ def test_grupo_ativo_com_prefixo_responde_no_grupo_e_cadastra_quem_escreveu(
 
     assert resposta.status_code == 200
     ((chat, texto),) = ambiente.canal.textos_enviados
-    assert chat == GRUPO_FIXO and "*stall*" in texto and "!2 — See more examples" in texto
+    assert chat == GRUPO_FIXO and "*stall*" in texto and "2️⃣ See more examples" in texto
     assert ambiente.canal.vistos == [GRUPO_FIXO]
     espaco = ambiente.banco.do_espaco(GRUPO_FIXO)
     assert [e.slug for e in espaco.listar_entradas()] == ["stall"]
@@ -214,7 +214,7 @@ def test_review_pelo_webhook_nao_marca_ninguem(ambiente: Ambiente) -> None:
     assert not ambiente.canal.mencoes_enviadas or not ambiente.canal.mencoes_enviadas[-1][1]
 
 
-def test_skip_com_barra_no_grupo_e_lido_mas_outro_comando_com_barra_nao(
+def test_skip_com_barra_no_grupo_e_lido_mas_barra_sem_comando_nao(
     ambiente: Ambiente,
 ) -> None:
     ambiente.tutor.expansoes.append(expansoes())
@@ -222,8 +222,8 @@ def test_skip_com_barra_no_grupo_e_lido_mas_outro_comando_com_barra_nao(
         ambiente.cliente.post("/waha/webhook", json=_do_grupo(GRUPO_FIXO, f"{ANA}@c.us", texto))
     antes = len(ambiente.canal.textos_enviados)
 
-    ambiente.cliente.post("/waha/webhook", json=_do_grupo(GRUPO_FIXO, f"{ANA}@c.us", "/list"))
-    assert len(ambiente.canal.textos_enviados) == antes  # barra qualquer: não é lida
+    ambiente.cliente.post("/waha/webhook", json=_do_grupo(GRUPO_FIXO, f"{ANA}@c.us", "/ oi"))
+    assert len(ambiente.canal.textos_enviados) == antes  # barra sem letra depois: é conversa
 
     ambiente.cliente.post("/waha/webhook", json=_do_grupo(GRUPO_FIXO, f"{ANA}@c.us", "/skip-all"))
     assert ambiente.banco.do_espaco(GRUPO_FIXO).obter_sessao().estado == "IDLE"  # fechou

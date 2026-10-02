@@ -4,8 +4,9 @@
     python -m sim --grupo [--professor NOME]...
 
 Com `--grupo` (M16), simula um grupo de turma com vários participantes: cada linha é
-`nome: mensagem` (ex.: `ana: !add stall`). Só as linhas que começam com o prefixo (`!`) chegam ao
-bot; as outras aparecem como ignoradas, como no WhatsApp real. O participante `dono` é o dono do
+`nome: mensagem` (ex.: `ana: @bot stall`). Só chegam ao bot as linhas que marcam o bot (`@bot` em
+qualquer lugar da linha) e as que começam com um comando (`!` ou `/`); as outras aparecem como
+ignoradas, como no WhatsApp real. O participante `dono` é o dono do
 bot (pode usar `!teacher`); `--professor NOME` cadastra professores de saída. Na revisão diária
 do grupo (`ana: !review`, ou `~daily` para o bot começar sozinho) ninguém é marcado; `/skip` e
 `/skip-all` valem com a barra; `~weekly` começa o desafio semanal (um aluno marcado por
@@ -25,6 +26,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import sys
 import zlib
 from collections.abc import Callable, Mapping, Sequence
@@ -86,6 +88,9 @@ def numero_do_participante(nome: str) -> str:
     return "55319" + f"{zlib.crc32(nome.encode()) % 10**8:08d}"
 
 
+_MARCA_DO_BOT = re.compile(r"@bot\b", re.IGNORECASE)
+
+
 async def _conversar_no_grupo(
     router: Router,
     entrada: Callable[[str], str],
@@ -93,8 +98,9 @@ async def _conversar_no_grupo(
     nomes: dict[str, str],
 ) -> None:
     saida(
-        "Simulador do grupo — uma linha por mensagem: `nome: mensagem` (ex.: `ana: !add stall`).\n"
-        f"Só o que começa com {PREFIXO_DO_SIMULADOR} chega ao bot. Digite 'sair' para terminar.\n"
+        "Simulador do grupo — uma linha por mensagem: `nome: mensagem` (ex.: `ana: @bot stall`).\n"
+        f"Só chega ao bot o que marca `@bot` ou começa com {PREFIXO_DO_SIMULADOR} (ou /). "
+        "Digite 'sair' para terminar.\n"
     )
     while True:
         try:
@@ -119,14 +125,19 @@ async def _conversar_no_grupo(
         if not separador or not nome.strip() or not texto.strip():
             saida("  (use `nome: mensagem`)")
             continue
-        nome, texto = nome.strip(), flows_grupo.aceitar_barra(texto.strip(), PREFIXO_DO_SIMULADOR)
+        nome, texto = nome.strip(), texto.strip()
         saida(f"[{nome}] {texto}")
+        marcado = False
         if flows_grupo.sem_prefixo(texto, PREFIXO_DO_SIMULADOR) is None:
-            saida("  (ignorado: sem prefixo, o bot não lê)")
-            continue
+            sem_marca = _MARCA_DO_BOT.sub(" ", texto)
+            if sem_marca == texto:
+                saida("  (ignorado: não marcou o bot nem usou um comando, o bot não lê)")
+                continue
+            texto = " ".join(sem_marca.split())
+            marcado = flows_grupo.sem_prefixo(texto, PREFIXO_DO_SIMULADOR) is None
         autor = Autor(numero_do_participante(nome), nome)
         nomes[autor.numero] = nome
-        await router.processar(texto, GRUPO_DO_SIMULADOR, autor)
+        await router.processar(texto, GRUPO_DO_SIMULADOR, autor, marcado=marcado)
 
 
 def main(

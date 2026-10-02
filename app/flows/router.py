@@ -120,18 +120,26 @@ class Router:
             conversa.usuario_falou()
             await conversa.enviar(messages.MIDIA_NAO_SUPORTADA)
 
-    async def processar(self, texto: str, chat_id: str, autor: Autor | None = None) -> None:
+    async def processar(
+        self, texto: str, chat_id: str, autor: Autor | None = None, *, marcado: bool = False
+    ) -> None:
         """`chat_id` é o espaço E o destino das respostas: o chat de onde a mensagem veio. Em
-        grupo (M16) `autor` é quem escreveu e `texto` vem COM o prefixo: sem ele, é conversa
-        entre pessoas e nada acontece."""
+        grupo (M16) `autor` é quem escreveu e `texto` vem COM o prefixo (`!` ou `/`, um comando)
+        ou, com `marcado` (M37, ADR-0035), sem a marcação do bot (conversa com ele). Sem uma coisa
+        nem outra é conversa entre pessoas e nada acontece."""
         async with self._trava(chat_id):
             d = self._deps(chat_id, autor)
-            de_grupo: tuple[Autor, str] | None = None
+            de_grupo: tuple[Autor, str, bool] | None = None
             if d.em_grupo:
-                resto = grupo.sem_prefixo(texto, d.p)
-                if autor is None or resto is None:
+                if autor is None:
                     return
-                de_grupo = (autor, resto)
+                resto = grupo.sem_prefixo(texto, d.p)
+                if resto is not None:
+                    de_grupo = (autor, resto, False)
+                elif marcado:
+                    de_grupo = (autor, texto.strip(), True)
+                else:
+                    return
             d.conversa.usuario_falou()
             perfil = await bloq(self._perfil, d)
             d = self._com_idioma(d, perfil)
@@ -167,6 +175,7 @@ class Router:
                         conversar=self._conversar,
                         eh_dono=self._eh_dono,
                         eh_admin=self._eh_admin,
+                        marcado=de_grupo[2],
                     )
                 elif self._como_comando(texto).startswith("/"):
                     nova = await commands.executar(

@@ -63,3 +63,12 @@ Formato: o que estava ambíguo, o que foi escolhido, por quê.
   rodada não ser interrompida por comandos soltos; se atrapalhar a discussão, é fácil afrouxar.
 - **Timeout máximo de 6 h por rodada** (3 h + 3 h do repasse); o padrão vem do plano.
 - **Sem métricas ainda:** `respostas/` está gravando; o script de métricas é o M18 (não feito).
+
+## M37 — Marcação do bot no grupo (ADR-0035)
+
+- **Marcação do bot no WhatsApp real.** O bot só atende no grupo se `mentionedIds` trouxer o número
+  (`@c.us`) ou o LID dele (resolvido por `lids/`), ou se o texto tiver `@<BOT_NUMBER>`. O campo não é
+  documentado pelo WAHA: **validar no WhatsApp real** marcando o bot num grupo ativo (`@bot stall`).
+  Se ficar mudo, olhar o payload (`mentionedIds`) e, se preciso, consultar o `me` da sessão
+  (`GET /api/sessions/{session}`) para saber o id/LID do bot.
+
