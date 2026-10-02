@@ -1,13 +1,13 @@
-"""O grupo (M16, ADR-0019): o bot só reage a mensagens com o prefixo (`!`) e a um conjunto FECHADO
-de comandos; o resto é conversa entre pessoas, que ele não lê nem grava.
+"""O grupo (M16, ADR-0019; marcação no M37, ADR-0035): o bot só reage a duas coisas, e o resto é
+conversa entre pessoas, que ele não lê nem grava:
 
-Camada por cima da máquina de estados, sem IA fora de atividade:
-
-- **Comandos** (`!add`, `!delete`, `!list`, `!practice`, `!review`, `!reminder`, `!group`, `!level`, `!help`), mais
-  `!teacher`/`!student` (escondidos do `!help`).
-- **Dentro de uma atividade** (`AWAIT_ACTION`, `REVIEWING`), `!1`, `!2`, `!3` e `!texto` são as
-  respostas, entregues à mesma máquina de estados do privado (`conversar`).
-- **Fora de atividade**, qualquer outra coisa recebe a ajuda do grupo, sem chamar a IA.
+- **Marcação** (`@bot texto`): é a conversa com o bot. O texto vai para a mesma máquina de estados do
+  privado (`conversar`): dentro de uma atividade é a resposta (`@bot 2`, `@bot a frase`); fora dela
+  é uma palavra nova ou um pedido, como no privado. Sem comando.
+- **Comandos** com `!` ou `/` (um conjunto FECHADO): `add`, `delete`, `list`, `practice`, `review`,
+  `daily`, `weekly`, `reminder`, `group`, `level`, `help`, mais `teacher`/`student` (escondidos do
+  `help`). Também valem dentro de uma atividade (`!1`, `!skip`, `/skipall`...).
+- **Fora de atividade**, um comando desconhecido recebe a ajuda do grupo, sem chamar a IA.
 """
 
 from __future__ import annotations
@@ -52,27 +52,31 @@ _PAPEIS = {"teacher": "professor", "student": "aluno"}
 Conversar = Callable[[Deps, Sessao, Profile, str], Awaitable[Sessao]]
 
 
-# Comandos de resposta que também valem com a barra no grupo (M35, ADR-0033): `/skip`, `/1`...
-_COM_BARRA = {"skip", "skip-all", "skipall", "1", "2", "3"}
-
-
-def aceitar_barra(texto: str, prefixo: str) -> str:
-    """No grupo só `!` chama o bot, mas `/skip`, `/skip-all`, `/skipall`, `/1`, `/2` e `/3` (a
-    mensagem inteira) valem como `!skip`... Qualquer outra mensagem com barra segue não lida."""
-    limpo = texto.strip()
-    if limpo.startswith("/") and limpo[1:].lower() in _COM_BARRA:
-        return prefixo + limpo[1:]
-    return texto
+_PREFIXOS_ALEM_DO_CONFIGURADO = ("/",)  # M37: no grupo valem `!` (configurável) e `/`
+_MARCACAO = re.compile(r"@(\d{5,})")
 
 
 def sem_prefixo(texto: str, prefixo: str) -> str | None:
-    """O texto sem o prefixo, ou `None` se a mensagem é conversa: não começa com ele, ou não tem
-    letra/número logo depois (`!!!`, `! `, `!` sozinho não chamam o bot)."""
+    """O texto sem o prefixo, ou `None` se a mensagem é conversa: não começa com `!` (o prefixo
+    configurado) nem com `/`, ou não tem letra/número logo depois (`!!!`, `! `, `/` sozinho)."""
     limpo = texto.strip()
-    if not limpo.startswith(prefixo):
-        return None
-    resto = limpo[len(prefixo) :]
-    return resto.strip() if resto[:1].isalnum() else None
+    for candidato in (prefixo, *_PREFIXOS_ALEM_DO_CONFIGURADO):
+        if limpo.startswith(candidato):
+            resto = limpo[len(candidato) :]
+            return resto.strip() if resto[:1].isalnum() else None
+    return None
+
+
+def numeros_marcados_no_texto(texto: str) -> list[str]:
+    """Os dígitos de cada `@123456...` escrito no texto (como o WhatsApp mostra uma marcação)."""
+    return _MARCACAO.findall(texto)
+
+
+def sem_marcacao(texto: str, ids: set[str]) -> str:
+    """O texto sem as marcações cujos dígitos estão em `ids` (as do próprio bot, número ou LID).
+    Marcações de outras pessoas ficam: fazem parte do que foi dito."""
+    sobra = _MARCACAO.sub(lambda m: "" if m.group(1) in ids else m.group(0), texto)
+    return " ".join(sobra.split())
 
 
 def _comando(texto: str) -> tuple[str, str]:
@@ -90,13 +94,27 @@ async def tratar(
     conversar: Conversar,
     eh_dono: Callable[[str], bool],
     eh_admin: Callable[[str], bool] | None = None,
+    marcado: bool = False,
 ) -> Sessao:
-    """`texto` já vem sem o prefixo. Devolve a nova sessão."""
+    """`texto` já vem sem o prefixo. `marcado`: a mensagem marcou o bot e não é um comando (M37),
+    então `texto` é conversa com o bot. Devolve a nova sessão."""
     await bloq(registrar_membro, d, autor)
     estado = Estado(sessao.estado)
     comando, argumento = _comando(texto)
+    if marcado and argumento:
+        comando = ""  # uma frase marcando o bot é conversa, nunca um comando com argumento
 
-    if comando in _PAPEIS:
+    if marcado and (not texto or comando == "help"):  # só marcou, ou pediu ajuda
+        await d.conversa.enviar(messages.ajuda_do_grupo(d.p))
+        return sessao
+
+    if marcado and estado not in (Estado.WEEKLY_QUIZ, Estado.REVIEWING):
+        # Marcou o bot, sem comando: a mesma conversa do privado (IDLE = palavra nova,
+        # AWAIT_ACTION = menu ou frase). Dentro do desafio e da revisão a marcação cai nos ramos
+        # abaixo, que já tratam `1`/`2`/`3`/`skip`/`stop` e o resto como resposta.
+        return await conversar(d, sessao, perfil, texto)
+
+    if comando in _PAPEIS and not marcado:
         return await _papel(d, sessao, autor, comando, argumento, eh_dono)
 
     if estado == Estado.WEEKLY_QUIZ:

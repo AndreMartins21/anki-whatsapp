@@ -86,7 +86,7 @@ async def test_prefixo_configuravel() -> None:
     assert await m.diz_no_grupo(ANA, "!add stall") == []  # o "!" não vale mais
     ajuda = await m.diz_no_grupo(ANA, "#help")
 
-    assert "#add" in ajuda[0] and "!add" not in ajuda[0]
+    assert "#list" in ajuda[0] and "!list" not in ajuda[0]
 
 
 async def test_privado_nao_ve_o_grupo_e_grupo_nao_ve_o_privado() -> None:
@@ -117,9 +117,9 @@ async def test_add_traz_o_card_com_o_menu_no_prefixo_do_grupo() -> None:
     (card,) = await m.diz_no_grupo(ANA, "!add stall | the talks stalled")
 
     assert "*stall*" in card
-    assert "!2 — See more examples" in card and "!3 — Check synonyms" in card
-    assert "!4 — Just save" in card
-    assert "start it with !" in card
+    assert "2️⃣ See more examples" in card and "3️⃣ Check synonyms" in card
+    assert "4️⃣ Just save" in card
+    assert "tag me with a sentence" in card and "!2" not in card
     assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.AWAIT_ACTION
     _sem_comandos_do_privado([card])
 
@@ -132,8 +132,8 @@ async def test_add_de_palavra_que_ja_existe_avisa_com_o_prefixo_e_0_libera() -> 
     (aviso,) = await m.diz_no_grupo(BIA, "!add stall")
 
     assert aviso.startswith("📌 You already have *stall* in your list.")
-    assert "!2 — See more examples" in aviso and "!3 — Check synonyms" in aviso
-    assert "!4" not in aviso
+    assert "2️⃣ See more examples" in aviso and "3️⃣ Check synonyms" in aviso
+    assert "4️⃣" not in aviso
     assert "type !0 or !skip" in aviso
     assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.AWAIT_ACTION
     (fim,) = await m.diz_no_grupo(BIA, "!skip")
@@ -146,7 +146,7 @@ async def test_card_do_grupo_ensina_a_pedir_outro_sentido_com_o_add() -> None:
 
     (card,) = await m.diz_no_grupo(ANA, "!add stall")
 
-    assert "Want another meaning? Send *!add stall | to delay on purpose*" in card
+    assert "Want another meaning? Tag me with *stall | to delay on purpose*" in card
     _sem_comandos_do_privado([card])
 
 
@@ -165,14 +165,16 @@ async def test_add_do_mesmo_termo_com_sentido_troca_o_card_sem_salvar() -> None:
     assert entrada.sentido.traducao == "enrolar"
 
 
-async def test_termo_diferente_com_barra_no_grupo_devolve_a_dica_do_add() -> None:
-    m = _grupo()
+async def test_outra_palavra_com_contexto_salva_a_aberta_e_abre_a_nova() -> None:
+    tutor = _tutor()
+    tutor.explicacoes.append(explicacao_stall())
+    m = montar(tutor=tutor)
     await m.diz_no_grupo(ANA, "!add stall")
 
-    (dica,) = await m.diz_no_grupo(BIA, "!hedge | to avoid committing")
+    salvo, card = await m.marca_no_grupo(BIA, "stall2 | to avoid committing")
 
-    assert dica == messages.nova_palavra_no_grupo("!")
-    assert [e.slug for e in m.banco.do_espaco(GRUPO).listar_entradas()] == ["stall"]
+    assert "Saved: *stall*" in salvo and "tag me" in card
+    assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.AWAIT_ACTION
 
 
 async def test_opcao_4_no_grupo_descarta_a_palavra_recem_criada() -> None:
@@ -233,7 +235,7 @@ async def test_sinonimos_pelo_menu_3() -> None:
 
     (resposta,) = await m.diz_no_grupo(CAIO, "!3")
 
-    assert "Synonyms for stall" in resposta and "!4 — Just save" in resposta
+    assert "Synonyms for stall" in resposta and "4️⃣ Just save" in resposta
 
 
 async def test_add_sem_palavra_explica_o_uso() -> None:
@@ -256,16 +258,17 @@ async def test_add_com_outra_palavra_aberta_salva_a_anterior_antes() -> None:
     assert sorted(e.slug for e in m.banco.do_espaco(GRUPO).listar_entradas()) == ["hedge", "stall"]
 
 
-async def test_palavra_nova_pelo_roteamento_no_grupo_so_da_a_dica_do_add() -> None:
+async def test_palavra_nova_pelo_roteamento_marcando_o_bot_salva_a_aberta_e_abre_a_nova() -> None:
     tutor = _tutor()
     tutor.roteamentos = [Roteamento(intencao="nova_palavra", palavra="hedge")]
+    tutor.explicacoes.append(explicacao_stall())
     m = montar(tutor=tutor)
     await m.diz_no_grupo(ANA, "!add stall")
 
-    respostas = await m.diz_no_grupo(BIA, "!hedge")
+    salvo, card = await m.marca_no_grupo(BIA, "hedge")
 
-    assert respostas == [messages.nova_palavra_no_grupo("!")]
-    assert [e.slug for e in m.banco.do_espaco(GRUPO).listar_entradas()] == ["stall"]  # nada aberto
+    assert "Saved: *stall*" in salvo and "tag me" in card
+    assert [e.slug for e in m.banco.do_espaco(GRUPO).listar_entradas()] == ["stall"]
     assert m.banco.do_espaco(GRUPO).obter_sessao().estado == Estado.AWAIT_ACTION
 
 
@@ -306,11 +309,12 @@ async def test_comando_do_privado_no_grupo_e_recusado_com_a_ajuda_do_grupo(coman
     _sem_comandos_do_privado(respostas)
 
 
-async def test_comando_do_privado_com_barra_no_grupo_nem_e_lido() -> None:
+async def test_a_barra_vale_como_o_exclamacao_no_grupo() -> None:
     m = _grupo()
 
-    assert await m.diz_no_grupo(ANA, "/list") == []
-    assert await m.diz_no_grupo(ANA, "/export") == []
+    assert await m.diz_no_grupo(ANA, "/list") == [messages.sem_entradas("!")]
+    assert await m.diz_no_grupo(ANA, "/export") == [messages.ajuda_do_grupo("!")]
+    assert await m.diz_no_grupo(ANA, "/") == []  # barra sozinha ainda é conversa
 
 
 async def test_a_ajuda_do_grupo_so_cita_comandos_do_grupo() -> None:
@@ -319,7 +323,7 @@ async def test_a_ajuda_do_grupo_so_cita_comandos_do_grupo() -> None:
     (ajuda,) = await m.diz_no_grupo(ANA, "!help")
 
     _sem_comandos_do_privado([ajuda])
-    for comando in ("add", "delete", "list", "practice", "review", "daily", "group", "level"):
+    for comando in ("delete", "list", "practice", "review", "daily", "group", "level"):
         assert f"!{comando}" in ajuda
     for escondido in ("teacher", "student", "activate"):
         assert escondido not in ajuda
@@ -360,7 +364,7 @@ async def test_practice_retoma_uma_palavra_do_caderno_da_turma() -> None:
 
     (card,) = await m.diz_no_grupo(BIA, "!practice stall")
 
-    assert "*stall*" in card and "!2 — See more examples" in card
+    assert "*stall*" in card and "2️⃣ See more examples" in card
 
 
 async def test_practice_por_numero_e_palavra_inexistente() -> None:

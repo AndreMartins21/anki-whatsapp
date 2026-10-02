@@ -72,9 +72,13 @@ def eh_comando_de_ativacao(texto: str, prefixo: str = "!") -> str | None:
     """`activate` ou `deactivate` se o texto for exatamente esse comando com o prefixo do grupo;
     qualquer outra coisa (inclusive `!activate` no meio de uma frase) é conversa e devolve None."""
     partes = texto.strip().split()
-    if not partes or not partes[0].startswith(prefixo):
+    if not partes:
         return None
-    comando = normalizar(partes[0][len(prefixo) :])
+    primeira = partes[0]
+    prefixo_usado = next((p for p in (prefixo, "/") if primeira.startswith(p)), None)
+    if prefixo_usado is None:
+        return None
+    comando = normalizar(primeira[len(prefixo_usado) :])
     return comando if comando in {"activate", "deactivate"} else None
 
 

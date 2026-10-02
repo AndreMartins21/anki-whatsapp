@@ -119,7 +119,7 @@ async def test_no_grupo_o_audio_tambem_e_automatico() -> None:
 
     (card,) = await m.diz_no_grupo(ANA, "!add stall | the talks stalled")
 
-    assert "1️⃣" not in card and "2️⃣ !2 — See more examples" in card
+    assert "1️⃣" not in card and "2️⃣ See more examples" in card
     assert [c for c, _ in m.channel.vozes_enviadas] == [GRUPO, GRUPO]
 
 

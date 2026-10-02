@@ -54,7 +54,9 @@ def pagina_invalida(p: str = "/") -> str:
 def sem_entradas(p: str = "/") -> str:
     if p == "/":
         return SEM_ENTRADAS
-    return f"The class doesn't have any saved words yet. Add one with {p}add stall."
+    return (
+        "The class doesn't have any saved words yet. Add one by tagging me with a word, like stall."
+    )
 
 
 _MAX_FRASES_NO_INFO = 5
@@ -98,11 +100,9 @@ def _linha_de_opcoes(opcoes: Sequence[str]) -> str:
     return "  ·  ".join(f"{_NUMEROS[i]} {texto}" for i, texto in enumerate(opcoes, start=1))
 
 
-def _lista_de_opcoes(opcoes: Sequence[str], grupo: str | None = None, *, primeira: int = 1) -> str:
+def _lista_de_opcoes(opcoes: Sequence[str], *, primeira: int = 1) -> str:
     """`primeira` é o número da 1ª opção: o menu depois do áudio começa no 2 e não renumera."""
     numeradas = list(enumerate(opcoes, start=primeira))
-    if grupo is not None:  # no grupo, cada opção se responde com o prefixo: !1, !2, !3
-        return "\n".join(f"{_NUMEROS[i]} {grupo}{i} — {texto}" for i, texto in numeradas)
     return "\n".join(f"{_NUMEROS[i]} {texto}" for i, texto in numeradas)
 
 
@@ -111,7 +111,7 @@ def _lista_de_opcoes(opcoes: Sequence[str], grupo: str | None = None, *, primeir
 
 def convite(palavra: str, grupo: str | None = None) -> str:
     if grupo is not None:
-        return f"Now, write a sentence using *{palavra}* (start it with {grupo}), or type:"
+        return f"Now, tag me with a sentence using *{palavra}*, or tag me with a number:"
     return f"Now, you can write one or more sentences using *{palavra}*, or type:"
 
 
@@ -121,7 +121,7 @@ def menu_acoes(palavra: str, *, ja_viu_sinonimos: bool = False, grupo: str | Non
     o que o aluno já decorou (`grupo` é o prefixo do grupo, M16; `None` no privado)."""
     sinonimos = "See more synonyms" if ja_viu_sinonimos else "Check synonyms"
     opcoes = ["See more examples", sinonimos, "Just save", "Don't save"]
-    return convite(palavra, grupo) + "\n" + _lista_de_opcoes(opcoes, grupo, primeira=2)
+    return convite(palavra, grupo) + "\n" + _lista_de_opcoes(opcoes, primeira=2)
 
 
 # ---- respostas dos fluxos ------------------------------------------------------------------
@@ -135,14 +135,14 @@ def _outros_sentidos(
     palavra: str, outros: Sequence[Sense | SentidoSalvo], grupo: str | None, pt: bool = True
 ) -> list[str]:
     """Os outros sentidos da palavra (no formato do `/info`) e como pedir um deles: a mesma
-    palavra com `|` e o sentido, no grupo pelo `!add` (M31). Vazio se a palavra tem um só."""
+    palavra com `|` e o sentido, no grupo marcando o bot (M31, M37). Vazio se a palavra tem um só."""
     if not outros:
         return []
-    comando = f"{grupo}add " if grupo is not None else ""
+    pedido = f"*{palavra} | {outros[0].definicao}*"
     return [
         "",
         *((f"↔️ {o.traducao} — {o.definicao}" if pt else f"↔️ {o.definicao}") for o in outros),
-        f"Want another meaning? Send *{comando}{palavra} | {outros[0].definicao}*",
+        f"Want another meaning? {'Tag me with' if grupo is not None else 'Send'} {pedido}",
     ]
 
 
@@ -206,7 +206,7 @@ def ja_existe(
         + "\n\n"
         + convite(palavra, grupo)
         + "\n"
-        + _lista_de_opcoes(opcoes, grupo, primeira=2)
+        + _lista_de_opcoes(opcoes, primeira=2)
         + f"\n\nTo send another word or command, type {p}0 or {p}skip."
     )
 
@@ -283,8 +283,8 @@ def salvo(palavra: str, sugestoes: Sequence[Expansion] = (), *, p: str = "/") ->
         linhas.append(f"You might like these too: {itens}.")
     if p == "/":
         linhas.append("Send me another word or expression whenever you want.")
-    else:  # no grupo, palavra nova entra só por !add
-        linhas.append(f"Add another one whenever you want: {p}add word.")
+    else:  # no grupo, palavra nova entra marcando o bot (M37)
+        linhas.append("Add another one whenever you want: tag me with a word.")
     return "\n".join(linhas)
 
 
@@ -523,9 +523,9 @@ def card_de_revisao(indice: int, total: int, palavra: str, *, grupo: str | None 
     if grupo is not None:
         return (
             f"🔁 {indice}/{total} · *{palavra}*\n"
-            f"Explain it in English in your own words, or write a sentence using it "
-            f"(start with {grupo}).\n\n"
-            f"_Anyone can answer · {grupo}skip next word · {grupo}skipall stop the review_"
+            "Explain it in English in your own words, or write a sentence using it "
+            "(tag me to answer).\n\n"
+            f"_Anyone can answer · tag me with skip for the next word · skipall to stop the review_"
         )
     return (
         f"🔁 {indice}/{total} · *{palavra}*\n"
@@ -560,8 +560,8 @@ def revisao_encerrada(
         linhas.append(f"⏭️ Skipped: {', '.join(puladas)}")
     if p == "/":
         linhas.append("Send me a new word or expression whenever you want.")
-    else:  # no grupo, palavra nova entra só por !add
-        linhas.append(f"Add a new word whenever you want: {p}add word.")
+    else:  # no grupo, palavra nova entra marcando o bot (M37)
+        linhas.append("Add a new word whenever you want: tag me with a word.")
     return "\n".join(linhas)
 
 
@@ -807,12 +807,16 @@ def grupos(
 
 
 def ajuda_do_grupo(p: str = "!") -> str:
-    """Só os comandos do grupo: nunca cita os do privado."""
+    """Só o que vale no grupo: nunca cita os comandos do privado."""
     return (
         "*How I work in this group* 🏫\n"
-        f"I only read messages that start with {p}. The rest is your chat, and I don't read it.\n\n"
-        "*Commands*\n"
-        f"{p}add word — add a word or expression (with context: {p}add stall | the talks stalled)\n"
+        "I only read messages that tag me, and the commands below. The rest is your chat, and I "
+        "don't read it.\n\n"
+        "*Tag me* 💬\n"
+        "Tag me with a word or expression to add it (with context: stall | the talks stalled). "
+        "While practicing, tag me with an option (2, 3, 4 or 5) or a sentence; in a review, tag me "
+        "with your answer, skip for the next word or skipall to stop.\n\n"
+        f"*Commands* (start with {p} or /)\n"
         f"{p}list [page] — the class's words, numbered\n"
         f"{p}delete [word or number] — remove a word from the class's list\n"
         f"{p}practice [word or number] — practice one (no word: the oldest pending one)\n"
@@ -820,25 +824,19 @@ def ajuda_do_grupo(p: str = "!") -> str:
         f"{p}daily — the daily review, no one tagged (admins: {p}daily 19h, {p}daily off)\n"
         f"{p}weekly — the weekly challenge, one tagged question each (admins: {p}weekly now)\n"
         f"{p}group — the class, its words and reminders\n"
-        f"{p}level — the class's level (to change it: {p}level B1-B2)\n\n"
-        f"While practicing, pick an option with {p}2, {p}3, {p}4 or {p}5, and start a sentence "
-        f"with {p} to try it. In a review, {p}skip jumps to the next word and {p}skipall stops it."
+        f"{p}level — the class's level (to change it: {p}level B1-B2)"
     )
 
 
 def grupo_add_uso(p: str = "!") -> str:
     return (
         f"Tell me which word: {p}add stall — or with the sentence where you saw it: "
-        f"{p}add stall | the talks stalled."
+        f"{p}add stall | the talks stalled. (Tagging me with the word works too.)"
     )
 
 
 def grupo_delete_uso(p: str = "!") -> str:
     return f"Tell me which word to remove: {p}delete stall — or its number in {p}list: {p}delete 3."
-
-
-def nova_palavra_no_grupo(p: str = "!") -> str:
-    return f"To add a new word to the class, use {p}add word (for example {p}add stall)."
 
 
 def papel_alterado(nome: str | None, papel: str) -> str:
@@ -988,14 +986,14 @@ def semanal_abertura(total: int) -> str:
     )
 
 
-def pergunta_semanal(indice: int, total: int, marcado: str, pergunta: str, p: str = "!") -> str:
+def pergunta_semanal(indice: int, total: int, marcado: str, pergunta: str) -> str:
     """Sempre começa marcando a pessoa, depois a pergunta e o menu (`/1`, `/2`, `/3`)."""
     return (
         f"@{marcado} {negrito_das_marcas(pergunta)}\n\n"
         "/1 Explain the question\n"
         "/2 Listen to the question\n"
         "/3 Skip this question\n"
-        f"_🏆 Weekly challenge · {indice}/{total} — answer starting with {p}_"
+        f"_🏆 Weekly challenge · {indice}/{total} — tag me to answer_"
     )
 
 
@@ -1022,22 +1020,22 @@ def feedback_semanal_de_outro(rev: AvaliacaoDaPergunta, nome: str | None, marcad
     )
 
 
-def semanal_encerrada(respondidas: int, puladas: int, total: int, *, p: str = "!") -> str:
+def semanal_encerrada(respondidas: int, puladas: int, total: int) -> str:
     linhas = [f"🏁 *Weekly challenge done* — {respondidas} of {total} answered."]
     if puladas:
         linhas.append(f"⏭️ Skipped: {puladas}")
-    linhas.append(f"Add new words any time: {p}add word.")
+    linhas.append("Add new words any time: tag me with a word.")
     return "\n".join(linhas)
 
 
-def semanal_inativa(respondidas: int, puladas: int, total: int, *, p: str = "!") -> str:
+def semanal_inativa(respondidas: int, puladas: int, total: int) -> str:
     return "😴 Nobody replied for a while, so I closed the challenge.\n" + semanal_encerrada(
-        respondidas, puladas, total, p=p
+        respondidas, puladas, total
     )
 
 
-def semanal_sem_palavras(p: str = "!") -> str:
-    return f"The weekly challenge needs words from the class. Add some with {p}add word."
+def semanal_sem_palavras() -> str:
+    return "The weekly challenge needs words from the class. Add some by tagging me with a word."
 
 
 def semanal_invalida(p: str = "!") -> str:

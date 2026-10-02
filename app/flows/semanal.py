@@ -54,7 +54,7 @@ async def iniciar(d: Deps, perfil: Profile, *, avisar: bool = False) -> Sessao:
     entradas = await bloq(d.repo.listar_entradas)
     if not entradas:
         if avisar:
-            await d.conversa.enviar(messages.semanal_sem_palavras(d.p))
+            await d.conversa.enviar(messages.semanal_sem_palavras())
         return d.sessao_vazia()
     alunos = await review.alunos_elegiveis(d, atualizar=True)
     if not alunos:
@@ -85,12 +85,10 @@ async def _apresentar(
     alunos = await review.alunos_elegiveis(d, atualizar=False)
     marcado = await review.marcar(d, alunos, excluir=anterior)
     if marcado is None:  # todos saíram do grupo no meio da rodada
-        await d.conversa.enviar(
-            messages.semanal_encerrada(respondidas, puladas, len(perguntas), p=d.p)
-        )
+        await d.conversa.enviar(messages.semanal_encerrada(respondidas, puladas, len(perguntas)))
         return d.sessao_vazia()
     texto = messages.pergunta_semanal(
-        indice + 1, len(perguntas), marcado, perguntas[indice].pergunta, d.p
+        indice + 1, len(perguntas), marcado, perguntas[indice].pergunta
     )
     await d.conversa.enviar(texto, mentions=[marcado])
     return Sessao(
@@ -109,7 +107,7 @@ async def _avancar(d: Deps, sessao: Sessao, respondidas: int, puladas: int) -> S
     proximo = sessao.semanal_indice + 1
     if proximo >= len(sessao.semanal_perguntas):
         await d.conversa.enviar(
-            messages.semanal_encerrada(respondidas, puladas, len(sessao.semanal_perguntas), p=d.p)
+            messages.semanal_encerrada(respondidas, puladas, len(sessao.semanal_perguntas))
         )
         return d.sessao_vazia()
     return await _apresentar(
@@ -188,7 +186,6 @@ async def encerrar(d: Deps, sessao: Sessao) -> Sessao:
             sessao.semanal_respondidas,
             sessao.semanal_puladas,
             len(sessao.semanal_perguntas),
-            p=d.p,
         )
     )
     return d.sessao_vazia()
@@ -201,7 +198,6 @@ async def fechar_por_inatividade(d: Deps, sessao: Sessao) -> Sessao:
             sessao.semanal_respondidas,
             sessao.semanal_puladas,
             len(sessao.semanal_perguntas),
-            p=d.p,
         )
     )
     return d.sessao_vazia()

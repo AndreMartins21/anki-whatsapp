@@ -183,7 +183,7 @@ async def test_sem_palavras_ou_sem_aluno_o_weekly_now_explica() -> None:
 
     vazia = montar(tutor=FakeTutor())
     (sem_palavras,) = await vazia.diz_no_grupo(DONO, "!weekly now")
-    assert sem_palavras == messages.semanal_sem_palavras("!")
+    assert sem_palavras == messages.semanal_sem_palavras()
 
 
 async def test_weekly_now_com_atividade_em_andamento_recusa() -> None:
@@ -212,6 +212,44 @@ async def test_o_marcado_responde_recebe_feedback_e_o_proximo_aluno_e_marcado() 
     assert segundo != primeiro
     assert m.banco.do_espaco(GRUPO).listar_respostas()[0].marcado is True
     assert _sessao(m).semanal_respondidas == 1
+
+
+async def test_responder_marcando_o_bot_e_sem_comando() -> None:
+    m = _turma()
+    await _comecar(m)
+    primeiro = _marcado(m)
+
+    feedback, pergunta = await m.marca_no_grupo(
+        _autor(m, primeiro), "I would call the client and ask for more time"
+    )
+
+    assert "Good answer!" in feedback and "2/3" in pergunta
+    assert _marcado(m) != primeiro
+    assert m.tutor is not None
+    chamada = next(c for c in m.tutor.chamadas if c[0] == "weekly_answer")
+    assert chamada[1][2] == "I would call the client and ask for more time"
+
+
+async def test_marcando_o_bot_o_menu_funciona_com_o_numero_e_com_skip() -> None:
+    m = _turma()
+    await _comecar(m)
+    primeiro = _marcado(m)
+
+    (explicacao,) = await m.marca_no_grupo(ANA, "1")
+    assert explicacao and _sessao(m).semanal_indice == 0
+    (pergunta,) = await m.marca_no_grupo(BIA, "skip")
+
+    assert "2/3" in pergunta and _marcado(m) != primeiro
+    assert _sessao(m).semanal_puladas == 1
+
+
+async def test_conversa_comum_durante_o_desafio_nao_e_resposta() -> None:
+    m = _turma()
+    await _comecar(m)
+
+    assert await m.diz_no_grupo(ANA, "kkkk boa pergunta") == []  # sem marcar nem prefixo
+    assert m.tutor is not None
+    assert "weekly_answer" not in [c[0] for c in m.tutor.chamadas]
 
 
 async def test_quem_nao_foi_marcado_recebe_feedback_mas_a_pergunta_nao_avanca() -> None:
@@ -294,13 +332,11 @@ async def test_ouvir_sem_servico_de_audio_avisa() -> None:
 
 @pytest.mark.parametrize("comando", ["!3", "!skip", "/3", "/skip"])
 async def test_pular_passa_para_a_proxima_pergunta_e_outro_aluno(comando: str) -> None:
-    from app.flows.grupo import aceitar_barra
-
     m = _turma()
     await _comecar(m)
     primeiro = _marcado(m)
 
-    (pergunta,) = await m.diz_no_grupo(BIA, aceitar_barra(comando, "!"))
+    (pergunta,) = await m.diz_no_grupo(BIA, comando)
 
     assert "2/3" in pergunta and _marcado(m) != primeiro
     assert _sessao(m).semanal_puladas == 1
@@ -577,3 +613,16 @@ def test_weekly_answer_usa_o_modelo_de_avaliacao() -> None:
 
     assert resultado.feedback == "Nice!"
     assert provider.chamadas[0].modelo == "forte"
+
+
+def test_a_avaliacao_pede_coerencia_com_a_pergunta_e_nao_cobra_as_palavras() -> None:
+    from app.services.prompts import prompt_weekly_answer
+
+    prompt = prompt_weekly_answer(
+        "B1-B2", "What would you do if a project *stalled*?", ["stall"], "x"
+    )
+
+    assert "NÃO precisa usá-las" in prompt.sistema
+    assert "coerente com a pergunta no geral" in prompt.sistema
+    assert "nunca baixe a nota por não usá-las" in prompt.sistema
+    assert "ignora o vocabulário" not in prompt.sistema  # o critério antigo caiu

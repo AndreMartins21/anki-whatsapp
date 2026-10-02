@@ -81,7 +81,7 @@ async def test_review_nao_marca_ninguem_e_o_card_convida_todo_mundo() -> None:
     (card,) = await m.diz_no_grupo(ANA, "!review")
 
     assert "Practice time" in card and "1/3" in card
-    assert "Anyone can answer" in card and "!skip" in card and "!skipall" in card
+    assert "Anyone can answer" in card and "tag me" in card and "skipall" in card
     assert "@" not in card and _sem_mencao(m)
     assert _sessao(m).estado == Estado.REVIEWING
 
@@ -156,7 +156,7 @@ async def test_o_ultimo_card_fecha_a_rodada_com_o_resumo() -> None:
 
     (fim,) = await m.diz_no_grupo(ANA, "!it means to stop")
 
-    assert "Practice done" in fim and "Add a new word whenever you want: !add word." in fim
+    assert "Practice done" in fim and "Add a new word whenever you want: tag me with a word." in fim
     assert _sessao(m).estado == Estado.IDLE
 
 
@@ -165,13 +165,11 @@ async def test_o_ultimo_card_fecha_a_rodada_com_o_resumo() -> None:
 
 @pytest.mark.parametrize("comando", ["!skip", "/skip"])
 async def test_skip_pula_a_palavra_sem_mexer_na_nota(comando: str) -> None:
-    from app.flows.grupo import aceitar_barra
-
     m = _turma()
     await m.diz_no_grupo(ANA, "!review")
     antes = m.banco.do_espaco(GRUPO).obter_entrada("w0")
 
-    (pulo,) = await m.diz_no_grupo(BIA, aceitar_barra(comando, "!"))
+    (pulo,) = await m.diz_no_grupo(BIA, comando)
 
     assert "Skipping *w0*" in pulo and "2/3" in pulo
     assert m.banco.do_espaco(GRUPO).obter_entrada("w0") == antes

@@ -19,10 +19,8 @@ def _quantidade(n: int) -> int:
 
 
 async def _nova_palavra(d: Deps, sessao: Sessao, perfil: Profile, texto: str) -> Sessao:
-    if d.em_grupo:
-        # M16: no grupo toda palavra nova entra por `!add`; aqui nada é aberto nem salvo.
-        await d.conversa.enviar(messages.nova_palavra_no_grupo(d.p))
-        return sessao
+    # M37: no grupo isto só é alcançado por uma marcação ao bot (ou por `!texto` numa atividade),
+    # então a palavra nova é salva como no privado.
     await practice.concluir(d, sessao, perfil)
     return await capture.explicar(d, perfil, texto)
 
