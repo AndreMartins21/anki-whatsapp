@@ -71,4 +71,3 @@ Formato: o que estava ambíguo, o que foi escolhido, por quê.
   documentado pelo WAHA: **validar no WhatsApp real** marcando o bot num grupo ativo (`@bot stall`).
   Se ficar mudo, olhar o payload (`mentionedIds`) e, se preciso, consultar o `me` da sessão
   (`GET /api/sessions/{session}`) para saber o id/LID do bot.
-
