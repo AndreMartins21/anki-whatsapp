@@ -50,6 +50,22 @@ class MessagePayload(BaseModel):
         ]
         return next((c.strip() for c in candidatos if isinstance(c, str) and c.strip()), None)
 
+    def ids_mencionados(self) -> list[str]:
+        """Os ids marcados na mensagem. O WAHA/GOWS deixa `mentionedIds` vazio: a marcação vem em
+        `_data.Message.<tipo>.contextInfo.mentionedJID` (confirmado no WhatsApp real, M37)."""
+        ids = list(self.mentioned_ids)
+        mensagem = self.data.get("Message")
+        if isinstance(mensagem, dict):
+            for conteudo in mensagem.values():
+                contexto = conteudo.get("contextInfo") if isinstance(conteudo, dict) else None
+                if not isinstance(contexto, dict):
+                    continue
+                for chave in ("mentionedJID", "mentionedJid"):
+                    marcados = contexto.get(chave)
+                    if isinstance(marcados, list):
+                        ids += [m for m in marcados if isinstance(m, str)]
+        return list(dict.fromkeys(ids))
+
     @field_validator("body", mode="before")
     @classmethod
     def _sem_texto_e_string_vazia(cls, valor: object) -> object:

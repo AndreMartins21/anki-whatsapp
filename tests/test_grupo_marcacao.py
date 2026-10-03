@@ -50,6 +50,13 @@ def test_sem_prefixo_aceita_exclamacao_e_barra(texto: str, esperado: str | None)
     assert grupo.sem_prefixo(texto, "!") == esperado
 
 
+def test_marca_literal_do_bot() -> None:
+    assert grupo.marca_literal_do_bot("@bot furniture") and grupo.marca_literal_do_bot("oi @Bot")
+    assert not grupo.marca_literal_do_bot("@robot furniture")
+    assert not grupo.marca_literal_do_bot("mail@bot.com")
+    assert grupo.sem_marcacao("@bot furniture", set()) == "furniture"
+
+
 def test_sem_marcacao_tira_so_as_do_bot() -> None:
     texto = "@99887766 stall | the talks stalled @5531999990000"
 
@@ -59,6 +66,64 @@ def test_sem_marcacao_tira_so_as_do_bot() -> None:
 
 
 # --- webhook ----------------------------------------------------------------------------------
+
+# O payload real do GOWS (confirmado no WhatsApp real): `mentionedIds` vem vazio, a marcação está em
+# `_data.Message.extendedTextMessage.contextInfo.mentionedJID` e o texto traz `@<LID do bot>`.
+LID_REAL = "119302179033090"
+
+
+def _como_o_gows(texto: str, marcados: list[str]) -> dict[str, Any]:
+    corpo = _marcando(texto)
+    corpo["payload"]["_data"] = {
+        "Message": {
+            "extendedTextMessage": {"text": texto, "contextInfo": {"mentionedJID": marcados}}
+        }
+    }
+    return corpo
+
+
+def test_payload_do_gows_com_o_lid_do_bot_no_context_info(ambiente: Ambiente) -> None:
+    ambiente.canal.ids_do_bot = {"553199051491", LID_REAL}
+    ambiente.tutor.expansoes.append(expansoes())
+
+    ambiente.cliente.post(
+        "/waha/webhook", json=_como_o_gows(f"@{LID_REAL} furniture", [f"{LID_REAL}@lid"])
+    )
+
+    ((chat, texto),) = ambiente.canal.textos_enviados
+    assert chat == GRUPO_FIXO and "*stall*" in texto  # o fake explica sempre `stall`
+    assert [e.slug for e in ambiente.banco.do_espaco(GRUPO_FIXO).listar_entradas()] == ["stall"]
+    assert ambiente.tutor.chamadas[0][1][0] == "furniture"  # sem o `@<LID>` na palavra
+
+
+def test_payload_do_gows_marcando_outra_pessoa_nao_chama_o_bot(ambiente: Ambiente) -> None:
+    ambiente.canal.ids_do_bot = {"553199051491", LID_REAL}
+
+    ambiente.cliente.post(
+        "/waha/webhook", json=_como_o_gows("@260657404477652 furniture", ["260657404477652@lid"])
+    )
+
+    assert ambiente.canal.textos_enviados == [] and ambiente.canal.vistos == []
+
+
+def test_sem_o_me_do_canal_o_lid_se_reconhece_pelo_numero_resolvido(ambiente: Ambiente) -> None:
+    ambiente.canal.lids_conhecidos[f"{LID_REAL}@lid"] = BOT
+
+    ambiente.cliente.post(
+        "/waha/webhook", json=_como_o_gows(f"@{LID_REAL} furniture", [f"{LID_REAL}@lid"])
+    )
+
+    assert len(ambiente.canal.textos_enviados) == 1
+
+
+def test_arroba_bot_digitado_sem_escolher_o_contato_tambem_chama_o_bot(
+    ambiente: Ambiente,
+) -> None:
+    ambiente.cliente.post("/waha/webhook", json=_marcando("@bot furniture"))
+
+    ((_, texto),) = ambiente.canal.textos_enviados
+    assert "*stall*" in texto
+    assert ambiente.tutor.chamadas[0][1][0] == "furniture"
 
 
 def test_marcar_o_bot_com_uma_palavra_adiciona_a_palavra(ambiente: Ambiente) -> None:

@@ -54,6 +54,9 @@ Conversar = Callable[[Deps, Sessao, Profile, str], Awaitable[Sessao]]
 
 _PREFIXOS_ALEM_DO_CONFIGURADO = ("/",)  # M37: no grupo valem `!` (configurável) e `/`
 _MARCACAO = re.compile(r"@(\d{5,})")
+_MARCA_LITERAL = re.compile(
+    r"(?<![\w@])@bot\b", re.IGNORECASE
+)  # `@bot` digitado, sem escolher o contato
 
 
 def sem_prefixo(texto: str, prefixo: str) -> str | None:
@@ -72,11 +75,16 @@ def numeros_marcados_no_texto(texto: str) -> list[str]:
     return _MARCACAO.findall(texto)
 
 
+def marca_literal_do_bot(texto: str) -> bool:
+    """`@bot` escrito no texto (plano B de quem digita em vez de escolher o contato)."""
+    return _MARCA_LITERAL.search(texto) is not None
+
+
 def sem_marcacao(texto: str, ids: set[str]) -> str:
-    """O texto sem as marcações cujos dígitos estão em `ids` (as do próprio bot, número ou LID).
-    Marcações de outras pessoas ficam: fazem parte do que foi dito."""
+    """O texto sem as marcações cujos dígitos estão em `ids` (as do próprio bot, número ou LID) e
+    sem o `@bot` digitado. Marcações de outras pessoas ficam: fazem parte do que foi dito."""
     sobra = _MARCACAO.sub(lambda m: "" if m.group(1) in ids else m.group(0), texto)
-    return " ".join(sobra.split())
+    return " ".join(_MARCA_LITERAL.sub("", sobra).split())
 
 
 def _comando(texto: str) -> tuple[str, str]:

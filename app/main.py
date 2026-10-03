@@ -533,27 +533,28 @@ async def _sem_marcacao_do_bot(
     payload: MessagePayload, settings: Settings, channel: ChannelComLid, banco: Banco
 ) -> str | None:
     """`None` se a mensagem não marca o bot; senão, o texto sem a marcação dele (o resto da
-    mensagem é o que a pessoa disse ao bot). A marcação vem em `mentionedIds` (número ou LID,
-    resolvido pelo cache `lids/`) ou, como plano B, escrita no texto como `@numero-do-bot`. O
-    campo não é documentado pelo WAHA: ver docs/noite/PENDENCIAS.md."""
-    digitos_do_bot = {re.sub(r"\D", "", settings.bot_number)}
-    ids_do_bot = set(digitos_do_bot)
-    marcou = any(
-        numero_e_permitido(d, settings.bot_number)
-        for d in grupo.numeros_marcados_no_texto(payload.body)
-    )
-    for mencionado in payload.mentioned_ids:
-        numero = await _numero_do_remetente(mencionado, channel, banco)
-        if numero is not None and numero_e_permitido(numero, settings.bot_number):
-            marcou = True
-            ids_do_bot.add(digitos_do_chat_id(mencionado))
-    if not marcou:
+    mensagem é o que a pessoa disse ao bot). O bot é reconhecido pelos ids marcados na mensagem
+    (`contextInfo.mentionedJID`, que no GOWS vem como o LID dele) contra o `me` da sessão e o
+    `BOT_NUMBER`; como plano B, por `@numero` ou `@bot` escritos no texto (ADR-0035)."""
+    do_canal = await channel.bot_ids()
+    do_bot = do_canal | {re.sub(r"\D", "", settings.bot_number)}
+
+    def eh_o_bot(digitos: str) -> bool:
+        return digitos in do_bot or numero_e_permitido(digitos, settings.bot_number)
+
+    a_tirar: set[str] = set()
+    for mencionado in payload.ids_mencionados():
+        digitos = digitos_do_chat_id(mencionado)
+        if eh_o_bot(digitos):
+            a_tirar.add(digitos)
+        elif not do_canal:  # sem o `me`, o LID só se reconhece pelo número que ele resolve
+            numero = await _numero_do_remetente(mencionado, channel, banco)
+            if numero is not None and eh_o_bot(numero):
+                a_tirar.add(digitos)
+    a_tirar |= {d for d in grupo.numeros_marcados_no_texto(payload.body) if eh_o_bot(d)}
+    if not a_tirar and not grupo.marca_literal_do_bot(payload.body):
         return None
-    # Tira também as marcações escritas com o número do bot, com ou sem o nono dígito.
-    for digitos in grupo.numeros_marcados_no_texto(payload.body):
-        if numero_e_permitido(digitos, settings.bot_number):
-            ids_do_bot.add(digitos)
-    return grupo.sem_marcacao(payload.body, ids_do_bot)
+    return grupo.sem_marcacao(payload.body, a_tirar)
 
 
 async def _numeros_mencionados(
@@ -562,7 +563,7 @@ async def _numeros_mencionados(
     """Os números das menções que o payload trouxer (o WAHA não documenta o campo: pode vir
     vazio). LIDs são resolvidos pelo cache `lids/`."""
     numeros: list[str] = []
-    for mencionado in payload.mentioned_ids:
+    for mencionado in payload.ids_mencionados():
         numero = await _numero_do_remetente(mencionado, channel, banco)
         if numero:
             numeros.append(numero)
