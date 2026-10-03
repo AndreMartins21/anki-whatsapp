@@ -200,3 +200,41 @@ def test_ids_mencionados_sao_lidos_quando_o_payload_traz() -> None:
 
     assert evento.payload.mentioned_ids == ["5511988887777@c.us", "999@lid"]
     assert _mensagem().payload.mentioned_ids == []
+
+
+def test_ids_mencionados_le_o_context_info_do_gows_e_junta_com_mentioned_ids() -> None:
+    from app.channel.parser import MessagePayload
+
+    payload = MessagePayload.model_validate(
+        {
+            "id": "x",
+            "from": "1@g.us",
+            "body": "@119302179033090 stall",
+            "mentionedIds": ["5531999990000@c.us", "119302179033090@lid"],
+            "_data": {
+                "Message": {
+                    "extendedTextMessage": {
+                        "text": "@119302179033090 stall",
+                        "contextInfo": {"mentionedJID": ["119302179033090@lid", "888@lid"]},
+                    },
+                    "messageContextInfo": {"messageSecret": "x"},
+                }
+            },
+        }
+    )
+
+    assert payload.ids_mencionados() == [
+        "5531999990000@c.us",
+        "119302179033090@lid",
+        "888@lid",
+    ]
+
+
+def test_ids_mencionados_sem_nada_e_vazio() -> None:
+    from app.channel.parser import MessagePayload
+
+    payload = MessagePayload.model_validate(
+        {"id": "x", "from": "1@g.us", "_data": {"Message": None}}
+    )
+
+    assert payload.ids_mencionados() == []

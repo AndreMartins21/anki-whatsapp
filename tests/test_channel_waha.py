@@ -336,3 +336,27 @@ async def test_group_participants_levanta_quando_o_waha_falha_para_o_chamador_us
     with pytest.raises(httpx.HTTPStatusError):
         await canal.group_participants("120363000000000001@g.us")
     await canal.aclose()
+
+
+async def test_bot_ids_le_o_numero_e_o_lid_do_me_e_guarda_o_resultado() -> None:
+    chamadas: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        chamadas.append(request.url.path)
+        me = {"id": "553199051491@c.us", "lid": "119302179033090@lid", "pushName": "Anki Zap"}
+        return httpx.Response(200, json={"name": "default", "status": "WORKING", "me": me})
+
+    canal = _canal(httpx.MockTransport(handler))
+    ids = await canal.bot_ids()
+    de_novo = await canal.bot_ids()
+    await canal.aclose()
+
+    assert ids == de_novo == {"553199051491", "119302179033090"}
+    assert chamadas == ["/api/sessions/default"]  # uma ida só
+
+
+async def test_bot_ids_falha_do_waha_vira_vazio_sem_levantar() -> None:
+    canal = _canal(httpx.MockTransport(lambda _: httpx.Response(404)), max_tentativas=1)
+
+    assert await canal.bot_ids() == set()
+    await canal.aclose()

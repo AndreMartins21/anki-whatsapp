@@ -218,8 +218,11 @@ o prefixo (`GROUP_PREFIX`, padrão `!`) **ou `/`**, com uma letra ou número log
 conversa entre pessoas e não é lido, gravado nem marcado como lido (o filtro vem antes da
 deduplicação e do `sendSeen`). Mídia é ignorada. Marcar outra pessoa não chama o bot.
 
-- **Marcação (M37):** o webhook reconhece o bot em `mentionedIds` (número ou LID, resolvido pelo cache
-  `lids/`, nono dígito à parte) ou como `@numero` no texto, tira a marcação do bot e entrega o resto à
+- **Marcação (M37):** o webhook reconhece o bot pelos ids marcados na mensagem — no GOWS o campo
+  `mentionedIds` vem vazio e a marcação está em `_data.Message.<tipo>.contextInfo.mentionedJID`, com o
+  **LID** do bot (o texto traz `@<LID>`) — comparados com o `me` da sessão (`GET /api/sessions/{session}`:
+  `id` e `lid`) e com `BOT_NUMBER` (nono dígito à parte; sem o `me`, o LID resolve pelo cache `lids/`);
+  como plano B, `@numero` ou `@bot` digitados no texto. Tira a marcação do bot e entrega o resto à
   mesma máquina de estados do privado: dentro de uma atividade é a resposta (`@bot 2`, `@bot a frase`,
   `@bot skip`, `@bot stop`); fora dela `@bot stall` / `@bot stall | contexto` adiciona a palavra e
   `@bot` sozinho ou `@bot help` mostra a ajuda. `@bot !list` vale como o comando.

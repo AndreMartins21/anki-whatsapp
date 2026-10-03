@@ -17,6 +17,7 @@ class FakeChannel:
     vistos: list[str] = field(default_factory=list)
     digitando: list[tuple[str, bool]] = field(default_factory=list)
     lids_conhecidos: dict[str, str | None] = field(default_factory=dict)
+    ids_do_bot: set[str] = field(default_factory=set)  # dígitos do número e do LID do bot
     mencoes_enviadas: list[tuple[str, tuple[str, ...]]] = field(default_factory=list)
     participantes_de_grupos: dict[str, list[str]] = field(default_factory=dict)
     grupos_deixados: list[str] = field(default_factory=list)
@@ -65,3 +66,6 @@ class FakeChannel:
 
     async def resolve_lid(self, lid: str) -> str | None:
         return self.lids_conhecidos.get(lid)
+
+    async def bot_ids(self) -> set[str]:
+        return set(self.ids_do_bot)

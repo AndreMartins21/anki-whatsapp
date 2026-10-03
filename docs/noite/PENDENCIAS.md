@@ -66,8 +66,8 @@ Formato: o que estava ambíguo, o que foi escolhido, por quê.
 
 ## M37 — Marcação do bot no grupo (ADR-0035)
 
-- **Marcação do bot no WhatsApp real.** O bot só atende no grupo se `mentionedIds` trouxer o número
-  (`@c.us`) ou o LID dele (resolvido por `lids/`), ou se o texto tiver `@<BOT_NUMBER>`. O campo não é
-  documentado pelo WAHA: **validar no WhatsApp real** marcando o bot num grupo ativo (`@bot stall`).
-  Se ficar mudo, olhar o payload (`mentionedIds`) e, se preciso, consultar o `me` da sessão
-  (`GET /api/sessions/{session}`) para saber o id/LID do bot.
+- **Marcação do bot no WhatsApp real (validada em 2026-10-03).** O GOWS manda `mentionedIds` vazio; a
+  marcação vem em `_data.Message.extendedTextMessage.contextInfo.mentionedJID` com o LID do bot, e o
+  texto como `@<LID>`. O bot reconhece esse LID pelo `me` da sessão (`bot_ids()`), e aceita `@bot`
+  digitado sem escolher o contato. O `@bot` puro não gera marcação no WhatsApp: o aluno precisa
+  escolher o contato na lista (o nome do contato no grupo é o do perfil do número do bot).

@@ -54,3 +54,8 @@ class ChannelComLid(Channel, Protocol):
     """
 
     async def resolve_lid(self, lid: str) -> str | None: ...
+
+    async def bot_ids(self) -> set[str]:
+        """Os dígitos do número e do LID do próprio bot (`me` da sessão), para reconhecer a marcação
+        dele num grupo. Nunca levanta: se o canal falhar, vazio (M37)."""
+        ...

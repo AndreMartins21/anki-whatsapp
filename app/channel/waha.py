@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import re
 from collections.abc import Sequence
 
 import httpx
@@ -39,6 +40,7 @@ class WahaChannel:
         self._max_tentativas = max_tentativas
         self._timeout_arquivo = timeout_arquivo
         self._backoff_base = backoff_base
+        self._ids_do_bot: set[str] = set()
         self._cliente = httpx.AsyncClient(
             base_url=base_url,
             headers={"X-Api-Key": api_key.get_secret_value()},
@@ -151,6 +153,25 @@ class WahaChannel:
         resposta = await self._get(f"/api/{self._session}/lids/{numero_lid}")
         pn = resposta.json().get("pn")
         return str(pn).split("@", 1)[0] if pn else None
+
+    async def bot_ids(self) -> set[str]:
+        """`GET /api/sessions/{session}` -> `me: {id: "...@c.us", lid: "...@lid"}`: os dígitos dos dois
+        ids do bot (a marcação dele chega pelo LID). Guardado depois do 1º sucesso; falha vira vazio."""
+        if self._ids_do_bot:
+            return self._ids_do_bot
+        try:
+            resposta = await self._get(f"/api/sessions/{self._session}")
+            me = resposta.json().get("me") or {}
+        except Exception:
+            logger.warning("não consegui ler o `me` da sessão", exc_info=True)
+            return set()
+        ids = {
+            re.sub(r"\D", "", str(me[campo]).split("@", 1)[0])
+            for campo in ("id", "lid")
+            if me.get(campo)
+        }
+        self._ids_do_bot = {i for i in ids if i}
+        return self._ids_do_bot
 
     async def _get(self, path: str) -> httpx.Response:
         return await self._com_retentativas("GET", path, json=None)
